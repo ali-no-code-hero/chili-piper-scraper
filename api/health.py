@@ -1,21 +1,30 @@
-from http.server import BaseHTTPRequestHandler
 import json
 from datetime import datetime
 
-class handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header('Content-type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        self.end_headers()
-        
-        response = {
-            'status': 'healthy',
-            'timestamp': datetime.now().isoformat(),
-            'service': 'Chili Piper Slot Scraper'
+def handler(request):
+    """Vercel serverless function handler"""
+    headers = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Content-Type': 'application/json'
+    }
+    
+    if request.method == 'OPTIONS':
+        return {
+            'statusCode': 200,
+            'headers': headers,
+            'body': json.dumps({'message': 'OK'})
         }
-        
-        self.wfile.write(json.dumps(response).encode())
-        return
+    
+    response = {
+        'status': 'healthy',
+        'timestamp': datetime.now().isoformat(),
+        'service': 'Chili Piper Slot Scraper'
+    }
+    
+    return {
+        'statusCode': 200,
+        'headers': headers,
+        'body': json.dumps(response)
+    }

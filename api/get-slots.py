@@ -7,7 +7,7 @@ from datetime import datetime
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from secure_auth import validate_token, get_auth_error_response
+from manual_auth import validate_manual_key, get_auth_error_response
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -460,7 +460,7 @@ class handler(BaseHTTPRequestHandler):
         try:
             # Check authentication
             auth_header = self.headers.get('Authorization', '')
-            is_valid, message = validate_token(auth_header)
+            is_valid, message = validate_manual_key(auth_header)
             
             if not is_valid:
                 self.send_response(401)

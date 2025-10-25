@@ -14,30 +14,22 @@ A high-performance web scraper that automatically fills out Chili Piper forms an
 ## 📋 API Usage
 
 ### Authentication
-All API endpoints require authentication using a Bearer token.
+All API endpoints require authentication using manually managed API keys.
 
-#### Get API Token
+#### Getting API Keys
+API keys are managed manually by administrators. Contact your system administrator to obtain an API key.
+
+#### Key Management
+Use the provided management script to generate and manage API keys:
 ```bash
-GET /api/generate-token
+python3 manage_api_keys.py
 ```
 
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "token": "your-secure-token-here",
-    "expires_at": "2026-12-31T23:59:59Z",
-    "description": "API Token for Chili Piper Scraper",
-    "usage": {
-      "endpoint": "/api/get-slots",
-      "method": "POST",
-      "header": "Authorization: Bearer <token>"
-    }
-  },
-  "message": "Token generated successfully. Store this token securely - it will not be shown again."
-}
-```
+This script allows you to:
+- Generate new API keys
+- List active keys
+- Deactivate keys
+- View usage instructions
 
 ### Get Slots Endpoint
 ```
@@ -46,7 +38,7 @@ POST /api/get-slots
 
 #### Headers
 ```
-Authorization: Bearer <your-token>
+Authorization: Bearer <your-api-key>
 Content-Type: application/json
 ```
 
@@ -96,10 +88,10 @@ Content-Type: application/json
 {
   "success": false,
   "error": "Authentication required",
-  "message": "Please provide a valid API token in the Authorization header",
+  "message": "Please provide a valid API key in the Authorization header",
   "usage": {
-    "header": "Authorization: Bearer <your-token>",
-    "get_token": "/api/generate-token"
+    "header": "Authorization: Bearer <your-api-key>",
+    "contact": "Contact administrator for API key"
   }
 }
 ```
@@ -231,17 +223,14 @@ The scraper is configured to:
 
 ### JavaScript/Node.js
 ```javascript
-// First, get an API token
-const tokenResponse = await fetch('https://your-app.vercel.app/api/generate-token');
-const tokenData = await tokenResponse.json();
-const token = tokenData.data.token;
+// Use your manually assigned API key
+const API_KEY = 'cp_live_your_api_key_here';
 
-// Then use the token to make API calls
 const response = await fetch('https://your-app.vercel.app/api/get-slots', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`
+    'Authorization': `Bearer ${API_KEY}`
   },
   body: JSON.stringify({
     first_name: 'John',
@@ -259,14 +248,11 @@ console.log(`Found ${data.data.total_slots} available slots`);
 ```python
 import requests
 
-# First, get an API token
-token_response = requests.get('https://your-app.vercel.app/api/generate-token')
-token_data = token_response.json()
-token = token_data['data']['token']
+# Use your manually assigned API key
+API_KEY = 'cp_live_your_api_key_here'
 
-# Then use the token to make API calls
 response = requests.post('https://your-app.vercel.app/api/get-slots', 
-    headers={'Authorization': f'Bearer {token}'},
+    headers={'Authorization': f'Bearer {API_KEY}'},
     json={
         'first_name': 'John',
         'last_name': 'Doe', 

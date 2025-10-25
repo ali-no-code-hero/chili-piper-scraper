@@ -44,6 +44,29 @@
             outline: none;
             border-color: #007bff;
         }
+        small {
+            color: #666;
+            font-size: 12px;
+            margin-top: 5px;
+            display: block;
+        }
+        .token-help {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 10px;
+            margin-top: 10px;
+            font-size: 12px;
+            color: #6c757d;
+        }
+        .token-help code {
+            background: #e9ecef;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            word-break: break-all;
+        }
         button {
             background: linear-gradient(135deg, #007bff, #0056b3);
             color: white;
@@ -151,6 +174,18 @@
                 <label for="phone">Phone:</label>
                 <input type="tel" id="phone" name="phone" value="5127673628" required>
             </div>
+            <div class="form-group">
+                <label for="api_token">API Token:</label>
+                <input type="text" id="api_token" name="api_token" placeholder="cp_live_your_api_key_here" required>
+                <small>Enter your API token. Contact administrator if you don't have one.</small>
+                <div class="token-help">
+                    <strong>Available Test Tokens:</strong><br>
+                    • <code>cp_live_abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567</code> (vendor_1)<br>
+                    • <code>cp_live_xyz789uvw456rst123qpo098nml765kji432hgf109edc876bca543</code> (vendor_2)<br>
+                    • <code>cp_live_internal_team_key_2024_secure_123456789abcdef</code> (internal_team)<br>
+                    • <code>cp_live_demo_client_key_2024_secure_987654321fedcba</code> (demo_client)
+                </div>
+            </div>
             <button type="submit" id="submitBtn">Get Available Slots</button>
         </form>
         
@@ -179,11 +214,14 @@
                 phone: document.getElementById('phone').value
             };
             
+            const apiToken = document.getElementById('api_token').value;
+            
             try {
                 const response = await fetch('/api/get-slots', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiToken}`
                     },
                     body: JSON.stringify(formData)
                 });
@@ -193,19 +231,30 @@
                 if (data.success) {
                     let html = '<div class="stats">';
                     html += `<h3>✅ Slots Retrieved Successfully!</h3>`;
+                    html += `<p><strong>Total Slots Found:</strong> ${data.data.total_slots}</p>`;
                     html += `<p><strong>Total Days Found:</strong> ${data.data.total_days}</p>`;
                     if (data.data.note) {
                         html += `<p><strong>Note:</strong> ${data.data.note}</p>`;
                     }
                     html += '</div>';
                     
-                    for (const [date, dayData] of Object.entries(data.data.slots)) {
+                    // Group slots by date
+                    const slotsByDate = {};
+                    data.data.slots.forEach(slot => {
+                        if (!slotsByDate[slot.date]) {
+                            slotsByDate[slot.date] = [];
+                        }
+                        slotsByDate[slot.date].push(slot.time);
+                    });
+                    
+                    // Display slots grouped by date
+                    for (const [date, times] of Object.entries(slotsByDate)) {
                         html += '<div class="day-slot">';
-                        html += `<div class="day-header">${dayData.day_name}, ${dayData.date}</div>`;
+                        html += `<div class="day-header">${date}</div>`;
                         html += `<div class="slots-grid">`;
                         
-                        dayData.slots.forEach(slot => {
-                            html += `<div class="slot">${slot}</div>`;
+                        times.forEach(time => {
+                            html += `<div class="slot">${time}</div>`;
                         });
                         
                         html += '</div>';
@@ -215,7 +264,17 @@
                     resultDiv.innerHTML = html;
                     resultDiv.className = 'result success';
                 } else {
-                    resultDiv.innerHTML = `<p>❌ Error: ${data.error}</p>`;
+                    let errorHtml = `<p>❌ Error: ${data.error}</p>`;
+                    if (data.message) {
+                        errorHtml += `<p><strong>Message:</strong> ${data.message}</p>`;
+                    }
+                    if (data.usage) {
+                        errorHtml += `<p><strong>Usage:</strong> ${data.usage.header || data.usage}</p>`;
+                    }
+                    if (response.status === 401) {
+                        errorHtml += `<p><strong>💡 Tip:</strong> Make sure you're using a valid API token from the list above.</p>`;
+                    }
+                    resultDiv.innerHTML = errorHtml;
                     resultDiv.className = 'result error';
                 }
             } catch (error) {

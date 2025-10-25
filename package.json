@@ -1,0 +1,17 @@
+{
+  "name": "chili-piper-scraper",
+  "version": "1.0.0",
+  "description": "Chili Piper Slot Scraper for Vercel",
+  "scripts": {
+    "build": "playwright install chromium",
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "dependencies": {
+    "playwright": "^1.40.0"
+  },
+  "devDependencies": {
+    "@vercel/python": "^3.0.0",
+    "vercel": "^48.6.0"
+  }
+}

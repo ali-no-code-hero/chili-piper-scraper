@@ -1,0 +1,45 @@
+# Vercel ignore file
+# Exclude files that shouldn't be deployed
+
+# Original Flask app files
+app.py
+config.py
+requirements.txt
+run.sh
+test_app.py
+example_usage.py
+
+# Docker files
+Dockerfile
+docker-compose.yml
+
+# Documentation
+README.md
+DEPLOYMENT.md
+
+# Test files
+test_vercel.py
+
+# Git
+.git
+.gitignore
+
+# Node modules (will be installed during build)
+node_modules
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# IDE files
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,14 +1,19 @@
 {
   "version": 2,
   "buildCommand": "./build.sh",
-  "functions": {
-    "api/get-slots.py": {
-      "maxDuration": 60
+  "builds": [
+    {
+      "src": "api/**/*.py",
+      "use": "@vercel/python",
+      "config": {
+        "maxLambdaSize": "50mb"
+      }
     },
-    "api/health.py": {
-      "maxDuration": 10
+    {
+      "src": "pages/**/*.html",
+      "use": "@vercel/static"
     }
-  },
+  ],
   "routes": [
     {
       "src": "/api/(.*)",

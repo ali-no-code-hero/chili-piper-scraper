@@ -144,6 +144,8 @@ When importing from GitHub, use these settings:
 - **Output Directory**: (leave empty)
 - **Install Command**: `npm install`
 
+**Note**: The project uses both Python serverless functions and static HTML, so it requires the `builds` configuration in `vercel.json` rather than the `functions` property.
+
 ### Environment Variables
 No environment variables are required for basic functionality.
 

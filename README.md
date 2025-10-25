@@ -131,7 +131,18 @@ npm install -g vercel
 vercel
 
 # Follow the prompts to configure your project
+# Framework: Other
+# Build Command: ./build.sh
+# Output Directory: (leave empty)
+# Install Command: npm install
 ```
+
+### Vercel Configuration
+When importing from GitHub, use these settings:
+- **Framework**: Other
+- **Build Command**: `./build.sh`
+- **Output Directory**: (leave empty)
+- **Install Command**: `npm install`
 
 ### Environment Variables
 No environment variables are required for basic functionality.

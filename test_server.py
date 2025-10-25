@@ -43,7 +43,7 @@ class TestHandler(http.server.BaseHTTPRequestHandler):
             }
             self.wfile.write(json.dumps(response).encode())
         elif self.path == '/api/generate-token':
-            # Token generation endpoint
+            # Token generation endpoint with security
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
@@ -51,24 +51,76 @@ class TestHandler(http.server.BaseHTTPRequestHandler):
             self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
             self.end_headers()
             
-            # Generate a simple token for testing
-            import secrets
-            token = secrets.token_urlsafe(32)
-            
-            response = {
-                'success': True,
-                'data': {
-                    'token': token,
-                    'expires_at': '2026-12-31T23:59:59Z',
-                    'description': 'API Token for Chili Piper Scraper',
-                    'usage': {
-                        'endpoint': '/api/get-slots',
-                        'method': 'POST',
-                        'header': f'Authorization: Bearer {token}'
+            try:
+                # Import secure auth
+                import sys
+                import os
+                sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'api'))
+                from secure_auth import generate_secure_token, store_token, is_rate_limited, add_rate_limit
+                
+                # Get client IP
+                client_ip = self.client_address[0]
+                
+                # Check rate limiting
+                if is_rate_limited(client_ip):
+                    response = {
+                        'success': False,
+                        'error': 'Rate limit exceeded',
+                        'message': 'Maximum 5 tokens per hour allowed. Please try again later.',
+                        'retry_after': 3600
                     }
-                },
-                'message': 'Token generated successfully. Store this token securely - it will not be shown again.'
-            }
+                    self.wfile.write(json.dumps(response).encode())
+                    return
+                
+                # Generate secure token
+                token = generate_secure_token()
+                store_token(token, client_ip, "API Token for Chili Piper Scraper")
+                add_rate_limit(client_ip)
+                
+                response = {
+                    'success': True,
+                    'data': {
+                        'token': token,
+                        'expires_at': '2024-12-31T23:59:59Z',
+                        'description': 'API Token for Chili Piper Scraper',
+                        'usage': {
+                            'endpoint': '/api/get-slots',
+                            'method': 'POST',
+                            'header': f'Authorization: Bearer {token}'
+                        },
+                        'security': {
+                            'rate_limit': '5 tokens per hour',
+                            'expires_in': '30 days',
+                            'store_securely': True
+                        }
+                    },
+                    'message': 'Token generated successfully. Store this token securely - it will not be shown again.',
+                    'warnings': [
+                        'This token will expire in 30 days',
+                        'Store the token securely - it cannot be recovered',
+                        'Rate limited to 5 tokens per hour per IP'
+                    ]
+                }
+                
+            except ImportError:
+                # Fallback for testing
+                import secrets
+                token = secrets.token_urlsafe(32)
+                response = {
+                    'success': True,
+                    'data': {
+                        'token': token,
+                        'expires_at': '2026-12-31T23:59:59Z',
+                        'description': 'API Token for Chili Piper Scraper (Test Mode)',
+                        'usage': {
+                            'endpoint': '/api/get-slots',
+                            'method': 'POST',
+                            'header': f'Authorization: Bearer {token}'
+                        }
+                    },
+                    'message': 'Token generated successfully (Test Mode). Store this token securely.'
+                }
+            
             self.wfile.write(json.dumps(response).encode())
         elif self.path == '/':
             # Serve the HTML page
@@ -103,7 +155,7 @@ class TestHandler(http.server.BaseHTTPRequestHandler):
             self.send_error(500, f"Error serving HTML: {str(e)}")
     
     def validate_token(self, auth_header):
-        """Simple token validation for testing"""
+        """Secure token validation"""
         if not auth_header:
             return False
         
@@ -113,9 +165,18 @@ class TestHandler(http.server.BaseHTTPRequestHandler):
         else:
             token = auth_header
         
-        # For testing, accept any non-empty token
-        # In production, you would validate against a database
-        return len(token) > 0
+        # Import secure auth for validation
+        try:
+            import sys
+            import os
+            sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'api'))
+            from secure_auth import validate_token as secure_validate
+            
+            is_valid, message = secure_validate(token)
+            return is_valid
+        except ImportError:
+            # Fallback for testing
+            return len(token) > 0
     
     def handle_get_slots(self):
         try:

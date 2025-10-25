@@ -7,7 +7,7 @@ from datetime import datetime
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from auth_utils import validate_token, get_auth_error_response
+from secure_auth import validate_token, get_auth_error_response
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

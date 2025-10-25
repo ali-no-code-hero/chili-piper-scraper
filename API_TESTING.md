@@ -53,16 +53,16 @@ curl -X POST http://localhost:8000/api/get-slots \
 
 ## 🌐 Production Testing (Vercel)
 
-Replace `YOUR_VERCEL_URL` with your actual Vercel deployment URL:
+Your production URL: **https://chili-piper-scraper-jysh.vercel.app/**
 
 ### Health Check
 ```bash
-curl -X GET https://YOUR_VERCEL_URL.vercel.app/api/health
+curl -X GET https://chili-piper-scraper-jysh.vercel.app/api/health
 ```
 
 ### Get Available Slots (Production)
 ```bash
-curl -X POST https://YOUR_VERCEL_URL.vercel.app/api/get-slots \
+curl -X POST https://chili-piper-scraper-jysh.vercel.app/api/get-slots \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer cp_live_abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567" \
   -d '{
@@ -70,6 +70,31 @@ curl -X POST https://YOUR_VERCEL_URL.vercel.app/api/get-slots \
     "last_name": "SyedTEST",
     "email": "ali+test@mm.ventures", 
     "phone": "5127673628"
+  }'
+```
+
+### Test with Different Tokens
+```bash
+# Vendor 2
+curl -X POST https://chili-piper-scraper-jysh.vercel.app/api/get-slots \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer cp_live_xyz789uvw456rst123qpo098nml765kji432hgf109edc876bca543" \
+  -d '{
+    "first_name": "John",
+    "last_name": "Doe",
+    "email": "john.doe@example.com",
+    "phone": "5551234567"
+  }'
+
+# Internal Team
+curl -X POST https://chili-piper-scraper-jysh.vercel.app/api/get-slots \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer cp_live_internal_team_key_2024_secure_123456789abcdef" \
+  -d '{
+    "first_name": "Jane",
+    "last_name": "Smith",
+    "email": "jane.smith@company.com",
+    "phone": "5559876543"
   }'
 ```
 
@@ -204,16 +229,76 @@ curl -s -X POST http://localhost:8000/api/get-slots \
 2. **500 Internal Server Error**: Check server logs
 3. **Timeout**: The scraping process can take time
 4. **0 slots returned**: Normal if no available booking days
+5. **404 Not Found (Production)**: Vercel deployment issue
+
+### Vercel Deployment Issues
+
+If you're getting 404 errors on production:
+
+1. **Check Vercel Build Logs**:
+   - Go to your Vercel dashboard
+   - Check the latest deployment logs
+   - Look for Python/Playwright installation errors
+
+2. **Verify vercel.json Configuration**:
+   ```json
+   {
+     "version": 2,
+     "buildCommand": "./build.sh",
+     "builds": [
+       {
+         "src": "api/**/*.py",
+         "use": "@vercel/python",
+         "config": {
+           "maxLambdaSize": "50mb"
+         }
+       },
+       {
+         "src": "pages/**/*.html",
+         "use": "@vercel/static"
+       }
+     ],
+     "routes": [
+       {
+         "src": "/api/(.*)",
+         "dest": "/api/$1"
+       },
+       {
+         "src": "/(.*)",
+         "dest": "/pages/$1"
+       }
+     ]
+   }
+   ```
+
+3. **Redeploy**:
+   ```bash
+   # Push changes to trigger redeploy
+   git push origin main
+   
+   # Or redeploy manually in Vercel dashboard
+   ```
+
+4. **Check Function Logs**:
+   - In Vercel dashboard, go to Functions tab
+   - Check logs for any Python errors
+   - Look for Playwright installation issues
 
 ### Debug Commands
 
 ```bash
-# Check if server is running
+# Check if server is running (local)
 curl -I http://localhost:8000/api/health
 
-# Test with verbose output
+# Test with verbose output (local)
 curl -v -X POST http://localhost:8000/api/get-slots \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"first_name": "Test", "last_name": "User", "email": "test@example.com", "phone": "5551234567"}'
+
+# Test production with verbose output
+curl -v -X POST https://chili-piper-scraper-jysh.vercel.app/api/get-slots \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer cp_live_abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567" \
   -d '{"first_name": "Test", "last_name": "User", "email": "test@example.com", "phone": "5551234567"}'
 ```

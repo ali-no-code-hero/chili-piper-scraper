@@ -13,12 +13,44 @@ A high-performance web scraper that automatically fills out Chili Piper forms an
 
 ## 📋 API Usage
 
-### Endpoint
+### Authentication
+All API endpoints require authentication using a Bearer token.
+
+#### Get API Token
+```bash
+GET /api/generate-token
+```
+
+Response:
+```json
+{
+  "success": true,
+  "data": {
+    "token": "your-secure-token-here",
+    "expires_at": "2026-12-31T23:59:59Z",
+    "description": "API Token for Chili Piper Scraper",
+    "usage": {
+      "endpoint": "/api/get-slots",
+      "method": "POST",
+      "header": "Authorization: Bearer <token>"
+    }
+  },
+  "message": "Token generated successfully. Store this token securely - it will not be shown again."
+}
+```
+
+### Get Slots Endpoint
 ```
 POST /api/get-slots
 ```
 
-### Request Format
+#### Headers
+```
+Authorization: Bearer <your-token>
+Content-Type: application/json
+```
+
+#### Request Format
 ```json
 {
   "first_name": "John",
@@ -53,6 +85,21 @@ POST /api/get-slots
         "gmt": "GMT-05:00 America/Chicago (CDT)"
       }
     ]
+  }
+}
+```
+
+### Error Responses
+
+#### Authentication Error (401)
+```json
+{
+  "success": false,
+  "error": "Authentication required",
+  "message": "Please provide a valid API token in the Authorization header",
+  "usage": {
+    "header": "Authorization: Bearer <your-token>",
+    "get_token": "/api/generate-token"
   }
 }
 ```
@@ -184,10 +231,17 @@ The scraper is configured to:
 
 ### JavaScript/Node.js
 ```javascript
+// First, get an API token
+const tokenResponse = await fetch('https://your-app.vercel.app/api/generate-token');
+const tokenData = await tokenResponse.json();
+const token = tokenData.data.token;
+
+// Then use the token to make API calls
 const response = await fetch('https://your-app.vercel.app/api/get-slots', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`
   },
   body: JSON.stringify({
     first_name: 'John',
@@ -205,12 +259,21 @@ console.log(`Found ${data.data.total_slots} available slots`);
 ```python
 import requests
 
-response = requests.post('https://your-app.vercel.app/api/get-slots', json={
-    'first_name': 'John',
-    'last_name': 'Doe', 
-    'email': 'john.doe@example.com',
-    'phone': '5551234567'
-})
+# First, get an API token
+token_response = requests.get('https://your-app.vercel.app/api/generate-token')
+token_data = token_response.json()
+token = token_data['data']['token']
+
+# Then use the token to make API calls
+response = requests.post('https://your-app.vercel.app/api/get-slots', 
+    headers={'Authorization': f'Bearer {token}'},
+    json={
+        'first_name': 'John',
+        'last_name': 'Doe', 
+        'email': 'john.doe@example.com',
+        'phone': '5551234567'
+    }
+)
 
 data = response.json()
 print(f"Found {data['data']['total_slots']} available slots")

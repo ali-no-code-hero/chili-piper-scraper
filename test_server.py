@@ -42,6 +42,34 @@ class TestHandler(http.server.BaseHTTPRequestHandler):
                 'service': 'Chili Piper Slot Scraper'
             }
             self.wfile.write(json.dumps(response).encode())
+        elif self.path == '/api/generate-token':
+            # Token generation endpoint
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+            self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+            self.end_headers()
+            
+            # Generate a simple token for testing
+            import secrets
+            token = secrets.token_urlsafe(32)
+            
+            response = {
+                'success': True,
+                'data': {
+                    'token': token,
+                    'expires_at': '2026-12-31T23:59:59Z',
+                    'description': 'API Token for Chili Piper Scraper',
+                    'usage': {
+                        'endpoint': '/api/get-slots',
+                        'method': 'POST',
+                        'header': f'Authorization: Bearer {token}'
+                    }
+                },
+                'message': 'Token generated successfully. Store this token securely - it will not be shown again.'
+            }
+            self.wfile.write(json.dumps(response).encode())
         elif self.path == '/':
             # Serve the HTML page
             self.serve_html()
@@ -74,8 +102,29 @@ class TestHandler(http.server.BaseHTTPRequestHandler):
         except Exception as e:
             self.send_error(500, f"Error serving HTML: {str(e)}")
     
+    def validate_token(self, auth_header):
+        """Simple token validation for testing"""
+        if not auth_header:
+            return False
+        
+        # Remove 'Bearer ' prefix if present
+        if auth_header.startswith('Bearer '):
+            token = auth_header[7:]
+        else:
+            token = auth_header
+        
+        # For testing, accept any non-empty token
+        # In production, you would validate against a database
+        return len(token) > 0
+    
     def handle_get_slots(self):
         try:
+            # Check authentication
+            auth_header = self.headers.get('Authorization', '')
+            if not self.validate_token(auth_header):
+                self.send_error_response(401, 'Authentication required. Please provide a valid API token.')
+                return
+            
             # Parse request body
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)

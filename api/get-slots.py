@@ -4,6 +4,10 @@ import asyncio
 from playwright.async_api import async_playwright
 import logging
 from datetime import datetime
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from auth_utils import validate_token, get_auth_error_response
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -448,12 +452,25 @@ class handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
         self.end_headers()
         return
     
     def do_POST(self):
         try:
+            # Check authentication
+            auth_header = self.headers.get('Authorization', '')
+            is_valid, message = validate_token(auth_header)
+            
+            if not is_valid:
+                self.send_response(401)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                
+                error_response = get_auth_error_response()
+                self.wfile.write(json.dumps(error_response).encode())
+                return
             # Parse request body
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)

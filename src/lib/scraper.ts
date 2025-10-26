@@ -186,8 +186,9 @@ export class ChiliPiperScraper {
       
       console.log("Form submitted successfully");
       
-      // Wait for the calendar page to load and adjust
-      await page.waitForTimeout(2000);
+      // Wait longer for the calendar page to load and adjust
+      console.log("⏳ Waiting for page transition to calendar...");
+      await page.waitForTimeout(5000); // Increased from 2000ms to 5000ms
       
       // Wait for calendar elements with multiple possible selectors
       const calendarSelectors = [
@@ -204,7 +205,7 @@ export class ChiliPiperScraper {
       let calendarFound = false;
       for (const selector of calendarSelectors) {
         try {
-          await page.waitForSelector(selector, { timeout: 2000 });
+          await page.waitForSelector(selector, { timeout: 10000 }); // Increased from 2000ms to 10000ms
           console.log(`✅ Calendar loaded successfully using selector: ${selector}`);
           calendarFound = true;
           break;
@@ -275,10 +276,12 @@ export class ChiliPiperScraper {
   private async getAvailableSlots(page: any): Promise<Record<string, { slots: string[] }>> {
     const allSlots: Record<string, { slots: string[] }> = {};
     let weekCount = 0;
-    const maxWeeks = 4; // Check up to 4 weeks to find maximum available slots
+    const maxWeeks = 6; // Increased to check more weeks for maximum available slots
+    let consecutiveEmptyWeeks = 0; // Track consecutive weeks with no slots
 
-    console.log("🚀 Starting slot collection");
+    console.log("🚀 Starting comprehensive slot collection");
     console.log(`📊 Max weeks to check: ${maxWeeks}`);
+    console.log("🎯 Goal: Collect ALL available booking days");
 
     while (weekCount < maxWeeks) {
       weekCount++;
@@ -287,14 +290,26 @@ export class ChiliPiperScraper {
       const currentWeekSlots = await this.getCurrentWeekSlots(page);
       
       if (!currentWeekSlots || currentWeekSlots.length === 0) {
-        console.log(`⚠️ No slots found in Week ${weekCount}. Attempting to navigate to next week.`);
-        if (!await this.navigateToNextWeek(page)) {
-          console.log("❌ Next week button is disabled or not found. No more weeks available.");
+        consecutiveEmptyWeeks++;
+        console.log(`⚠️ No slots found in Week ${weekCount} (${consecutiveEmptyWeeks} consecutive empty weeks)`);
+        
+        // If we've had 2 consecutive empty weeks, we might have reached the end
+        if (consecutiveEmptyWeeks >= 2) {
+          console.log("🛑 Stopping: Found 2 consecutive weeks with no available slots");
           break;
         }
-        await page.waitForTimeout(200);
+        
+        // Still try to navigate to next week
+        if (!await this.navigateToNextWeek(page)) {
+          console.log("❌ Next week button is disabled. No more weeks available.");
+          break;
+        }
+        await page.waitForTimeout(1000); // Increased wait time
         continue;
       }
+
+      // Reset consecutive empty weeks counter when we find slots
+      consecutiveEmptyWeeks = 0;
 
       for (const dayInfo of currentWeekSlots) {
         const dateKey = dayInfo.date;
@@ -314,12 +329,19 @@ export class ChiliPiperScraper {
         break;
       }
 
-      await page.waitForTimeout(200);
+      await page.waitForTimeout(1000); // Increased wait time for better reliability
     }
     
     console.log(`🏁 Final result: Successfully collected ${Object.keys(allSlots).length} days of slots`);
     console.log(`📋 Collected dates: ${Object.keys(allSlots)}`);
     
+    if (Object.keys(allSlots).length === 0) {
+      console.warn("⚠️ No available booking slots found in any week");
+      console.info("💡 This could mean the calendar has no available slots or the page structure changed");
+    } else {
+      console.info(`✅ Found ${Object.keys(allSlots).length} days with available booking slots`);
+    }
+
     return allSlots;
   }
 
@@ -340,7 +362,7 @@ export class ChiliPiperScraper {
     let dayButtonsFound = false;
     for (const selector of dayButtonSelectors) {
       try {
-        await page.waitForSelector(selector, { timeout: 1000 });
+        await page.waitForSelector(selector, { timeout: 5000 }); // Increased from 1000ms to 5000ms
         dayButtonsFound = true;
         break;
       } catch (error) {
@@ -353,7 +375,7 @@ export class ChiliPiperScraper {
       return weekSlots;
     }
     
-    await page.waitForTimeout(100);
+    await page.waitForTimeout(500); // Increased from 100ms to 500ms
 
     // Find all day buttons using multiple selectors
     let dayButtons = [];
@@ -376,9 +398,10 @@ export class ChiliPiperScraper {
         const button = dayButtons[i];
         const isEnabled = await button.isEnabled();
         const buttonText = await button.textContent();
-        console.log(`📅 Button ${i + 1}: '${buttonText?.substring(0, 50)}...' (enabled: ${isEnabled})`);
+        const isSelected = buttonText?.includes('is selected') || false;
+        console.log(`📅 Button ${i + 1}: '${buttonText?.substring(0, 50)}...' (enabled: ${isEnabled}, selected: ${isSelected})`);
         if (isEnabled) {
-          enabledButtons.push(button);
+          enabledButtons.push({ button, isSelected });
         }
       } catch (error) {
         console.log(`❌ Error checking button ${i + 1}: ${error}`);
@@ -390,9 +413,16 @@ export class ChiliPiperScraper {
 
     for (let i = 0; i < enabledButtons.length; i++) {
       try {
-        const button = enabledButtons[i];
-        await button.click();
-        await page.waitForTimeout(500);
+        const { button, isSelected } = enabledButtons[i];
+        
+        // Only click if not already selected
+        if (!isSelected) {
+          console.log(`🖱️ Clicking day button ${i + 1} (not selected)`);
+          await button.click();
+          await page.waitForTimeout(1000); // Wait for slots to load
+        } else {
+          console.log(`⏭️ Skipping day button ${i + 1} (already selected)`);
+        }
         
         // Get the selected date information
         const dateSelectors = [
@@ -450,7 +480,7 @@ export class ChiliPiperScraper {
           console.log(`✅ Found ${timeSlots.length} slots for ${dateText}`);
         }
         
-        await page.waitForTimeout(100);
+        await page.waitForTimeout(500); // Increased from 100ms to 500ms
       } catch (error) {
         console.log(`❌ Error processing button ${i + 1}: ${error}`);
         continue;

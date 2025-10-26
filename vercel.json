@@ -1,14 +1,18 @@
 {
   "version": 2,
   "buildCommand": "./build.sh",
-  "builds": [
-    {
-      "src": "api/*.py",
-      "use": "@vercel/python",
-      "config": {
-        "maxLambdaSize": "50mb"
-      }
+  "functions": {
+    "api/health.py": {
+      "runtime": "@vercel/python@3.9"
     },
+    "api/test.py": {
+      "runtime": "@vercel/python@3.9"
+    },
+    "api/get-slots.py": {
+      "runtime": "@vercel/python@3.9"
+    }
+  },
+  "builds": [
     {
       "src": "pages/**",
       "use": "@vercel/static"

@@ -186,9 +186,10 @@ export class ChiliPiperScraper {
       
       console.log("Form submitted successfully");
       
-      // Wait longer for the calendar page to load and adjust
-      console.log("⏳ Waiting for page transition to calendar...");
-      await page.waitForTimeout(5000); // Increased from 2000ms to 5000ms
+          // Wait longer for the calendar page to load and adjust
+          console.log("⏳ Waiting 5 seconds for calendar to fully load...");
+          await page.waitForTimeout(5000);
+          console.log("✅ Calendar should be fully loaded now");
       
       // Wait for calendar elements with multiple possible selectors
       const calendarSelectors = [
@@ -275,94 +276,106 @@ export class ChiliPiperScraper {
 
   private async getAvailableSlots(page: any): Promise<Record<string, { slots: string[] }>> {
     const allSlots: Record<string, { slots: string[] }> = {};
-    let weekCount = 0;
-    const maxWeeks = 6; // Increased to check more weeks for maximum available slots
-    let consecutiveEmptyWeeks = 0; // Track consecutive weeks with no slots
-
+    
     console.log("🚀 Starting comprehensive slot collection");
-    console.log(`📊 Max weeks to check: ${maxWeeks}`);
-    console.log("🎯 Goal: Collect ALL available booking days");
+    console.log("🎯 Goal: Collect ALL available booking days (9+ days)");
+    console.log("📋 Strategy: Emulate manual browser process - collect all days from current view, then navigate");
 
-    while (weekCount < maxWeeks) {
-      weekCount++;
-      console.log(`\n=== WEEK ${weekCount} START ===`);
-      console.log(`🔍 Week ${weekCount}: Looking for available days...`);
+    // Simple approach: collect from Week 1, navigate to Week 2, collect from Week 2
+    const maxAttempts = 3;
+    
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      console.log(`\n=====================================`);
+      console.log(`=== COLLECTION ATTEMPT ${attempt}/${maxAttempts} ===`);
+      console.log(`📊 Current total: ${Object.keys(allSlots).length} days`);
       
-      const currentWeekSlots = await this.getCurrentWeekSlots(page);
-      console.log(`📊 Week ${weekCount} results: ${currentWeekSlots?.length || 0} days with slots`);
+      // Stop if we have enough
+      if (Object.keys(allSlots).length >= 9) {
+        console.log(`🎯 Target reached! Stopping collection.`);
+        break;
+      }
       
-      if (!currentWeekSlots || currentWeekSlots.length === 0) {
-        consecutiveEmptyWeeks++;
-        console.log(`⚠️ No slots found in Week ${weekCount} (${consecutiveEmptyWeeks} consecutive empty weeks)`);
-        
-        // If we've had 3 consecutive empty weeks, we might have reached the end
-        if (consecutiveEmptyWeeks >= 3) {
-          console.log("🛑 Stopping: Found 3 consecutive weeks with no available slots");
-          break;
-        }
-        
-        // Still try to navigate to next week
-        if (!await this.navigateToNextWeek(page)) {
-          console.log("❌ Next week button is disabled. No more weeks available.");
-          break;
-        }
-        await page.waitForTimeout(1000); // Increased wait time
-        continue;
+      console.log(`⏳ Waiting for calendar to be ready...`);
+      await page.waitForTimeout(1000); // Give calendar time to stabilize
+      
+      // Get ALL enabled day buttons from the current calendar view (Week 1 AND Week 2)
+      const dayButtons = await this.getAllEnabledDayButtons(page);
+      console.log(`📅 Found ${dayButtons.length} total enabled day buttons in current view`);
+      
+      // Log the date keys to see what we're getting
+      const dateKeys = dayButtons.map(db => db.dateKey);
+      console.log(`📋 Button dates: ${dateKeys.join(', ')}`);
+      
+      if (dayButtons.length === 0) {
+        console.log("❌ No enabled day buttons found. This is unexpected.");
+        break;
       }
 
-      // Reset consecutive empty weeks counter when we find slots
-      consecutiveEmptyWeeks = 0;
-
-      for (const dayInfo of currentWeekSlots) {
-        const dateKey = dayInfo.date;
-        if (!allSlots[dateKey]) {
-          allSlots[dateKey] = dayInfo;
-          console.log(`✅ Day ${Object.keys(allSlots).length}: ${dateKey} - ${dayInfo.slots.length} slots`);
+      // Process ALL enabled day buttons (this collects both weeks at once!)
+      let newDaysAdded = 0;
+      for (const buttonInfo of dayButtons) {
+        try {
+          const dateKey = buttonInfo.dateKey;
+          
+          // Skip if we already have this date
+          if (allSlots[dateKey]) {
+            console.log(`⏭️ Skipping ${dateKey} - already collected`);
+            continue;
+          }
+          
+          // Click the button to see its slots
+          console.log(`🖱️ Clicking ${dateKey}...`);
+          await buttonInfo.button.click();
+          await page.waitForTimeout(1000);
+          
+          // Get time slots for this day
+          const slots = await this.getTimeSlotsForCurrentDay(page);
+          console.log(`📊 Got ${slots.length} slots for ${dateKey}`);
+          
+          if (slots.length > 0) {
+            allSlots[dateKey] = { slots };
+            newDaysAdded++;
+            console.log(`✅ Added ${dateKey}: ${slots.length} slots (total days: ${Object.keys(allSlots).length})`);
+          }
+          
+          // Stop if we have enough days
+          if (Object.keys(allSlots).length >= 9) {
+            console.log(`🎯 Target reached! Collected ${Object.keys(allSlots).length} days.`);
+            break;
+          }
+        } catch (error) {
+          console.log(`❌ Error processing day button: ${error}`);
+          continue;
+        }
+      }
+      
+      console.log(`📊 Progress: ${Object.keys(allSlots).length} total days collected (${newDaysAdded} new from this attempt)`);
+      
+      // If we have enough days or didn't add any new ones, stop
+      if (Object.keys(allSlots).length >= 9 || newDaysAdded === 0) {
+        console.log(`✅ Collection complete. Total days: ${Object.keys(allSlots).length}`);
+        break;
+      }
+      
+      // If we still don't have enough days, navigate to next week
+      if (Object.keys(allSlots).length < 9) {
+        console.log(`🔄 Only have ${Object.keys(allSlots).length} days (target: 9). Navigating to next week...`);
+        
+        const navSuccess = await this.navigateToNextWeek(page);
+        console.log(`🧭 Navigation result: ${navSuccess}`);
+        
+        if (navSuccess) {
+          console.log(`⏳ Waiting 5 seconds for calendar to update...`);
+          await page.waitForTimeout(5000);
+          console.log(`✅ Calendar updated, will continue in next iteration`);
         } else {
-          console.log(`⚠️ Duplicate date found: ${dateKey}, skipping`);
-        }
-      }
-
-      console.log(`📈 Progress: ${Object.keys(allSlots).length} unique days collected so far`);
-      console.log(`=== WEEK ${weekCount} END ===`);
-
-      // Always try to move to the next week to find all available slots
-      console.log(`\n🔄 Attempting to navigate to next week (Week ${weekCount + 1})...`);
-      const navigationSuccess = await this.navigateToNextWeek(page);
-      if (!navigationSuccess) {
-        console.log("❌ Next week button is disabled or not found. No more weeks available.");
-        console.log(`📊 Total unique days collected: ${Object.keys(allSlots).length}`);
-        
-        // If we have less than 9 days and haven't exhausted all weeks, something went wrong
-        if (Object.keys(allSlots).length < 9 && weekCount < maxWeeks) {
-          console.log(`⚠️ Only found ${Object.keys(allSlots).length} days but expected at least 9. Continuing to check more weeks...`);
-        } else {
+          console.log(`❌ Navigation failed or button disabled. Collected ${Object.keys(allSlots).length} days total.`);
           break;
         }
-      }
-      console.log(`✅ Successfully navigated to Week ${weekCount + 1}`);
-
-      // Wait longer for calendar to update and ensure we can find day buttons
-      await page.waitForTimeout(2000); // Increased wait time for calendar update
-      
-      // Verify calendar has updated by checking for day buttons
-      try {
-        await page.waitForSelector('button:has-text("Monday")', { timeout: 5000 });
-        console.log(`✅ Calendar updated successfully for Week ${weekCount + 1}`);
-      } catch (error) {
-        console.log(`⚠️ Calendar update verification failed for Week ${weekCount + 1}: ${error}`);
-      }
-      
-      // Also check current date on calendar to verify we're in the next week
-      try {
-        const dateInfo = await page.textContent('[data-test-id*="day"]');
-        console.log(`📅 Current calendar date info: ${dateInfo?.substring(0, 100)}`);
-      } catch (error) {
-        console.log(`⚠️ Could not get calendar date info`);
       }
     }
     
-    console.log(`🏁 Final result: Successfully collected ${Object.keys(allSlots).length} days of slots`);
+    console.log(`🏁 Final result: Successfully collected ${Object.keys(allSlots).length} days`);
     console.log(`📋 Collected dates: ${Object.keys(allSlots).join(', ')}`);
     
     if (Object.keys(allSlots).length === 0) {
@@ -373,6 +386,90 @@ export class ChiliPiperScraper {
     }
 
     return allSlots;
+  }
+
+  private async getAllEnabledDayButtons(page: any): Promise<Array<{ button: any; dateKey: string }>> {
+    const enabledButtons: Array<{ button: any; dateKey: string }> = [];
+    
+    console.log(`🔍 getAllEnabledDayButtons() starting...`);
+    
+    // Wait for day buttons - use a broader selector
+    try {
+      console.log(`⏳ Waiting for 'button[data-test-id*="days:Oct"]' selector...`);
+      await page.waitForSelector('button[data-test-id*="days:Oct"]', { timeout: 5000 });
+      console.log(`✅ Found Oct buttons`);
+    } catch (error) {
+      console.log(`⚠️ Oct buttons not found, trying any day buttons...`);
+      try {
+        await page.waitForSelector('button[data-test-id*="days:"]', { timeout: 2000 });
+        console.log(`✅ Found any day buttons`);
+      } catch (error2) {
+        console.log(`❌ No day buttons found with any selector`);
+        return enabledButtons;
+      }
+    }
+    
+    // Wait a moment for calendar to stabilize
+    await page.waitForTimeout(500);
+    
+    // Get all day buttons
+    console.log(`🔍 Querying all day buttons with selector 'button[data-test-id*="days:"]'...`);
+    const dayButtons = await page.$$('button[data-test-id*="days:"]');
+    console.log(`📊 Total day buttons found: ${dayButtons.length}`);
+    
+    for (let i = 0; i < dayButtons.length; i++) {
+      try {
+        const button = dayButtons[i];
+        const isEnabled = await button.isEnabled();
+        const buttonText = await button.textContent();
+        
+        console.log(`🔍 Button ${i + 1}: enabled=${isEnabled}, text='${buttonText?.substring(0, 60)}...'`);
+        
+        if (isEnabled && buttonText) {
+          // Extract date key from button text
+          const dateKey = buttonText.replace('Press enter to navigate available slots', '').trim();
+          const cleanDateKey = dateKey.replace('is selected', '').trim();
+          
+          enabledButtons.push({ button, dateKey: cleanDateKey });
+          console.log(`✅ Added enabled button ${i + 1}: ${cleanDateKey}`);
+        } else {
+          console.log(`⏭️ Button ${i + 1} skipped: ${!isEnabled ? 'disabled' : 'no text'}`);
+        }
+      } catch (error) {
+        console.log(`❌ Error checking button ${i + 1}: ${error}`);
+      }
+    }
+    
+    console.log(`📊 getAllEnabledDayButtons() complete: returning ${enabledButtons.length} enabled buttons`);
+    return enabledButtons;
+  }
+
+  private async getTimeSlotsForCurrentDay(page: any): Promise<string[]> {
+    const timeSlotSelectors = [
+      'button:has-text("AM")',
+      'button:has-text("PM")',
+      '[data-test-id*="time"]',
+      '[data-id="time-slot-button"]'
+    ];
+    
+    let timeSlotElements = [];
+    for (const selector of timeSlotSelectors) {
+      try {
+        const elements = await page.$$(selector);
+        if (elements.length > 0) {
+          timeSlotElements = elements;
+          break;
+        }
+      } catch (error) {
+        continue;
+      }
+    }
+    
+    const timeSlots = await Promise.all(
+      timeSlotElements.map(async (slot: any) => await slot.textContent())
+    );
+    
+    return timeSlots.filter(slot => slot).map(slot => slot.trim());
   }
 
   private async getCurrentWeekSlots(page: any): Promise<Array<{ date: string; slots: string[] }>> {
@@ -544,7 +641,10 @@ export class ChiliPiperScraper {
             console.log(`➡️ Clicking next week button using selector: ${selector}`);
             await nextWeekButton.click();
             console.log("✅ Successfully clicked next week button");
-            await page.waitForTimeout(2000); // Wait for calendar to update
+            
+            // Wait longer for calendar to fully update with new dates
+            await page.waitForTimeout(3000); // Increased to 3 seconds
+            console.log("⏳ Completed 3-second wait");
             
             // Wait for calendar to update with multiple possible selectors
             const calendarSelectors = [
@@ -594,3 +694,4 @@ export class ChiliPiperScraper {
     return false;
   }
 }
+

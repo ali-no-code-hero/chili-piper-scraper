@@ -63,32 +63,33 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    console.log('🔍 Starting scraping process...');
-    
-    // Run the scraping
-    const scraper = new ChiliPiperScraper();
-    const result = await scraper.scrapeSlots(
-      body.first_name,
-      body.last_name,
-      body.email,
-      body.phone
-    );
-    
-    if (!result.success) {
-      console.log(`❌ Scraping failed: ${result.error}`);
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Scraping failed',
-          message: result.error
-        },
-        { status: 500 }
-      );
-    }
-    
-    console.log('✅ Scraping completed successfully');
-    
-    return NextResponse.json(result);
+        console.log('🔍 Starting scraping process...');
+        
+        // Run the scraping
+        const scraper = new ChiliPiperScraper();
+        const result = await scraper.scrapeSlots(
+          body.first_name,
+          body.last_name,
+          body.email,
+          body.phone
+        );
+        
+        if (!result.success) {
+          console.log(`❌ Scraping failed: ${result.error}`);
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Scraping failed',
+              message: result.error
+            },
+            { status: 500 }
+          );
+        }
+        
+        console.log('✅ Scraping completed successfully');
+        console.log(`📊 Result: ${result.data?.total_days} days, ${result.data?.total_slots} slots`);
+        
+        return NextResponse.json(result);
     
   } catch (error) {
     console.error('❌ API error:', error);

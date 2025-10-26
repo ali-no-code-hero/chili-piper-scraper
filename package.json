@@ -3,15 +3,39 @@
   "version": "1.0.0",
   "description": "Chili Piper Slot Scraper for Vercel",
   "scripts": {
-    "build": "playwright install chromium",
-    "dev": "vercel dev",
-    "deploy": "vercel --prod"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "postinstall": "playwright install chromium"
   },
   "dependencies": {
-    "playwright": "^1.40.0"
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "next": "^16.0.0",
+    "playwright": "^1.56.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "typescript": "^5.9.3"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.16",
     "@vercel/python": "^3.0.0",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.16",
     "vercel": "^48.6.0"
-  }
+  },
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ali-no-code-hero/chili-piper-scraper.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ali-no-code-hero/chili-piper-scraper/issues"
+  },
+  "homepage": "https://github.com/ali-no-code-hero/chili-piper-scraper#readme"
 }

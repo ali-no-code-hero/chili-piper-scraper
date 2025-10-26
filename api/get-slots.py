@@ -1,5 +1,6 @@
 import json
 import asyncio
+import traceback
 from playwright.async_api import async_playwright
 import logging
 from datetime import datetime
@@ -337,34 +338,76 @@ class ChiliPiperScraper:
             return False
 
 def handler(request):
-    """Vercel serverless function handler"""
-    headers = {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Content-Type': 'application/json'
-    }
-    
-    if request.method == 'OPTIONS':
-        return {
-            'statusCode': 200,
-            'headers': headers,
-            'body': json.dumps({'message': 'OK'})
+    """Vercel serverless function handler with comprehensive error handling"""
+    try:
+        # Debug: Print request details
+        print(f"🔍 Get-Slots API Debug - Request method: {getattr(request, 'method', 'UNKNOWN')}")
+        print(f"🔍 Get-Slots API Debug - Request headers: {getattr(request, 'headers', {})}")
+        print(f"🔍 Get-Slots API Debug - Request path: {getattr(request, 'path', 'UNKNOWN')}")
+        print(f"🔍 Get-Slots API Debug - Request body type: {type(getattr(request, 'body', None))}")
+        
+        headers = {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Content-Type': 'application/json'
         }
-    
-    if request.method != 'POST':
+        
+        # Handle OPTIONS requests
+        if hasattr(request, 'method') and request.method == 'OPTIONS':
+            print("✅ Get-Slots API - Handling OPTIONS request")
+            return {
+                'statusCode': 200,
+                'headers': headers,
+                'body': json.dumps({'message': 'OK'})
+            }
+        
+        # Check method
+        if not hasattr(request, 'method') or request.method != 'POST':
+            print(f"❌ Get-Slots API - Invalid method: {getattr(request, 'method', 'UNKNOWN')}")
+            return {
+                'statusCode': 405,
+                'headers': headers,
+                'body': json.dumps({'error': 'Method not allowed', 'received_method': getattr(request, 'method', 'UNKNOWN')})
+            }
+        
+        print("✅ Get-Slots API - Starting main processing")
+        
+    except Exception as e:
+        # Handle errors in initial setup
+        error_details = {
+            'error': str(e),
+            'error_type': type(e).__name__,
+            'traceback': traceback.format_exc(),
+            'timestamp': datetime.now().isoformat(),
+            'stage': 'initial_setup'
+        }
+        
+        print(f"❌ Get-Slots API Initial Setup Error: {error_details}")
+        
         return {
-            'statusCode': 405,
-            'headers': headers,
-            'body': json.dumps({'error': 'Method not allowed'})
+            'statusCode': 500,
+            'headers': {
+                'Access-Control-Allow-Origin': '*',
+                'Content-Type': 'application/json'
+            },
+            'body': json.dumps({
+                'error': 'Internal Server Error - Initial Setup',
+                'details': error_details
+            })
         }
     
     try:
         # Check authentication
+        print("🔍 Get-Slots API - Checking authentication...")
         auth_header = request.headers.get('Authorization', '')
+        print(f"🔍 Get-Slots API - Auth header: {auth_header[:20]}..." if len(auth_header) > 20 else f"🔍 Get-Slots API - Auth header: {auth_header}")
+        
         is_valid, message = validate_manual_key(auth_header)
+        print(f"🔍 Get-Slots API - Auth validation result: {is_valid}")
         
         if not is_valid:
+            print(f"❌ Get-Slots API - Authentication failed: {message}")
             error_response = get_auth_error_response()
             return {
                 'statusCode': 401,
@@ -372,8 +415,13 @@ def handler(request):
                 'body': json.dumps(error_response)
             }
         
+        print("✅ Get-Slots API - Authentication successful")
+        
         # Parse request body
+        print("🔍 Get-Slots API - Parsing request body...")
+        print(f"🔍 Get-Slots API - Request body: {getattr(request, 'body', 'NO_BODY')}")
         data = json.loads(request.body)
+        print(f"✅ Get-Slots API - Parsed data: {data}")
         
         # Validate required fields
         required_fields = ['first_name', 'last_name', 'email', 'phone']
@@ -438,23 +486,42 @@ def handler(request):
             loop.close()
             
     except json.JSONDecodeError as e:
+        error_details = {
+            'error': str(e),
+            'error_type': 'JSONDecodeError',
+            'traceback': traceback.format_exc(),
+            'timestamp': datetime.now().isoformat(),
+            'stage': 'json_parsing'
+        }
+        print(f"❌ Get-Slots API JSON Error: {error_details}")
+        
         return {
             'statusCode': 400,
             'headers': headers,
             'body': json.dumps({
                 'success': False,
                 'error': 'Invalid JSON',
-                'message': str(e)
+                'details': error_details
             })
         }
     except Exception as e:
+        error_details = {
+            'error': str(e),
+            'error_type': type(e).__name__,
+            'traceback': traceback.format_exc(),
+            'timestamp': datetime.now().isoformat(),
+            'stage': 'main_processing'
+        }
+        
+        print(f"❌ Get-Slots API Main Error: {error_details}")
         logger.error(f"API error: {str(e)}")
+        
         return {
             'statusCode': 500,
             'headers': headers,
             'body': json.dumps({
                 'success': False,
-                'error': 'Internal server error',
-                'message': str(e)
+                'error': 'Internal Server Error',
+                'details': error_details
             })
         }

@@ -5,5 +5,5 @@ def handler(request):
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*'
         },
-        'body': '{"message": "Simple test working!"}'
+        'body': '{"message": "Simple test working! Updated for deployment trigger."}'
     }

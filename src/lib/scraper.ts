@@ -293,9 +293,9 @@ export class ChiliPiperScraper {
         consecutiveEmptyWeeks++;
         console.log(`⚠️ No slots found in Week ${weekCount} (${consecutiveEmptyWeeks} consecutive empty weeks)`);
         
-        // If we've had 2 consecutive empty weeks, we might have reached the end
-        if (consecutiveEmptyWeeks >= 2) {
-          console.log("🛑 Stopping: Found 2 consecutive weeks with no available slots");
+        // If we've had 3 consecutive empty weeks, we might have reached the end
+        if (consecutiveEmptyWeeks >= 3) {
+          console.log("🛑 Stopping: Found 3 consecutive weeks with no available slots");
           break;
         }
         
@@ -328,6 +328,7 @@ export class ChiliPiperScraper {
       const navigationSuccess = await this.navigateToNextWeek(page);
       if (!navigationSuccess) {
         console.log("❌ Next week button is disabled or not found. No more weeks available.");
+        console.log(`📊 Total unique days collected: ${Object.keys(allSlots).length}`);
         break;
       }
       console.log(`✅ Successfully navigated to Week ${weekCount + 1}`);
@@ -342,10 +343,18 @@ export class ChiliPiperScraper {
       } catch (error) {
         console.log(`⚠️ Calendar update verification failed for Week ${weekCount + 1}: ${error}`);
       }
+      
+      // Also check current date on calendar to verify we're in the next week
+      try {
+        const dateInfo = await page.textContent('[data-test-id*="day"]');
+        console.log(`📅 Current calendar date info: ${dateInfo?.substring(0, 100)}`);
+      } catch (error) {
+        console.log(`⚠️ Could not get calendar date info`);
+      }
     }
     
     console.log(`🏁 Final result: Successfully collected ${Object.keys(allSlots).length} days of slots`);
-    console.log(`📋 Collected dates: ${Object.keys(allSlots)}`);
+    console.log(`📋 Collected dates: ${Object.keys(allSlots).join(', ')}`);
     
     if (Object.keys(allSlots).length === 0) {
       console.warn("⚠️ No available booking slots found in any week");

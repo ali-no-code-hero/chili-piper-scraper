@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ChiliPiperScraper } from '@/lib/scraper';
 
-// Simple API key validation (you can enhance this later)
+// Production API keys for Chili Piper Slot Scraper
 const VALID_API_KEYS = [
-  'test-key-123',
-  'prod-key-456',
-  'dev-key-789'
+  'cp_live_abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567',  // vendor_1
+  'cp_live_xyz789uvw456rst123qpo098nml765kji432hgf109edc876bca543',  // vendor_2  
+  'cp_live_internal_team_key_2024_secure_123456789abcdef',           // internal_team
+  'cp_live_demo_client_key_2024_secure_987654321fedcba'              // demo_client
 ];
 
 function validateApiKey(authHeader: string): boolean {

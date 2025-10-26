@@ -73,9 +73,10 @@ Authorization: Bearer your-api-key-here
 ```
 
 **Available API Keys:**
-- `test-key-123` (for testing)
-- `prod-key-456` (for production)
-- `dev-key-789` (for development)
+- `cp_live_abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567` (vendor_1)
+- `cp_live_xyz789uvw456rst123qpo098nml765kji432hgf109edc876bca543` (vendor_2)
+- `cp_live_internal_team_key_2024_secure_123456789abcdef` (internal_team)
+- `cp_live_demo_client_key_2024_secure_987654321fedcba` (demo_client)
 
 ### Endpoints
 
@@ -88,7 +89,7 @@ GET /api/health
 ```bash
 POST /api/get-slots
 Content-Type: application/json
-Authorization: Bearer test-key-123
+Authorization: Bearer cp_live_demo_client_key_2024_secure_987654321fedcba
 
 {
   "first_name": "John",

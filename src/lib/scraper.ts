@@ -75,20 +75,148 @@ export class ChiliPiperScraper {
       console.log(`Navigating to: ${this.baseUrl}`);
       await page.goto(this.baseUrl, { waitUntil: 'domcontentloaded' });
       
-      // Fill the form
-      await page.fill('input[name="FirstName"]', firstName);
-      await page.fill('input[name="LastName"]', lastName);
-      await page.fill('input[name="Email"]', email);
-      await page.fill('input[name="Phone"]', phone);
+      // Wait for page to load completely
+      await page.waitForTimeout(2000);
       
-      // Click the submit button
-      await page.click('button[type="submit"]');
+      // Try multiple selectors for form fields
+      console.log("🔍 Looking for form fields...");
+      
+      // Try different selectors for First Name (based on actual Chili Piper form)
+      const firstNameSelectors = [
+        '[data-test-id="GuestFormField-PersonFirstName"]',
+        'textbox[aria-label="First Name"]',
+        'input[aria-label="First Name"]',
+        'textbox:has-text("First Name")',
+        'input:has-text("First Name")',
+        'input[name="FirstName"]',
+        'input[name="first_name"]',
+        'input[name="firstName"]',
+        'input[placeholder*="First"]',
+        'input[placeholder*="first"]',
+        'input[id*="first"]',
+        'input[id*="First"]'
+      ];
+      
+      const lastNameSelectors = [
+        '[data-test-id="GuestFormField-PersonLastName"]',
+        'textbox[aria-label="Last Name"]',
+        'input[aria-label="Last Name"]',
+        'textbox:has-text("Last Name")',
+        'input:has-text("Last Name")',
+        'input[name="LastName"]',
+        'input[name="last_name"]',
+        'input[name="lastName"]',
+        'input[placeholder*="Last"]',
+        'input[placeholder*="last"]',
+        'input[id*="last"]',
+        'input[id*="Last"]'
+      ];
+      
+      const emailSelectors = [
+        '[data-test-id="GuestFormField-PersonEmail"]',
+        'textbox[aria-label="Email"]',
+        'input[aria-label="Email"]',
+        'textbox:has-text("Email")',
+        'input:has-text("Email")',
+        'input[name="Email"]',
+        'input[name="email"]',
+        'input[type="email"]',
+        'input[placeholder*="email"]',
+        'input[placeholder*="Email"]',
+        'input[id*="email"]',
+        'input[id*="Email"]'
+      ];
+      
+      const phoneSelectors = [
+        '[data-test-id="PhoneField-input"]',
+        'textbox[aria-label="Phone number"]',
+        'input[aria-label="Phone number"]',
+        'textbox:has-text("Phone number")',
+        'input:has-text("Phone number")',
+        'input[name="Phone"]',
+        'input[name="phone"]',
+        'input[name="PhoneNumber"]',
+        'input[name="phone_number"]',
+        'input[type="tel"]',
+        'input[placeholder*="phone"]',
+        'input[placeholder*="Phone"]',
+        'input[id*="phone"]',
+        'input[id*="Phone"]'
+      ];
+      
+      // Fill form fields with fallback selectors
+      await this.fillFieldWithFallback(page, firstNameSelectors, firstName, 'First Name');
+      await this.fillFieldWithFallback(page, lastNameSelectors, lastName, 'Last Name');
+      await this.fillFieldWithFallback(page, emailSelectors, email, 'Email');
+      await this.fillFieldWithFallback(page, phoneSelectors, phone, 'Phone');
+      
+      // Click the submit button with fallback selectors
+      const submitSelectors = [
+        'button[type="submit"]',
+        'input[type="submit"]',
+        'button:has-text("Submit")',
+        'button:has-text("Continue")',
+        'button:has-text("Next")',
+        'button:has-text("Book")',
+        'button:has-text("Schedule")',
+        '[data-testid*="submit"]',
+        '[data-testid*="continue"]',
+        '.submit-button',
+        '.continue-button'
+      ];
+      
+      let submitClicked = false;
+      for (const selector of submitSelectors) {
+        try {
+          console.log(`🔍 Trying submit selector: ${selector}`);
+          await page.waitForSelector(selector, { timeout: 2000 });
+          await page.click(selector);
+          console.log(`✅ Successfully clicked submit button using selector: ${selector}`);
+          submitClicked = true;
+          break;
+        } catch (error) {
+          console.log(`❌ Submit selector failed: ${selector}`);
+          continue;
+        }
+      }
+      
+      if (!submitClicked) {
+        throw new Error('Could not find submit button with any of the provided selectors');
+      }
+      
       console.log("Form submitted successfully");
       
       // Wait for the calendar page to load and adjust
-      await page.waitForTimeout(500);
-      await page.waitForSelector('[data-id="calendar-day-button"]', { timeout: 1000 });
-      console.log("✅ Calendar loaded successfully");
+      await page.waitForTimeout(2000);
+      
+      // Wait for calendar elements with multiple possible selectors
+      const calendarSelectors = [
+        'button:has-text("Monday")',
+        'button:has-text("Tuesday")',
+        'button:has-text("Wednesday")',
+        'button:has-text("Thursday")',
+        'button:has-text("Friday")',
+        '[data-test-id*="calendar"]',
+        '[data-test-id*="day"]',
+        '[data-id="calendar-day-button"]'
+      ];
+      
+      let calendarFound = false;
+      for (const selector of calendarSelectors) {
+        try {
+          await page.waitForSelector(selector, { timeout: 2000 });
+          console.log(`✅ Calendar loaded successfully using selector: ${selector}`);
+          calendarFound = true;
+          break;
+        } catch (error) {
+          console.log(`❌ Calendar selector failed: ${selector}`);
+          continue;
+        }
+      }
+      
+      if (!calendarFound) {
+        throw new Error('Could not find calendar elements with any of the provided selectors');
+      }
 
       const slots = await this.getAvailableSlots(page);
       
@@ -126,6 +254,22 @@ export class ChiliPiperScraper {
         error: error instanceof Error ? error.message : 'Unknown error occurred'
       };
     }
+  }
+
+  private async fillFieldWithFallback(page: any, selectors: string[], value: string, fieldName: string): Promise<void> {
+    for (const selector of selectors) {
+      try {
+        console.log(`🔍 Trying selector for ${fieldName}: ${selector}`);
+        await page.waitForSelector(selector, { timeout: 2000 });
+        await page.fill(selector, value);
+        console.log(`✅ Successfully filled ${fieldName} using selector: ${selector}`);
+        return;
+      } catch (error) {
+        console.log(`❌ Selector failed for ${fieldName}: ${selector}`);
+        continue;
+      }
+    }
+    throw new Error(`Could not find ${fieldName} field with any of the provided selectors`);
   }
 
   private async getAvailableSlots(page: any): Promise<Record<string, { slots: string[] }>> {
@@ -182,65 +326,188 @@ export class ChiliPiperScraper {
   private async getCurrentWeekSlots(page: any): Promise<Array<{ date: string; slots: string[] }>> {
     const weekSlots: Array<{ date: string; slots: string[] }> = [];
     
-    // Wait for day buttons to be visible
-    await page.waitForSelector('[data-id="calendar-day-button"]', { timeout: 1000 });
+    // Wait for day buttons to be visible with multiple possible selectors
+    const dayButtonSelectors = [
+      'button:has-text("Monday")',
+      'button:has-text("Tuesday")',
+      'button:has-text("Wednesday")',
+      'button:has-text("Thursday")',
+      'button:has-text("Friday")',
+      '[data-test-id*="day"]',
+      '[data-id="calendar-day-button"]'
+    ];
+    
+    let dayButtonsFound = false;
+    for (const selector of dayButtonSelectors) {
+      try {
+        await page.waitForSelector(selector, { timeout: 1000 });
+        dayButtonsFound = true;
+        break;
+      } catch (error) {
+        continue;
+      }
+    }
+    
+    if (!dayButtonsFound) {
+      console.log("❌ No day buttons found");
+      return weekSlots;
+    }
+    
     await page.waitForTimeout(100);
 
-    const dayButtons = await page.$$('[data-id="calendar-day-button"]');
-    console.log(`🔍 Found ${dayButtons.length} day buttons in current week`);
+    // Find all day buttons using multiple selectors
+    let dayButtons = [];
+    for (const selector of dayButtonSelectors) {
+      try {
+        const buttons = await page.$$(selector);
+        if (buttons.length > 0) {
+          dayButtons = buttons;
+          console.log(`🔍 Found ${dayButtons.length} day buttons using selector: ${selector}`);
+          break;
+        }
+      } catch (error) {
+        continue;
+      }
+    }
     
     const enabledButtons = [];
-    for (const button of dayButtons) {
-      const isEnabled = await button.isEnabled();
-      const buttonText = await button.textContent();
-      console.log(`📅 Button: '${buttonText?.substring(0, 50)}...' (enabled: ${isEnabled})`);
-      if (isEnabled) {
-        enabledButtons.push(button);
+    for (let i = 0; i < dayButtons.length; i++) {
+      try {
+        const button = dayButtons[i];
+        const isEnabled = await button.isEnabled();
+        const buttonText = await button.textContent();
+        console.log(`📅 Button ${i + 1}: '${buttonText?.substring(0, 50)}...' (enabled: ${isEnabled})`);
+        if (isEnabled) {
+          enabledButtons.push(button);
+        }
+      } catch (error) {
+        console.log(`❌ Error checking button ${i + 1}: ${error}`);
+        continue;
       }
     }
     
     console.log(`🚀 Processing ${enabledButtons.length} enabled day buttons...`);
 
-    for (const button of enabledButtons) {
-      await button.click();
-      await page.waitForTimeout(25);
-      
-      const dateElement = await page.$('[data-id="selected-day-info"]');
-      const dateText = await dateElement?.textContent() || "Unknown Date";
-      
-      const timeSlotElements = await page.$$('[data-id="time-slot-button"]');
-      const timeSlots = await Promise.all(
-        timeSlotElements.map(async (slot: any) => await slot.textContent())
-      );
-      
-      if (timeSlots.length > 0) {
-        weekSlots.push({
-          date: dateText.trim(),
-          slots: timeSlots.filter(slot => slot).map(slot => slot.trim())
-        });
-        console.log(`✅ Found ${timeSlots.length} slots for ${dateText.trim()}`);
+    for (let i = 0; i < enabledButtons.length; i++) {
+      try {
+        const button = enabledButtons[i];
+        await button.click();
+        await page.waitForTimeout(500);
+        
+        // Get the selected date information
+        const dateSelectors = [
+          'button:has-text("is selected")',
+          '[data-test-id*="selected"]',
+          '[data-id="selected-day-info"]'
+        ];
+        
+        let dateText = "Unknown Date";
+        for (const selector of dateSelectors) {
+          try {
+            const dateElement = await page.$(selector);
+            if (dateElement) {
+              const text = await dateElement.textContent();
+              if (text) {
+                dateText = text.replace('is selected', '').trim();
+                break;
+              }
+            }
+          } catch (error) {
+            continue;
+          }
+        }
+        
+        // Get time slots with multiple possible selectors
+        const timeSlotSelectors = [
+          'button:has-text("AM")',
+          'button:has-text("PM")',
+          '[data-test-id*="time"]',
+          '[data-id="time-slot-button"]'
+        ];
+        
+        let timeSlotElements = [];
+        for (const selector of timeSlotSelectors) {
+          try {
+            const elements = await page.$$(selector);
+            if (elements.length > 0) {
+              timeSlotElements = elements;
+              break;
+            }
+          } catch (error) {
+            continue;
+          }
+        }
+        
+        const timeSlots = await Promise.all(
+          timeSlotElements.map(async (slot: any) => await slot.textContent())
+        );
+        
+        if (timeSlots.length > 0) {
+          weekSlots.push({
+            date: dateText,
+            slots: timeSlots.filter(slot => slot).map(slot => slot.trim())
+          });
+          console.log(`✅ Found ${timeSlots.length} slots for ${dateText}`);
+        }
+        
+        await page.waitForTimeout(100);
+      } catch (error) {
+        console.log(`❌ Error processing button ${i + 1}: ${error}`);
+        continue;
       }
-      
-      await page.waitForTimeout(25);
     }
 
     return weekSlots;
   }
 
   private async navigateToNextWeek(page: any): Promise<boolean> {
-    const nextWeekButton = await page.$('[data-id="next-week-button"]');
-    if (nextWeekButton && await nextWeekButton.isEnabled()) {
-      console.log("➡️ Clicking next week button...");
-      await nextWeekButton.click();
-      await page.waitForTimeout(25);
-      console.log("✅ Successfully clicked next week button");
-      // Wait for calendar to update
-      await page.waitForSelector('[data-id="calendar-day-button"]', { timeout: 500 });
-      console.log("✅ Successfully moved to next week");
-      return true;
-    } else {
-      console.log("❌ Next week button is disabled");
-      return false;
+    const nextWeekSelectors = [
+      'button:has-text("Next Week")',
+      '[data-test-id*="next"]',
+      '[data-id="next-week-button"]'
+    ];
+    
+    for (const selector of nextWeekSelectors) {
+      try {
+        const nextWeekButton = await page.$(selector);
+        if (nextWeekButton && await nextWeekButton.isEnabled()) {
+          console.log(`➡️ Clicking next week button using selector: ${selector}`);
+          await nextWeekButton.click();
+          await page.waitForTimeout(500);
+          console.log("✅ Successfully clicked next week button");
+          
+          // Wait for calendar to update with multiple possible selectors
+          const calendarSelectors = [
+            'button:has-text("Monday")',
+            'button:has-text("Tuesday")',
+            'button:has-text("Wednesday")',
+            '[data-test-id*="day"]',
+            '[data-id="calendar-day-button"]'
+          ];
+          
+          let calendarUpdated = false;
+          for (const calSelector of calendarSelectors) {
+            try {
+              await page.waitForSelector(calSelector, { timeout: 500 });
+              calendarUpdated = true;
+              break;
+            } catch (error) {
+              continue;
+            }
+          }
+          
+          if (calendarUpdated) {
+            console.log("✅ Successfully moved to next week");
+          }
+          return true;
+        }
+      } catch (error) {
+        console.log(`❌ Next week selector failed: ${selector}`);
+        continue;
+      }
     }
+    
+    console.log("❌ Next week button is disabled or not found");
+    return false;
   }
 }

@@ -324,12 +324,24 @@ export class ChiliPiperScraper {
       console.log(`📈 Progress: ${Object.keys(allSlots).length} unique days collected so far`);
 
       // Always try to move to the next week to find all available slots
-      if (!await this.navigateToNextWeek(page)) {
+      console.log(`🔄 Attempting to navigate to next week (Week ${weekCount + 1})...`);
+      const navigationSuccess = await this.navigateToNextWeek(page);
+      if (!navigationSuccess) {
         console.log("❌ Next week button is disabled or not found. No more weeks available.");
         break;
       }
+      console.log(`✅ Successfully navigated to Week ${weekCount + 1}`);
 
-      await page.waitForTimeout(1000); // Increased wait time for better reliability
+      // Wait longer for calendar to update and ensure we can find day buttons
+      await page.waitForTimeout(2000); // Increased wait time for calendar update
+      
+      // Verify calendar has updated by checking for day buttons
+      try {
+        await page.waitForSelector('button:has-text("Monday")', { timeout: 5000 });
+        console.log(`✅ Calendar updated successfully for Week ${weekCount + 1}`);
+      } catch (error) {
+        console.log(`⚠️ Calendar update verification failed for Week ${weekCount + 1}: ${error}`);
+      }
     }
     
     console.log(`🏁 Final result: Successfully collected ${Object.keys(allSlots).length} days of slots`);
@@ -350,11 +362,14 @@ export class ChiliPiperScraper {
     
     // Wait for day buttons to be visible with multiple possible selectors
     const dayButtonSelectors = [
+      'button[data-test-id*="days:"]',
       'button:has-text("Monday")',
       'button:has-text("Tuesday")',
       'button:has-text("Wednesday")',
       'button:has-text("Thursday")',
       'button:has-text("Friday")',
+      'button:has-text("Saturday")',
+      'button:has-text("Sunday")',
       '[data-test-id*="day"]',
       '[data-id="calendar-day-button"]'
     ];
@@ -388,11 +403,19 @@ export class ChiliPiperScraper {
           break;
         }
       } catch (error) {
+        console.log(`❌ Selector failed: ${selector} - ${error}`);
         continue;
       }
     }
     
+    if (dayButtons.length === 0) {
+      console.log("❌ No day buttons found with any selector");
+      return weekSlots;
+    }
+    
     const enabledButtons = [];
+    console.log(`🔍 Checking ${dayButtons.length} day buttons for enabled status...`);
+    
     for (let i = 0; i < dayButtons.length; i++) {
       try {
         const button = dayButtons[i];
@@ -402,6 +425,9 @@ export class ChiliPiperScraper {
         console.log(`📅 Button ${i + 1}: '${buttonText?.substring(0, 50)}...' (enabled: ${isEnabled}, selected: ${isSelected})`);
         if (isEnabled) {
           enabledButtons.push({ button, isSelected });
+          console.log(`✅ Added enabled button ${i + 1} to processing list`);
+        } else {
+          console.log(`❌ Button ${i + 1} is disabled, skipping`);
         }
       } catch (error) {
         console.log(`❌ Error checking button ${i + 1}: ${error}`);
@@ -409,42 +435,30 @@ export class ChiliPiperScraper {
       }
     }
     
+    console.log(`📊 Total enabled buttons found: ${enabledButtons.length}`);
+    
     console.log(`🚀 Processing ${enabledButtons.length} enabled day buttons...`);
 
     for (let i = 0; i < enabledButtons.length; i++) {
       try {
         const { button, isSelected } = enabledButtons[i];
         
-        // Only click if not already selected
-        if (!isSelected) {
-          console.log(`🖱️ Clicking day button ${i + 1} (not selected)`);
-          await button.click();
-          await page.waitForTimeout(1000); // Wait for slots to load
-        } else {
-          console.log(`⏭️ Skipping day button ${i + 1} (already selected)`);
-        }
+        // Always click the button to select it and get its slots
+        console.log(`🖱️ Clicking day button ${i + 1} (selected: ${isSelected})`);
+        await button.click();
+        await page.waitForTimeout(1000); // Wait for slots to load
         
-        // Get the selected date information
-        const dateSelectors = [
-          'button:has-text("is selected")',
-          '[data-test-id*="selected"]',
-          '[data-id="selected-day-info"]'
-        ];
-        
+        // Get the selected date information from the clicked button
         let dateText = "Unknown Date";
-        for (const selector of dateSelectors) {
-          try {
-            const dateElement = await page.$(selector);
-            if (dateElement) {
-              const text = await dateElement.textContent();
-              if (text) {
-                dateText = text.replace('is selected', '').trim();
-                break;
-              }
-            }
-          } catch (error) {
-            continue;
+        try {
+          const buttonText = await button.textContent();
+          if (buttonText) {
+            // Extract date from button text like "Monday 27th October Press enter to navigate available slots Mon 27 Oct"
+            dateText = buttonText.replace('Press enter to navigate available slots', '').trim();
+            dateText = dateText.replace('is selected', '').trim();
           }
+        } catch (error) {
+          console.log(`❌ Error getting date from button: ${error}`);
         }
         
         // Get time slots with multiple possible selectors
@@ -478,9 +492,11 @@ export class ChiliPiperScraper {
             slots: timeSlots.filter(slot => slot).map(slot => slot.trim())
           });
           console.log(`✅ Found ${timeSlots.length} slots for ${dateText}`);
+        } else {
+          console.log(`⚠️ No slots found for ${dateText}`);
         }
         
-        await page.waitForTimeout(500); // Increased from 100ms to 500ms
+        await page.waitForTimeout(500); // Wait between button clicks
       } catch (error) {
         console.log(`❌ Error processing button ${i + 1}: ${error}`);
         continue;
@@ -491,6 +507,7 @@ export class ChiliPiperScraper {
   }
 
   private async navigateToNextWeek(page: any): Promise<boolean> {
+    console.log("🔍 Looking for Next Week button...");
     const nextWeekSelectors = [
       'button:has-text("Next Week")',
       '[data-test-id*="next"]',
@@ -499,40 +516,56 @@ export class ChiliPiperScraper {
     
     for (const selector of nextWeekSelectors) {
       try {
+        console.log(`🔍 Trying selector: ${selector}`);
         const nextWeekButton = await page.$(selector);
-        if (nextWeekButton && await nextWeekButton.isEnabled()) {
-          console.log(`➡️ Clicking next week button using selector: ${selector}`);
-          await nextWeekButton.click();
-          await page.waitForTimeout(500);
-          console.log("✅ Successfully clicked next week button");
+        if (nextWeekButton) {
+          const isEnabled = await nextWeekButton.isEnabled();
+          console.log(`📅 Next week button found: enabled=${isEnabled}`);
           
-          // Wait for calendar to update with multiple possible selectors
-          const calendarSelectors = [
-            'button:has-text("Monday")',
-            'button:has-text("Tuesday")',
-            'button:has-text("Wednesday")',
-            '[data-test-id*="day"]',
-            '[data-id="calendar-day-button"]'
-          ];
-          
-          let calendarUpdated = false;
-          for (const calSelector of calendarSelectors) {
-            try {
-              await page.waitForSelector(calSelector, { timeout: 500 });
-              calendarUpdated = true;
-              break;
-            } catch (error) {
-              continue;
+          if (isEnabled) {
+            console.log(`➡️ Clicking next week button using selector: ${selector}`);
+            await nextWeekButton.click();
+            await page.waitForTimeout(1000); // Increased wait time
+            console.log("✅ Successfully clicked next week button");
+            
+            // Wait for calendar to update with multiple possible selectors
+            const calendarSelectors = [
+              'button:has-text("Monday")',
+              'button:has-text("Tuesday")',
+              'button:has-text("Wednesday")',
+              '[data-test-id*="day"]',
+              '[data-id="calendar-day-button"]'
+            ];
+            
+            let calendarUpdated = false;
+            for (const calSelector of calendarSelectors) {
+              try {
+                await page.waitForSelector(calSelector, { timeout: 2000 }); // Increased timeout
+                calendarUpdated = true;
+                console.log(`✅ Calendar updated verified with selector: ${calSelector}`);
+                break;
+              } catch (error) {
+                console.log(`❌ Calendar update verification failed with selector: ${calSelector}`);
+                continue;
+              }
             }
+            
+            if (calendarUpdated) {
+              console.log("✅ Successfully moved to next week");
+              return true;
+            } else {
+              console.log("⚠️ Calendar update verification failed");
+              return false;
+            }
+          } else {
+            console.log(`❌ Next week button is disabled`);
+            return false;
           }
-          
-          if (calendarUpdated) {
-            console.log("✅ Successfully moved to next week");
-          }
-          return true;
+        } else {
+          console.log(`❌ Next week button not found with selector: ${selector}`);
         }
       } catch (error) {
-        console.log(`❌ Next week selector failed: ${selector}`);
+        console.log(`❌ Next week selector failed: ${selector} - ${error}`);
         continue;
       }
     }

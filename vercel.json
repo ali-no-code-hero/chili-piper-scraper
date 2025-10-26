@@ -2,6 +2,9 @@
   "version": 2,
   "buildCommand": "./build.sh",
   "functions": {
+    "api/simple.py": {
+      "runtime": "@vercel/python@3.9"
+    },
     "api/health.py": {
       "runtime": "@vercel/python@3.9"
     },

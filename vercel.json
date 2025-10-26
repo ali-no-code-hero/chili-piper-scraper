@@ -3,13 +3,13 @@
   "buildCommand": "./build.sh",
   "functions": {
     "api/health.py": {
-      "runtime": "@vercel/python@3.9"
+      "maxDuration": 60
     },
     "api/get-slots.py": {
-      "runtime": "@vercel/python@3.9"
+      "maxDuration": 60
     },
     "api/test.py": {
-      "runtime": "@vercel/python@3.9"
+      "maxDuration": 60
     }
   },
   "routes": [

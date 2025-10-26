@@ -285,9 +285,11 @@ export class ChiliPiperScraper {
 
     while (weekCount < maxWeeks) {
       weekCount++;
+      console.log(`\n=== WEEK ${weekCount} START ===`);
       console.log(`🔍 Week ${weekCount}: Looking for available days...`);
       
       const currentWeekSlots = await this.getCurrentWeekSlots(page);
+      console.log(`📊 Week ${weekCount} results: ${currentWeekSlots?.length || 0} days with slots`);
       
       if (!currentWeekSlots || currentWeekSlots.length === 0) {
         consecutiveEmptyWeeks++;
@@ -322,14 +324,21 @@ export class ChiliPiperScraper {
       }
 
       console.log(`📈 Progress: ${Object.keys(allSlots).length} unique days collected so far`);
+      console.log(`=== WEEK ${weekCount} END ===`);
 
       // Always try to move to the next week to find all available slots
-      console.log(`🔄 Attempting to navigate to next week (Week ${weekCount + 1})...`);
+      console.log(`\n🔄 Attempting to navigate to next week (Week ${weekCount + 1})...`);
       const navigationSuccess = await this.navigateToNextWeek(page);
       if (!navigationSuccess) {
         console.log("❌ Next week button is disabled or not found. No more weeks available.");
         console.log(`📊 Total unique days collected: ${Object.keys(allSlots).length}`);
-        break;
+        
+        // If we have less than 9 days and haven't exhausted all weeks, something went wrong
+        if (Object.keys(allSlots).length < 9 && weekCount < maxWeeks) {
+          console.log(`⚠️ Only found ${Object.keys(allSlots).length} days but expected at least 9. Continuing to check more weeks...`);
+        } else {
+          break;
+        }
       }
       console.log(`✅ Successfully navigated to Week ${weekCount + 1}`);
 
@@ -534,8 +543,8 @@ export class ChiliPiperScraper {
           if (isEnabled) {
             console.log(`➡️ Clicking next week button using selector: ${selector}`);
             await nextWeekButton.click();
-            await page.waitForTimeout(1000); // Increased wait time
             console.log("✅ Successfully clicked next week button");
+            await page.waitForTimeout(2000); // Wait for calendar to update
             
             // Wait for calendar to update with multiple possible selectors
             const calendarSelectors = [
@@ -549,7 +558,7 @@ export class ChiliPiperScraper {
             let calendarUpdated = false;
             for (const calSelector of calendarSelectors) {
               try {
-                await page.waitForSelector(calSelector, { timeout: 2000 }); // Increased timeout
+                await page.waitForSelector(calSelector, { timeout: 3000 }); // Increased timeout to 3s
                 calendarUpdated = true;
                 console.log(`✅ Calendar updated verified with selector: ${calSelector}`);
                 break;
@@ -561,10 +570,12 @@ export class ChiliPiperScraper {
             
             if (calendarUpdated) {
               console.log("✅ Successfully moved to next week");
+              await page.waitForTimeout(1000); // Additional wait for calendar to stabilize
               return true;
             } else {
-              console.log("⚠️ Calendar update verification failed");
-              return false;
+              console.log("⚠️ Calendar update verification failed - but continuing anyway");
+              await page.waitForTimeout(1000);
+              return true; // Return true anyway to continue the loop
             }
           } else {
             console.log(`❌ Next week button is disabled`);

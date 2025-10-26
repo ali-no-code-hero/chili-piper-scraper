@@ -1,79 +1,120 @@
-# Chili Piper Meeting Slots Scraper
+# Chili Piper Slot Scraper
 
-A high-performance web scraper that automatically fills out Chili Piper forms and extracts available meeting slots. Built with Python, Playwright, and optimized for Vercel deployment.
+A modern Next.js application that automatically scrapes available meeting slots from Chili Piper using Playwright browser automation.
 
 ## 🚀 Features
 
-- **Ultra-Fast Performance**: Consistently returns results in under 4 seconds
-- **Automatic Form Filling**: Fills first name, last name, email, and phone number
-- **Comprehensive Slot Extraction**: Finds all available meeting slots across multiple weeks
-- **Vercel Ready**: Optimized for serverless deployment
-- **RESTful API**: Simple JSON-based API for easy integration
-- **Structured Data**: Returns slots in a clean, flat array format
+- **Modern React Frontend**: Beautiful UI built with Next.js 16 and Tailwind CSS
+- **Automated Scraping**: Uses Playwright to navigate and extract slot data
+- **API Authentication**: Secure API endpoints with token-based authentication
+- **Vercel Deployment**: Optimized for serverless deployment on Vercel
+- **TypeScript**: Full type safety throughout the application
+- **Responsive Design**: Works seamlessly on desktop and mobile devices
 
-## 📋 API Usage
+## 🏗️ Project Structure
+
+```
+├── src/
+│   ├── app/
+│   │   ├── api/
+│   │   │   ├── health/          # Health check endpoint
+│   │   │   ├── get-slots/       # Main scraping API
+│   │   │   ├── get-slots-mock/  # Mock data for testing
+│   │   │   └── test-simple/     # Simple test endpoint
+│   │   ├── globals.css          # Global styles
+│   │   ├── layout.tsx           # Root layout
+│   │   └── page.tsx             # Main page component
+│   └── lib/
+│       └── scraper.ts           # Playwright scraping logic
+├── next.config.js               # Next.js configuration
+├── tailwind.config.js           # Tailwind CSS configuration
+├── tsconfig.json                # TypeScript configuration
+└── package.json                 # Dependencies and scripts
+```
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Node.js 18+ 
+- npm or yarn
+
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/ali-no-code-hero/chili-piper-scraper.git
+   cd chili-piper-scraper
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Run locally**
+   ```bash
+   npm run dev
+   ```
+
+4. **Open in browser**
+   ```
+   http://localhost:3000
+   ```
+
+## 🌐 API Usage
 
 ### Authentication
-All API endpoints require authentication using manually managed API keys.
 
-#### Getting API Keys
-API keys are managed manually by administrators. Contact your system administrator to obtain an API key.
+All API endpoints require authentication using a Bearer token:
 
-#### Key Management
-Use the provided management script to generate and manage API keys:
 ```bash
-python3 manage_api_keys.py
+Authorization: Bearer your-api-key-here
 ```
 
-This script allows you to:
-- Generate new API keys
-- List active keys
-- Deactivate keys
-- View usage instructions
+**Available API Keys:**
+- `test-key-123` (for testing)
+- `prod-key-456` (for production)
+- `dev-key-789` (for development)
 
-### Get Slots Endpoint
+### Endpoints
+
+#### Health Check
+```bash
+GET /api/health
 ```
+
+#### Get Available Slots
+```bash
 POST /api/get-slots
-```
-
-#### Headers
-```
-Authorization: Bearer <your-api-key>
 Content-Type: application/json
-```
+Authorization: Bearer test-key-123
 
-#### Request Format
-```json
 {
   "first_name": "John",
   "last_name": "Doe", 
-  "email": "john.doe@example.com",
-  "phone": "5551234567"
+  "email": "john@example.com",
+  "phone": "1234567890"
 }
 ```
 
-### Response Format
+**Response Format:**
 ```json
 {
   "success": true,
   "data": {
     "total_slots": 127,
-    "total_days": 9,
-    "note": "Found 9 days with 127 total booking slots",
+    "total_days": 5,
+    "note": "Found 5 days with 127 total booking slots",
     "slots": [
       {
-        "date": "Oct 28, 2025",
+        "date": "Monday, Oct 28, 2025",
         "time": "8:00 AM",
         "gmt": "GMT-05:00 America/Chicago (CDT)"
       },
       {
-        "date": "Oct 28, 2025", 
-        "time": "8:15 AM",
-        "gmt": "GMT-05:00 America/Chicago (CDT)"
-      },
-      {
-        "date": "Oct 29, 2025",
-        "time": "9:00 AM", 
+        "date": "Monday, Oct 28, 2025", 
+        "time": "8:35 AM",
         "gmt": "GMT-05:00 America/Chicago (CDT)"
       }
     ]
@@ -81,213 +122,87 @@ Content-Type: application/json
 }
 ```
 
-### Error Responses
+## 🚀 Deployment
 
-#### Authentication Error (401)
-```json
-{
-  "success": false,
-  "error": "Authentication required",
-  "message": "Please provide a valid API key in the Authorization header",
-  "usage": {
-    "header": "Authorization: Bearer <your-api-key>",
-    "contact": "Contact administrator for API key"
-  }
-}
-```
+### Vercel (Recommended)
 
-### Response Fields
+1. **Connect to Vercel**
+   - Go to [vercel.com](https://vercel.com)
+   - Import your GitHub repository
+   - Vercel will auto-detect Next.js and configure everything
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `success` | boolean | Indicates if the request was successful |
-| `data.total_slots` | integer | Total number of available time slots |
-| `data.total_days` | integer | Number of days with available slots |
-| `data.note` | string | Human-readable summary of results |
-| `data.slots` | array | Array of available time slots |
-
-### Slot Object Structure
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `date` | string | Date in "MMM DD, YYYY" format (e.g., "Oct 28, 2025") |
-| `time` | string | Time in 12-hour format (e.g., "8:00 AM", "2:30 PM") |
-| `gmt` | string | Timezone information (always "GMT-05:00 America/Chicago (CDT)") |
-
-## 🛠️ Local Development
-
-### Prerequisites
-- Python 3.9+
-- Node.js 18+ (for Playwright)
-
-### Installation
-```bash
-# Clone the repository
-git clone <your-repo-url>
-cd chili-piper-scarpe
-
-# Install Python dependencies
-pip install -r requirements-vercel.txt
-
-# Install Playwright browsers
-playwright install chromium
-```
-
-### Running Locally
-```bash
-# Start the test server
-python3 test_server.py
-
-# The API will be available at:
-# http://localhost:8000/api/get-slots
-# http://localhost:8000/api/health
-```
-
-### Testing the API
-```bash
-# Test with curl
-curl -X POST http://localhost:8000/api/get-slots \
-  -H "Content-Type: application/json" \
-  -d '{
-    "first_name": "John",
-    "last_name": "Doe",
-    "email": "john.doe@example.com", 
-    "phone": "5551234567"
-  }'
-```
-
-## 🚀 Vercel Deployment
-
-### Quick Deploy
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/yourusername/chili-piper-scarpe)
+2. **Deploy**
+   - Push to `main` branch triggers automatic deployment
+   - Your app will be available at `https://your-app.vercel.app`
 
 ### Manual Deployment
+
 ```bash
-# Install Vercel CLI
-npm install -g vercel
+# Build the application
+npm run build
 
-# Deploy to Vercel
-vercel
-
-# Follow the prompts to configure your project
-# Framework: Other
-# Build Command: ./build.sh
-# Output Directory: (leave empty)
-# Install Command: npm install
+# Start production server
+npm start
 ```
 
-### Vercel Configuration
-When importing from GitHub, use these settings:
-- **Framework**: Other
-- **Build Command**: `./build.sh`
-- **Output Directory**: (leave empty)
-- **Install Command**: `npm install`
+## 🛠️ Development
 
-**Note**: The project uses both Python serverless functions and static HTML, so it requires the `builds` configuration in `vercel.json` rather than the `functions` property.
+### Available Scripts
+
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm start` - Start production server
+- `npm run lint` - Run ESLint
 
 ### Environment Variables
-No environment variables are required for basic functionality.
 
-## 📁 Project Structure
-
-```
-chili-piper-scarpe/
-├── api/
-│   ├── get-slots.py      # Main API endpoint
-│   └── health.py         # Health check endpoint
-├── pages/
-│   └── index.html        # Web interface
-├── requirements-vercel.txt
-├── package.json
-├── vercel.json
-├── build.sh
-└── test_server.py        # Local development server
-```
-
-## ⚡ Performance
-
-- **Response Time**: Consistently under 4 seconds
-- **Reliability**: 99%+ success rate
-- **Scalability**: Optimized for serverless environments
-- **Browser Optimization**: Aggressive performance tuning
+No environment variables required for basic functionality. The application uses hardcoded API keys for simplicity.
 
 ## 🔧 Configuration
 
-The scraper is configured to:
-- Always collect the maximum available slots (typically 9 days)
-- Use ultra-fast wait times for optimal performance
-- Automatically handle calendar navigation
-- Return data in the specified flat array format
+### Playwright Configuration
 
-## 📝 Example Usage
+The application uses Playwright with optimized settings for serverless environments:
 
-### JavaScript/Node.js
-```javascript
-// Use your manually assigned API key
-const API_KEY = 'cp_live_your_api_key_here';
+- Headless browser mode
+- Disabled images, CSS, and fonts for faster loading
+- Optimized browser arguments for Vercel's serverless functions
 
-const response = await fetch('https://your-app.vercel.app/api/get-slots', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${API_KEY}`
-  },
-  body: JSON.stringify({
-    first_name: 'John',
-    last_name: 'Doe',
-    email: 'john.doe@example.com',
-    phone: '5551234567'
-  })
-});
+### Tailwind CSS
 
-const data = await response.json();
-console.log(`Found ${data.data.total_slots} available slots`);
-```
-
-### Python
-```python
-import requests
-
-# Use your manually assigned API key
-API_KEY = 'cp_live_your_api_key_here'
-
-response = requests.post('https://your-app.vercel.app/api/get-slots', 
-    headers={'Authorization': f'Bearer {API_KEY}'},
-    json={
-        'first_name': 'John',
-        'last_name': 'Doe', 
-        'email': 'john.doe@example.com',
-        'phone': '5551234567'
-    }
-)
-
-data = response.json()
-print(f"Found {data['data']['total_slots']} available slots")
-```
+The application uses Tailwind CSS for styling with a custom configuration optimized for the UI components.
 
 ## 🐛 Troubleshooting
 
 ### Common Issues
 
-1. **No slots returned**: This is normal when the calendar has no available booking days
-2. **Timeout errors**: The scraper has a 60-second timeout limit
-3. **Rate limiting**: Chili Piper may rate limit requests
+1. **API Returns 405 Method Not Allowed**
+   - Ensure you're using POST method for `/api/get-slots`
+   - Check that the request includes proper headers
 
-### Debug Mode
-Check the server logs for detailed information about the scraping process.
+2. **Playwright Installation Issues**
+   - Run `npx playwright install chromium` manually
+   - Ensure you're using Node.js 18+
 
-## 📄 License
+3. **Build Failures**
+   - Clear `.next` directory: `rm -rf .next`
+   - Reinstall dependencies: `rm -rf node_modules && npm install`
 
-MIT License - see LICENSE file for details.
+## 📝 License
+
+ISC License - see LICENSE file for details.
 
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
+2. Create a feature branch: `git checkout -b feature-name`
+3. Commit changes: `git commit -m 'Add feature'`
+4. Push to branch: `git push origin feature-name`
 5. Submit a pull request
 
 ## 📞 Support
 
-For issues and questions, please open a GitHub issue or contact the maintainers.
+For issues and questions:
+- Create an issue on GitHub
+- Check the troubleshooting section above
+- Review the API documentation

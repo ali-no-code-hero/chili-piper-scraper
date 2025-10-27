@@ -20,6 +20,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.16",
+    "@types/node": "^24.9.1",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.16"
@@ -29,7 +30,13 @@
     "type": "git",
     "url": "git+https://github.com/ali-no-code-hero/chili-piper-scraper.git"
   },
-  "keywords": ["nextjs", "playwright", "scraping", "chili-piper", "vercel"],
+  "keywords": [
+    "nextjs",
+    "playwright",
+    "scraping",
+    "chili-piper",
+    "vercel"
+  ],
   "author": "",
   "license": "ISC",
   "bugs": {

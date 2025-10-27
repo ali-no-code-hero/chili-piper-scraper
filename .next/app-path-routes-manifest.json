@@ -1,7 +1,9 @@
 {
   "/_global-error/page": "/_global-error",
   "/_not-found/page": "/_not-found",
+  "/api/get-slots-mock/route": "/api/get-slots-mock",
   "/api/get-slots/route": "/api/get-slots",
   "/api/health/route": "/api/health",
+  "/api/test-simple/route": "/api/test-simple",
   "/page": "/"
 }

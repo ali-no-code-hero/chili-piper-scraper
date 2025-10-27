@@ -46,10 +46,22 @@
       "namedRegex": "^/api/get\\-slots(?:/)?$"
     },
     {
+      "page": "/api/get-slots-mock",
+      "regex": "^/api/get\\-slots\\-mock(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/get\\-slots\\-mock(?:/)?$"
+    },
+    {
       "page": "/api/health",
       "regex": "^/api/health(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/api/health(?:/)?$"
+    },
+    {
+      "page": "/api/test-simple",
+      "regex": "^/api/test\\-simple(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/test\\-simple(?:/)?$"
     }
   ],
   "dataRoutes": [],

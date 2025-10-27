@@ -29,8 +29,8 @@ export class ChiliPiperScraper {
     try {
       console.log(`🎯 Starting scrape for ${firstName} ${lastName} (${email})`);
       
-      const browser = await chromium.launch({
-        headless: true,
+      const           browser = await chromium.launch({
+            headless: 'shell',
         args: [
           '--no-sandbox',
           '--disable-dev-shm-usage',

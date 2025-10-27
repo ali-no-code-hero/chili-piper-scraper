@@ -425,30 +425,47 @@ export class ChiliPiperScraper {
 
   private async getTimeSlotsForCurrentDay(page: any): Promise<string[]> {
     const timeSlotSelectors = [
+      'button[data-test-id*="time"]',
+      'button[role="button"][aria-label*="time"]',
+      'button:has-text(":")',  // Most time buttons contain ":"
+      'button[data-id="time-slot-button"]',
+      '[data-test-id*="TimeSlotButton"]',
       'button:has-text("AM")',
-      'button:has-text("PM")',
-      '[data-test-id*="time"]',
-      '[data-id="time-slot-button"]'
+      'button:has-text("PM")'
     ];
     
     let timeSlotElements = [];
     for (const selector of timeSlotSelectors) {
       try {
+        console.log(`🔍 Trying time slot selector: ${selector}`);
         const elements = await page.$$(selector);
+        console.log(`📊 Found ${elements.length} elements with selector: ${selector}`);
         if (elements.length > 0) {
           timeSlotElements = elements;
           break;
         }
       } catch (error) {
+        console.log(`❌ Selector failed: ${selector}`);
         continue;
       }
     }
     
+    console.log(`📋 Processing ${timeSlotElements.length} time slot elements...`);
     const timeSlots = await Promise.all(
-      timeSlotElements.map(async (slot: any) => await slot.textContent())
+      timeSlotElements.map(async (slot: any) => {
+        try {
+          const text = await slot.textContent();
+          console.log(`  📝 Slot text: ${text}`);
+          return text;
+        } catch (error) {
+          return null;
+        }
+      })
     );
     
-    return timeSlots.filter(slot => slot).map(slot => slot.trim());
+    const filtered = timeSlots.filter(slot => slot && slot.trim().length > 0).map(slot => slot.trim());
+    console.log(`✅ Returning ${filtered.length} time slots`);
+    return filtered;
   }
 
   private async getCurrentWeekSlots(page: any): Promise<Array<{ date: string; slots: string[] }>> {

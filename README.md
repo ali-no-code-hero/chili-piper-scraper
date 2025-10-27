@@ -1,4 +1,4 @@
-# Chili Piper Slot Scraper
+# Chili Piper Slot  Scraper
 
 A modern Next.js application that automatically scrapes available meeting slots from Chili Piper using Playwright browser automation.
 

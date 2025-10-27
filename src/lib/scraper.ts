@@ -1,5 +1,4 @@
-import { chromium } from 'playwright-core';
-import chromium2 from '@sparticuz/chromium';
+import { chromium } from 'playwright';
 
 export interface SlotData {
   date: string;
@@ -30,17 +29,12 @@ export class ChiliPiperScraper {
     try {
       console.log(`🎯 Starting scrape for ${firstName} ${lastName} (${email})`);
       
-      const isDevelopment = process.env.NODE_ENV === 'development';
-      
       const browser = await chromium.launch({
         headless: true,
-        executablePath: isDevelopment 
-          ? undefined 
-          : await chromium2.executablePath(),
-        args: isDevelopment ? [
+        args: [
           '--no-sandbox',
           '--disable-dev-shm-usage'
-        ] : chromium2.args
+        ]
       });
 
       const page = await browser.newPage();

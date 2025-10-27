@@ -623,75 +623,61 @@ export class ChiliPiperScraper {
 
   private async navigateToNextWeek(page: any): Promise<boolean> {
     console.log("🔍 Looking for Next Week button...");
-    const nextWeekSelectors = [
-      'button:has-text("Next Week")',
-      '[data-test-id*="next"]',
-      '[data-id="next-week-button"]'
-    ];
     
-    for (const selector of nextWeekSelectors) {
-      try {
-        console.log(`🔍 Trying selector: ${selector}`);
-        const nextWeekButton = await page.$(selector);
-        if (nextWeekButton) {
-          const isEnabled = await nextWeekButton.isEnabled();
-          console.log(`📅 Next week button found: enabled=${isEnabled}`);
-          
-          if (isEnabled) {
-            console.log(`➡️ Clicking next week button using selector: ${selector}`);
-            await nextWeekButton.click();
-            console.log("✅ Successfully clicked next week button");
-            
-            // Wait longer for calendar to fully update with new dates
-            await page.waitForTimeout(3000); // Increased to 3 seconds
-            console.log("⏳ Completed 3-second wait");
-            
-            // Wait for calendar to update with multiple possible selectors
-            const calendarSelectors = [
-              'button:has-text("Monday")',
-              'button:has-text("Tuesday")',
-              'button:has-text("Wednesday")',
-              '[data-test-id*="day"]',
-              '[data-id="calendar-day-button"]'
-            ];
-            
-            let calendarUpdated = false;
-            for (const calSelector of calendarSelectors) {
-              try {
-                await page.waitForSelector(calSelector, { timeout: 3000 }); // Increased timeout to 3s
-                calendarUpdated = true;
-                console.log(`✅ Calendar updated verified with selector: ${calSelector}`);
-                break;
-              } catch (error) {
-                console.log(`❌ Calendar update verification failed with selector: ${calSelector}`);
-                continue;
-              }
-            }
-            
-            if (calendarUpdated) {
-              console.log("✅ Successfully moved to next week");
-              await page.waitForTimeout(1000); // Additional wait for calendar to stabilize
-              return true;
-            } else {
-              console.log("⚠️ Calendar update verification failed - but continuing anyway");
-              await page.waitForTimeout(1000);
-              return true; // Return true anyway to continue the loop
-            }
-          } else {
-            console.log(`❌ Next week button is disabled`);
-            return false;
+    try {
+      // Use getByRole which is more reliable than $ selector
+      console.log(`🔍 Trying getByRole('button', { name: 'Next Week' })...`);
+      const nextWeekButton = page.getByRole('button', { name: 'Next Week' });
+      const isEnabled = await nextWeekButton.isEnabled();
+      console.log(`📅 Next week button found: enabled=${isEnabled}`);
+      
+      if (isEnabled) {
+        console.log(`➡️ Clicking next week button...`);
+        await nextWeekButton.click();
+        console.log("✅ Successfully clicked next week button");
+        
+        // Wait longer for calendar to fully update with new dates
+        await page.waitForTimeout(3000); // Increased to 3 seconds
+        console.log("⏳ Completed 3-second wait");
+        
+        // Wait for calendar to update with multiple possible selectors
+        const calendarSelectors = [
+          'button[data-test-id*="days:"]',
+          'button:has-text("Monday")',
+          'button:has-text("Tuesday")',
+          'button:has-text("Wednesday")'
+        ];
+        
+        let calendarUpdated = false;
+        for (const calSelector of calendarSelectors) {
+          try {
+            await page.waitForSelector(calSelector, { timeout: 3000 });
+            calendarUpdated = true;
+            console.log(`✅ Calendar updated verified with selector: ${calSelector}`);
+            break;
+          } catch (error) {
+            console.log(`❌ Calendar update verification failed with selector: ${calSelector}`);
+            continue;
           }
-        } else {
-          console.log(`❌ Next week button not found with selector: ${selector}`);
         }
-      } catch (error) {
-        console.log(`❌ Next week selector failed: ${selector} - ${error}`);
-        continue;
+        
+        if (calendarUpdated) {
+          console.log("✅ Successfully moved to next week");
+          await page.waitForTimeout(1000); // Additional wait for calendar to stabilize
+          return true;
+        } else {
+          console.log("⚠️ Calendar update verification failed - but continuing anyway");
+          await page.waitForTimeout(1000);
+          return true; // Return true anyway to continue the loop
+        }
+      } else {
+        console.log(`❌ Next week button is disabled`);
+        return false;
       }
+    } catch (error) {
+      console.log(`❌ Error finding/clicking Next Week button: ${error}`);
+      return false;
     }
-    
-    console.log("❌ Next week button is disabled or not found");
-    return false;
   }
 }
 

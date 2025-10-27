@@ -1,0 +1,408 @@
+
+> chili-piper-scraper@1.0.0 dev
+> next dev
+
+   ▲ Next.js 16.0.0 (Turbopack)
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.86.28:3000
+
+ ✓ Starting...
+ ✓ Ready in 302ms
+ GET / 200 in 773ms (compile: 726ms, render: 47ms)
+🔍 Get-Slots API Debug - Request received
+🔍 Auth header: Bearer cp_live_demo_...
+✅ Authentication successful
+✅ Parsed data: {
+  first_name: 'AliTEST',
+  last_name: 'SyedTEST',
+  email: 'ali+test@mm.ventures',
+  phone: '5127673628'
+}
+🔍 Starting scraping process...
+🎯 Starting scrape for AliTEST SyedTEST (ali+test@mm.ventures)
+Navigating to: https://cincpro.chilipiper.com/concierge-router/link/lp-request-a-demo-agent-advice
+🔍 Looking for form fields...
+🔍 Trying selector for First Name: [data-test-id="GuestFormField-PersonFirstName"]
+✅ Successfully filled First Name using selector: [data-test-id="GuestFormField-PersonFirstName"]
+🔍 Trying selector for Last Name: [data-test-id="GuestFormField-PersonLastName"]
+✅ Successfully filled Last Name using selector: [data-test-id="GuestFormField-PersonLastName"]
+🔍 Trying selector for Email: [data-test-id="GuestFormField-PersonEmail"]
+✅ Successfully filled Email using selector: [data-test-id="GuestFormField-PersonEmail"]
+🔍 Trying selector for Phone: [data-test-id="PhoneField-input"]
+✅ Successfully filled Phone using selector: [data-test-id="PhoneField-input"]
+🔍 Trying submit selector: button[type="submit"]
+✅ Successfully clicked submit button using selector: button[type="submit"]
+Form submitted successfully
+⏳ Waiting 5 seconds for calendar to fully load...
+✅ Calendar should be fully loaded now
+✅ Calendar loaded successfully using selector: button:has-text("Monday")
+🚀 Starting comprehensive slot collection
+🎯 Goal: Collect ALL available booking days (9+ days)
+📋 Strategy: Emulate manual browser process - collect all days from current view, then navigate
+
+=====================================
+=== COLLECTION ATTEMPT 1/3 ===
+📊 Current total: 0 days
+⏳ Waiting for calendar to be ready...
+🔍 getAllEnabledDayButtons() starting...
+⏳ Waiting for 'button[data-test-id*="days:Oct"]' selector...
+✅ Found Oct buttons
+🔍 Querying all day buttons with selector 'button[data-test-id*="days:"]'...
+📊 Total day buttons found: 7
+🔍 Button 1: enabled=false, text='Sunday 26th October  Press enter to navigate available slots...'
+⏭️ Button 1 skipped: disabled
+🔍 Button 2: enabled=true, text='Monday 27th October  is selectedPress enter to navigate avai...'
+✅ Added enabled button 2: Monday 27th October  Mon27Oct
+🔍 Button 3: enabled=true, text='Tuesday 28th October  Press enter to navigate available slot...'
+✅ Added enabled button 3: Tuesday 28th October  Tue28Oct
+🔍 Button 4: enabled=true, text='Wednesday 29th October  Press enter to navigate available sl...'
+✅ Added enabled button 4: Wednesday 29th October  Wed29Oct
+🔍 Button 5: enabled=true, text='Thursday 30th October  Press enter to navigate available slo...'
+✅ Added enabled button 5: Thursday 30th October  Thu30Oct
+🔍 Button 6: enabled=true, text='Friday 31st October  Press enter to navigate available slots...'
+✅ Added enabled button 6: Friday 31st October  Fri31Oct
+🔍 Button 7: enabled=false, text='Saturday 1st November  Press enter to navigate available slo...'
+⏭️ Button 7 skipped: disabled
+📊 getAllEnabledDayButtons() complete: returning 5 enabled buttons
+📅 Found 5 total enabled day buttons in current view
+📋 Button dates: Monday 27th October  Mon27Oct, Tuesday 28th October  Tue28Oct, Wednesday 29th October  Wed29Oct, Thursday 30th October  Thu30Oct, Friday 31st October  Fri31Oct
+🖱️ Clicking Monday 27th October  Mon27Oct...
+📊 Got 5 slots for Monday 27th October  Mon27Oct
+✅ Added Monday 27th October  Mon27Oct: 5 slots (total days: 1)
+🖱️ Clicking Tuesday 28th October  Tue28Oct...
+📊 Got 14 slots for Tuesday 28th October  Tue28Oct
+✅ Added Tuesday 28th October  Tue28Oct: 14 slots (total days: 2)
+🖱️ Clicking Wednesday 29th October  Wed29Oct...
+📊 Got 16 slots for Wednesday 29th October  Wed29Oct
+✅ Added Wednesday 29th October  Wed29Oct: 16 slots (total days: 3)
+🖱️ Clicking Thursday 30th October  Thu30Oct...
+📊 Got 16 slots for Thursday 30th October  Thu30Oct
+✅ Added Thursday 30th October  Thu30Oct: 16 slots (total days: 4)
+🖱️ Clicking Friday 31st October  Fri31Oct...
+📊 Got 13 slots for Friday 31st October  Fri31Oct
+✅ Added Friday 31st October  Fri31Oct: 13 slots (total days: 5)
+📊 Progress: 5 total days collected (5 new from this attempt)
+🔄 Only have 5 days (target: 9). Navigating to next week...
+🔍 Looking for Next Week button...
+🔍 Trying selector: button:has-text("Next Week")
+❌ Next week button not found with selector: button:has-text("Next Week")
+🔍 Trying selector: [data-test-id*="next"]
+❌ Next week button not found with selector: [data-test-id*="next"]
+🔍 Trying selector: [data-id="next-week-button"]
+❌ Next week button not found with selector: [data-id="next-week-button"]
+❌ Next week button is disabled or not found
+🧭 Navigation result: false
+❌ Navigation failed or button disabled. Collected 5 days total.
+🏁 Final result: Successfully collected 5 days
+📋 Collected dates: Monday 27th October  Mon27Oct, Tuesday 28th October  Tue28Oct, Wednesday 29th October  Wed29Oct, Thursday 30th October  Thu30Oct, Friday 31st October  Fri31Oct
+✅ Found 5 days with available booking slots
+✅ Scraping completed successfully: 64 slots across 5 days
+✅ Scraping completed successfully
+📊 Result: 5 days, 64 slots
+ POST /api/get-slots 200 in 14.5s (compile: 246ms, render: 14.3s)
+🔍 Get-Slots API Debug - Request received
+🔍 Auth header: Bearer cp_live_demo_...
+✅ Authentication successful
+✅ Parsed data: {
+  first_name: 'AliTEST',
+  last_name: 'SyedTEST',
+  email: 'ali+test@mm.ventures',
+  phone: '5127673628'
+}
+🔍 Starting scraping process...
+🎯 Starting scrape for AliTEST SyedTEST (ali+test@mm.ventures)
+Navigating to: https://cincpro.chilipiper.com/concierge-router/link/lp-request-a-demo-agent-advice
+🔍 Looking for form fields...
+🔍 Trying selector for First Name: [data-test-id="GuestFormField-PersonFirstName"]
+✅ Successfully filled First Name using selector: [data-test-id="GuestFormField-PersonFirstName"]
+🔍 Trying selector for Last Name: [data-test-id="GuestFormField-PersonLastName"]
+✅ Successfully filled Last Name using selector: [data-test-id="GuestFormField-PersonLastName"]
+🔍 Trying selector for Email: [data-test-id="GuestFormField-PersonEmail"]
+✅ Successfully filled Email using selector: [data-test-id="GuestFormField-PersonEmail"]
+🔍 Trying selector for Phone: [data-test-id="PhoneField-input"]
+✅ Successfully filled Phone using selector: [data-test-id="PhoneField-input"]
+🔍 Trying submit selector: button[type="submit"]
+✅ Successfully clicked submit button using selector: button[type="submit"]
+Form submitted successfully
+⏳ Waiting 5 seconds for calendar to fully load...
+✅ Calendar should be fully loaded now
+✅ Calendar loaded successfully using selector: button:has-text("Monday")
+🚀 Starting comprehensive slot collection
+🎯 Goal: Collect ALL available booking days (9+ days)
+📋 Strategy: Emulate manual browser process - collect all days from current view, then navigate
+
+=====================================
+=== COLLECTION ATTEMPT 1/3 ===
+📊 Current total: 0 days
+⏳ Waiting for calendar to be ready...
+🔍 getAllEnabledDayButtons() starting...
+⏳ Waiting for 'button[data-test-id*="days:Oct"]' selector...
+✅ Found Oct buttons
+🔍 Querying all day buttons with selector 'button[data-test-id*="days:"]'...
+📊 Total day buttons found: 7
+🔍 Button 1: enabled=false, text='Sunday 26th October  Press enter to navigate available slots...'
+⏭️ Button 1 skipped: disabled
+🔍 Button 2: enabled=true, text='Monday 27th October  is selectedPress enter to navigate avai...'
+✅ Added enabled button 2: Monday 27th October  Mon27Oct
+🔍 Button 3: enabled=true, text='Tuesday 28th October  Press enter to navigate available slot...'
+✅ Added enabled button 3: Tuesday 28th October  Tue28Oct
+🔍 Button 4: enabled=true, text='Wednesday 29th October  Press enter to navigate available sl...'
+✅ Added enabled button 4: Wednesday 29th October  Wed29Oct
+🔍 Button 5: enabled=true, text='Thursday 30th October  Press enter to navigate available slo...'
+✅ Added enabled button 5: Thursday 30th October  Thu30Oct
+🔍 Button 6: enabled=true, text='Friday 31st October  Press enter to navigate available slots...'
+✅ Added enabled button 6: Friday 31st October  Fri31Oct
+🔍 Button 7: enabled=false, text='Saturday 1st November  Press enter to navigate available slo...'
+⏭️ Button 7 skipped: disabled
+📊 getAllEnabledDayButtons() complete: returning 5 enabled buttons
+📅 Found 5 total enabled day buttons in current view
+📋 Button dates: Monday 27th October  Mon27Oct, Tuesday 28th October  Tue28Oct, Wednesday 29th October  Wed29Oct, Thursday 30th October  Thu30Oct, Friday 31st October  Fri31Oct
+🖱️ Clicking Monday 27th October  Mon27Oct...
+📊 Got 5 slots for Monday 27th October  Mon27Oct
+✅ Added Monday 27th October  Mon27Oct: 5 slots (total days: 1)
+🖱️ Clicking Tuesday 28th October  Tue28Oct...
+📊 Got 14 slots for Tuesday 28th October  Tue28Oct
+✅ Added Tuesday 28th October  Tue28Oct: 14 slots (total days: 2)
+🖱️ Clicking Wednesday 29th October  Wed29Oct...
+📊 Got 16 slots for Wednesday 29th October  Wed29Oct
+✅ Added Wednesday 29th October  Wed29Oct: 16 slots (total days: 3)
+🖱️ Clicking Thursday 30th October  Thu30Oct...
+📊 Got 16 slots for Thursday 30th October  Thu30Oct
+✅ Added Thursday 30th October  Thu30Oct: 16 slots (total days: 4)
+🖱️ Clicking Friday 31st October  Fri31Oct...
+📊 Got 13 slots for Friday 31st October  Fri31Oct
+✅ Added Friday 31st October  Fri31Oct: 13 slots (total days: 5)
+📊 Progress: 5 total days collected (5 new from this attempt)
+🔄 Only have 5 days (target: 9). Navigating to next week...
+🔍 Looking for Next Week button...
+🔍 Trying getByRole('button', { name: 'Next Week' })...
+📅 Next week button found: enabled=true
+➡️ Clicking next week button...
+✅ Successfully clicked next week button
+⏳ Completed 3-second wait
+✅ Calendar updated verified with selector: button[data-test-id*="days:"]
+✅ Successfully moved to next week
+🧭 Navigation result: true
+⏳ Waiting 5 seconds for calendar to update...
+✅ Calendar updated, will continue in next iteration
+
+=====================================
+=== COLLECTION ATTEMPT 2/3 ===
+📊 Current total: 5 days
+⏳ Waiting for calendar to be ready...
+🔍 getAllEnabledDayButtons() starting...
+⏳ Waiting for 'button[data-test-id*="days:Oct"]' selector...
+✅ Found Oct buttons
+🔍 Querying all day buttons with selector 'button[data-test-id*="days:"]'...
+📊 Total day buttons found: 14
+🔍 Button 1: enabled=false, text='Sunday 26th October  Press enter to navigate available slots...'
+⏭️ Button 1 skipped: disabled
+🔍 Button 2: enabled=true, text='Monday 27th October  is selectedPress enter to navigate avai...'
+✅ Added enabled button 2: Monday 27th October  Mon27Oct
+🔍 Button 3: enabled=true, text='Tuesday 28th October  Press enter to navigate available slot...'
+✅ Added enabled button 3: Tuesday 28th October  Tue28Oct
+🔍 Button 4: enabled=true, text='Wednesday 29th October  Press enter to navigate available sl...'
+✅ Added enabled button 4: Wednesday 29th October  Wed29Oct
+🔍 Button 5: enabled=true, text='Thursday 30th October  Press enter to navigate available slo...'
+✅ Added enabled button 5: Thursday 30th October  Thu30Oct
+🔍 Button 6: enabled=true, text='Friday 31st October  Press enter to navigate available slots...'
+✅ Added enabled button 6: Friday 31st October  Fri31Oct
+🔍 Button 7: enabled=false, text='Saturday 1st November  Press enter to navigate available slo...'
+⏭️ Button 7 skipped: disabled
+🔍 Button 8: enabled=false, text='Sunday 2nd November  Press enter to navigate available slots...'
+⏭️ Button 8 skipped: disabled
+🔍 Button 9: enabled=true, text='Monday 3rd November  Press enter to navigate available slots...'
+✅ Added enabled button 9: Monday 3rd November  Mon3Nov
+🔍 Button 10: enabled=true, text='Tuesday 4th November  Press enter to navigate available slot...'
+✅ Added enabled button 10: Tuesday 4th November  Tue4Nov
+🔍 Button 11: enabled=true, text='Wednesday 5th November  Press enter to navigate available sl...'
+✅ Added enabled button 11: Wednesday 5th November  Wed5Nov
+🔍 Button 12: enabled=true, text='Thursday 6th November  Press enter to navigate available slo...'
+✅ Added enabled button 12: Thursday 6th November  Thu6Nov
+🔍 Button 13: enabled=true, text='Friday 7th November  Press enter to navigate available slots...'
+✅ Added enabled button 13: Friday 7th November  Fri7Nov
+🔍 Button 14: enabled=false, text='Saturday 8th November  Press enter to navigate available slo...'
+⏭️ Button 14 skipped: disabled
+📊 getAllEnabledDayButtons() complete: returning 10 enabled buttons
+📅 Found 10 total enabled day buttons in current view
+📋 Button dates: Monday 27th October  Mon27Oct, Tuesday 28th October  Tue28Oct, Wednesday 29th October  Wed29Oct, Thursday 30th October  Thu30Oct, Friday 31st October  Fri31Oct, Monday 3rd November  Mon3Nov, Tuesday 4th November  Tue4Nov, Wednesday 5th November  Wed5Nov, Thursday 6th November  Thu6Nov, Friday 7th November  Fri7Nov
+⏭️ Skipping Monday 27th October  Mon27Oct - already collected
+⏭️ Skipping Tuesday 28th October  Tue28Oct - already collected
+⏭️ Skipping Wednesday 29th October  Wed29Oct - already collected
+⏭️ Skipping Thursday 30th October  Thu30Oct - already collected
+⏭️ Skipping Friday 31st October  Fri31Oct - already collected
+🖱️ Clicking Monday 3rd November  Mon3Nov...
+📊 Got 14 slots for Monday 3rd November  Mon3Nov
+✅ Added Monday 3rd November  Mon3Nov: 14 slots (total days: 6)
+🖱️ Clicking Tuesday 4th November  Tue4Nov...
+📊 Got 14 slots for Tuesday 4th November  Tue4Nov
+✅ Added Tuesday 4th November  Tue4Nov: 14 slots (total days: 7)
+🖱️ Clicking Wednesday 5th November  Wed5Nov...
+📊 Got 16 slots for Wednesday 5th November  Wed5Nov
+✅ Added Wednesday 5th November  Wed5Nov: 16 slots (total days: 8)
+🖱️ Clicking Thursday 6th November  Thu6Nov...
+📊 Got 16 slots for Thursday 6th November  Thu6Nov
+✅ Added Thursday 6th November  Thu6Nov: 16 slots (total days: 9)
+🎯 Target reached! Collected 9 days.
+📊 Progress: 9 total days collected (4 new from this attempt)
+✅ Collection complete. Total days: 9
+🏁 Final result: Successfully collected 9 days
+📋 Collected dates: Monday 27th October  Mon27Oct, Tuesday 28th October  Tue28Oct, Wednesday 29th October  Wed29Oct, Thursday 30th October  Thu30Oct, Friday 31st October  Fri31Oct, Monday 3rd November  Mon3Nov, Tuesday 4th November  Tue4Nov, Wednesday 5th November  Wed5Nov, Thursday 6th November  Thu6Nov
+✅ Found 9 days with available booking slots
+✅ Scraping completed successfully: 124 slots across 9 days
+✅ Scraping completed successfully
+📊 Result: 9 days, 124 slots
+ POST /api/get-slots 200 in 29.2s (compile: 36ms, render: 29.2s)
+🔍 Get-Slots API Debug - Request received
+🔍 Auth header: Bearer cp_live_demo_...
+✅ Authentication successful
+✅ Parsed data: {
+  first_name: 'AliTEST',
+  last_name: 'SyedTEST',
+  email: 'ali+test@mm.ventures',
+  phone: '5127673628'
+}
+🔍 Starting scraping process...
+🎯 Starting scrape for AliTEST SyedTEST (ali+test@mm.ventures)
+Navigating to: https://cincpro.chilipiper.com/concierge-router/link/lp-request-a-demo-agent-advice
+🔍 Looking for form fields...
+🔍 Trying selector for First Name: [data-test-id="GuestFormField-PersonFirstName"]
+✅ Successfully filled First Name using selector: [data-test-id="GuestFormField-PersonFirstName"]
+🔍 Trying selector for Last Name: [data-test-id="GuestFormField-PersonLastName"]
+✅ Successfully filled Last Name using selector: [data-test-id="GuestFormField-PersonLastName"]
+🔍 Trying selector for Email: [data-test-id="GuestFormField-PersonEmail"]
+✅ Successfully filled Email using selector: [data-test-id="GuestFormField-PersonEmail"]
+🔍 Trying selector for Phone: [data-test-id="PhoneField-input"]
+✅ Successfully filled Phone using selector: [data-test-id="PhoneField-input"]
+🔍 Trying submit selector: button[type="submit"]
+✅ Successfully clicked submit button using selector: button[type="submit"]
+Form submitted successfully
+⏳ Waiting 5 seconds for calendar to fully load...
+✅ Calendar should be fully loaded now
+✅ Calendar loaded successfully using selector: button:has-text("Monday")
+🚀 Starting comprehensive slot collection
+🎯 Goal: Collect ALL available booking days (9+ days)
+📋 Strategy: Emulate manual browser process - collect all days from current view, then navigate
+
+=====================================
+=== COLLECTION ATTEMPT 1/3 ===
+📊 Current total: 0 days
+⏳ Waiting for calendar to be ready...
+🔍 getAllEnabledDayButtons() starting...
+⏳ Waiting for 'button[data-test-id*="days:Oct"]' selector...
+✅ Found Oct buttons
+🔍 Querying all day buttons with selector 'button[data-test-id*="days:"]'...
+📊 Total day buttons found: 7
+🔍 Button 1: enabled=false, text='Sunday 26th October  Press enter to navigate available slots...'
+⏭️ Button 1 skipped: disabled
+🔍 Button 2: enabled=true, text='Monday 27th October  is selectedPress enter to navigate avai...'
+✅ Added enabled button 2: Monday 27th October  Mon27Oct
+🔍 Button 3: enabled=true, text='Tuesday 28th October  Press enter to navigate available slot...'
+✅ Added enabled button 3: Tuesday 28th October  Tue28Oct
+🔍 Button 4: enabled=true, text='Wednesday 29th October  Press enter to navigate available sl...'
+✅ Added enabled button 4: Wednesday 29th October  Wed29Oct
+🔍 Button 5: enabled=true, text='Thursday 30th October  Press enter to navigate available slo...'
+✅ Added enabled button 5: Thursday 30th October  Thu30Oct
+🔍 Button 6: enabled=true, text='Friday 31st October  Press enter to navigate available slots...'
+✅ Added enabled button 6: Friday 31st October  Fri31Oct
+🔍 Button 7: enabled=false, text='Saturday 1st November  Press enter to navigate available slo...'
+⏭️ Button 7 skipped: disabled
+📊 getAllEnabledDayButtons() complete: returning 5 enabled buttons
+📅 Found 5 total enabled day buttons in current view
+📋 Button dates: Monday 27th October  Mon27Oct, Tuesday 28th October  Tue28Oct, Wednesday 29th October  Wed29Oct, Thursday 30th October  Thu30Oct, Friday 31st October  Fri31Oct
+🖱️ Clicking Monday 27th October  Mon27Oct...
+📊 Got 5 slots for Monday 27th October  Mon27Oct
+✅ Added Monday 27th October  Mon27Oct: 5 slots (total days: 1)
+🖱️ Clicking Tuesday 28th October  Tue28Oct...
+📊 Got 14 slots for Tuesday 28th October  Tue28Oct
+✅ Added Tuesday 28th October  Tue28Oct: 14 slots (total days: 2)
+🖱️ Clicking Wednesday 29th October  Wed29Oct...
+📊 Got 16 slots for Wednesday 29th October  Wed29Oct
+✅ Added Wednesday 29th October  Wed29Oct: 16 slots (total days: 3)
+🖱️ Clicking Thursday 30th October  Thu30Oct...
+📊 Got 16 slots for Thursday 30th October  Thu30Oct
+✅ Added Thursday 30th October  Thu30Oct: 16 slots (total days: 4)
+🖱️ Clicking Friday 31st October  Fri31Oct...
+📊 Got 13 slots for Friday 31st October  Fri31Oct
+✅ Added Friday 31st October  Fri31Oct: 13 slots (total days: 5)
+📊 Progress: 5 total days collected (5 new from this attempt)
+🔄 Only have 5 days (target: 9). Navigating to next week...
+🔍 Looking for Next Week button...
+🔍 Trying getByRole('button', { name: 'Next Week' })...
+📅 Next week button found: enabled=true
+➡️ Clicking next week button...
+✅ Successfully clicked next week button
+⏳ Completed 3-second wait
+✅ Calendar updated verified with selector: button[data-test-id*="days:"]
+✅ Successfully moved to next week
+🧭 Navigation result: true
+⏳ Waiting 5 seconds for calendar to update...
+✅ Calendar updated, will continue in next iteration
+
+=====================================
+=== COLLECTION ATTEMPT 2/3 ===
+📊 Current total: 5 days
+⏳ Waiting for calendar to be ready...
+🔍 getAllEnabledDayButtons() starting...
+⏳ Waiting for 'button[data-test-id*="days:Oct"]' selector...
+✅ Found Oct buttons
+🔍 Querying all day buttons with selector 'button[data-test-id*="days:"]'...
+📊 Total day buttons found: 14
+🔍 Button 1: enabled=false, text='Sunday 26th October  Press enter to navigate available slots...'
+⏭️ Button 1 skipped: disabled
+🔍 Button 2: enabled=true, text='Monday 27th October  is selectedPress enter to navigate avai...'
+✅ Added enabled button 2: Monday 27th October  Mon27Oct
+🔍 Button 3: enabled=true, text='Tuesday 28th October  Press enter to navigate available slot...'
+✅ Added enabled button 3: Tuesday 28th October  Tue28Oct
+🔍 Button 4: enabled=true, text='Wednesday 29th October  Press enter to navigate available sl...'
+✅ Added enabled button 4: Wednesday 29th October  Wed29Oct
+🔍 Button 5: enabled=true, text='Thursday 30th October  Press enter to navigate available slo...'
+✅ Added enabled button 5: Thursday 30th October  Thu30Oct
+🔍 Button 6: enabled=true, text='Friday 31st October  Press enter to navigate available slots...'
+✅ Added enabled button 6: Friday 31st October  Fri31Oct
+🔍 Button 7: enabled=false, text='Saturday 1st November  Press enter to navigate available slo...'
+⏭️ Button 7 skipped: disabled
+🔍 Button 8: enabled=false, text='Sunday 2nd November  Press enter to navigate available slots...'
+⏭️ Button 8 skipped: disabled
+🔍 Button 9: enabled=true, text='Monday 3rd November  Press enter to navigate available slots...'
+✅ Added enabled button 9: Monday 3rd November  Mon3Nov
+🔍 Button 10: enabled=true, text='Tuesday 4th November  Press enter to navigate available slot...'
+✅ Added enabled button 10: Tuesday 4th November  Tue4Nov
+🔍 Button 11: enabled=true, text='Wednesday 5th November  Press enter to navigate available sl...'
+✅ Added enabled button 11: Wednesday 5th November  Wed5Nov
+🔍 Button 12: enabled=true, text='Thursday 6th November  Press enter to navigate available slo...'
+✅ Added enabled button 12: Thursday 6th November  Thu6Nov
+🔍 Button 13: enabled=true, text='Friday 7th November  Press enter to navigate available slots...'
+✅ Added enabled button 13: Friday 7th November  Fri7Nov
+🔍 Button 14: enabled=false, text='Saturday 8th November  Press enter to navigate available slo...'
+⏭️ Button 14 skipped: disabled
+📊 getAllEnabledDayButtons() complete: returning 10 enabled buttons
+📅 Found 10 total enabled day buttons in current view
+📋 Button dates: Monday 27th October  Mon27Oct, Tuesday 28th October  Tue28Oct, Wednesday 29th October  Wed29Oct, Thursday 30th October  Thu30Oct, Friday 31st October  Fri31Oct, Monday 3rd November  Mon3Nov, Tuesday 4th November  Tue4Nov, Wednesday 5th November  Wed5Nov, Thursday 6th November  Thu6Nov, Friday 7th November  Fri7Nov
+⏭️ Skipping Monday 27th October  Mon27Oct - already collected
+⏭️ Skipping Tuesday 28th October  Tue28Oct - already collected
+⏭️ Skipping Wednesday 29th October  Wed29Oct - already collected
+⏭️ Skipping Thursday 30th October  Thu30Oct - already collected
+⏭️ Skipping Friday 31st October  Fri31Oct - already collected
+🖱️ Clicking Monday 3rd November  Mon3Nov...
+📊 Got 14 slots for Monday 3rd November  Mon3Nov
+✅ Added Monday 3rd November  Mon3Nov: 14 slots (total days: 6)
+🖱️ Clicking Tuesday 4th November  Tue4Nov...
+📊 Got 14 slots for Tuesday 4th November  Tue4Nov
+✅ Added Tuesday 4th November  Tue4Nov: 14 slots (total days: 7)
+🖱️ Clicking Wednesday 5th November  Wed5Nov...
+📊 Got 16 slots for Wednesday 5th November  Wed5Nov
+✅ Added Wednesday 5th November  Wed5Nov: 16 slots (total days: 8)
+🖱️ Clicking Thursday 6th November  Thu6Nov...
+📊 Got 16 slots for Thursday 6th November  Thu6Nov
+✅ Added Thursday 6th November  Thu6Nov: 16 slots (total days: 9)
+🎯 Target reached! Collected 9 days.
+📊 Progress: 9 total days collected (4 new from this attempt)
+✅ Collection complete. Total days: 9
+🏁 Final result: Successfully collected 9 days
+📋 Collected dates: Monday 27th October  Mon27Oct, Tuesday 28th October  Tue28Oct, Wednesday 29th October  Wed29Oct, Thursday 30th October  Thu30Oct, Friday 31st October  Fri31Oct, Monday 3rd November  Mon3Nov, Tuesday 4th November  Tue4Nov, Wednesday 5th November  Wed5Nov, Thursday 6th November  Thu6Nov
+✅ Found 9 days with available booking slots
+✅ Scraping completed successfully: 124 slots across 9 days
+✅ Scraping completed successfully
+📊 Result: 9 days, 124 slots
+ POST /api/get-slots 200 in 29.2s (compile: 3ms, render: 29.2s)

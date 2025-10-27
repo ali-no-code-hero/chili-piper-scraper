@@ -1,3 +1,4 @@
 {
-  "/api/get-slots/route": "app/api/get-slots/route.js"
+  "/api/get-slots/route": "app/api/get-slots/route.js",
+  "/page": "app/page.js"
 }

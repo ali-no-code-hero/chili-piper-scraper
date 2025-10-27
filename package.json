@@ -30,12 +30,15 @@
     "type": "git",
     "url": "git+https://github.com/ali-no-code-hero/chili-piper-scraper.git"
   },
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "keywords": [
     "nextjs",
     "playwright",
     "scraping",
     "chili-piper",
-    "vercel"
+    "railway"
   ],
   "author": "",
   "license": "ISC",

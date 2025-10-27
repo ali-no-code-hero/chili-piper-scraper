@@ -1,5 +1,5 @@
 {
-  "installCommand": "npm install && npm run postinstall",
+  "installCommand": "npm install",
   "framework": "nextjs",
   "functions": {
     "src/app/api/**/*.ts": {

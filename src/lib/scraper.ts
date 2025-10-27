@@ -1,4 +1,5 @@
-import { chromium, devices } from 'playwright';
+import { chromium } from 'playwright-core';
+import chromium2 from '@sparticuz/chromium';
 
 export interface SlotData {
   date: string;
@@ -29,34 +30,18 @@ export class ChiliPiperScraper {
     try {
       console.log(`🎯 Starting scrape for ${firstName} ${lastName} (${email})`);
       
-      const           browser = await chromium.launch({
-            headless: true,
-            executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined,
-        args: [
-          '--no-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--disable-web-security',
-          '--disable-features=VizDisplayCompositor',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--disable-extensions',
-          '--disable-sync',
-          '--disable-default-apps',
-          '--hide-scrollbars',
-          '--mute-audio',
-          '--no-first-run',
-          '--no-default-browser-check',
-          '--disable-hang-monitor',
-          '--disable-prompt-on-repost',
-          '--disable-breakpad',
-          '--disable-features=site-per-process',
-          '--disable-site-isolation-trials',
-          '--disable-blink-features=AutomationControlled',
-          '--disable-infobars',
-          '--window-size=1280,720'
-        ]
+      const isDevelopment = process.env.NODE_ENV === 'development';
+      
+      const browser = await chromium.launch({
+        headless: chromium2.headless,
+        executablePath: isDevelopment 
+          ? undefined 
+          : await chromium2.executablePath(),
+        args: chromium2.args,
+        ...(isDevelopment ? {} : {
+          defaultViewport: chromium2.defaultViewport,
+          ignoreHTTPSErrors: true
+        })
       });
 
       const page = await browser.newPage();

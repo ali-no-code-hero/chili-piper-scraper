@@ -10,7 +10,7 @@
     "postinstall": "echo 'Dependencies installed'"
   },
   "dependencies": {
-    "@sparticuz/chromium": "^133.0.2",
+    "@sparticuz/chromium": "^141.0.0",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "next": "^16.0.0",

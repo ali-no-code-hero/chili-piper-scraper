@@ -1,4 +1,4 @@
-import { chromium } from 'playwright';
+import { chromium, devices } from 'playwright';
 
 export interface SlotData {
   date: string;

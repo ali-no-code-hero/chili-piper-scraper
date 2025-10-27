@@ -33,15 +33,14 @@ export class ChiliPiperScraper {
       const isDevelopment = process.env.NODE_ENV === 'development';
       
       const browser = await chromium.launch({
-        headless: chromium2.headless,
+        headless: true,
         executablePath: isDevelopment 
           ? undefined 
           : await chromium2.executablePath(),
-        args: chromium2.args,
-        ...(isDevelopment ? {} : {
-          defaultViewport: chromium2.defaultViewport,
-          ignoreHTTPSErrors: true
-        })
+        args: isDevelopment ? [
+          '--no-sandbox',
+          '--disable-dev-shm-usage'
+        ] : chromium2.args
       });
 
       const page = await browser.newPage();

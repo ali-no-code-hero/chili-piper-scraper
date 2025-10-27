@@ -1,5 +1,5 @@
 {
-  "installCommand": "npm install",
+  "installCommand": "npm install && npx playwright install chromium-headless-shell",
   "framework": "nextjs",
   "functions": {
     "src/app/api/**/*.ts": {

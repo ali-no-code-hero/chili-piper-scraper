@@ -1,5 +1,7 @@
 {
-  "installCommand": "npm install && npx playwright install chromium",
+  "installCommand": "npm install",
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
   "framework": "nextjs",
   "functions": {
     "src/app/api/**/*.ts": {

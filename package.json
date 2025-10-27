@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "postinstall": "echo 'Dependencies installed'"
+    "postinstall": "playwright install chromium --with-deps || true"
   },
   "dependencies": {
     "@types/react": "^19.2.2",

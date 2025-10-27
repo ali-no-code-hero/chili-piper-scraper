@@ -1,5 +1,11 @@
 {
   "installCommand": "npm install",
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "functions": {
+    "src/app/api/**/*.ts": {
+      "memory": 3008,
+      "maxDuration": 60
+    }
+  }
 }
 

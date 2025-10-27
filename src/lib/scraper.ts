@@ -424,14 +424,13 @@ export class ChiliPiperScraper {
   }
 
   private async getTimeSlotsForCurrentDay(page: any): Promise<string[]> {
+    // Use the correct selector based on the HTML structure
     const timeSlotSelectors = [
-      'button[data-test-id*="time"]',
-      'button[role="button"][aria-label*="time"]',
-      'button:has-text(":")',  // Most time buttons contain ":"
-      'button[data-id="time-slot-button"]',
-      '[data-test-id*="TimeSlotButton"]',
+      'button[data-test-id^="slot-"]',  // This matches data-test-id="slot-8:30AM", etc.
+      '[data-id="calendar-slot"]',      // This is the data-id attribute
       'button:has-text("AM")',
-      'button:has-text("PM")'
+      'button:has-text("PM")',
+      'button:has-text(":")'
     ];
     
     let timeSlotElements = [];

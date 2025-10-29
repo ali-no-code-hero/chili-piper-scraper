@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const isValidPassword = await bcrypt.compare(password, ADMIN_PASSWORD_HASH);
+      const isValidPassword = bcrypt.compareSync(password, ADMIN_PASSWORD_HASH);
       if (!isValidPassword) {
         return NextResponse.json(
           { success: false, error: 'Invalid credentials' },

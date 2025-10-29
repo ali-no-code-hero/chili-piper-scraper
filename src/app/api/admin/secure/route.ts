@@ -136,7 +136,8 @@ export async function POST(request: NextRequest) {
 
     switch (apiAction) {
       case 'create':
-        const newKey = apiKeyManager.createApiKey(data.name, data.description, data.customKey);
+        // Create API key; second arg is custom key if provided
+        const newKey = apiKeyManager.createApiKey(data.name, data.customKey);
         return NextResponse.json({
           success: true,
           apiKey: {

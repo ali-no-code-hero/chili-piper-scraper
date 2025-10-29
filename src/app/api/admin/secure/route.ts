@@ -110,11 +110,13 @@ function checkRateLimit(ip: string): boolean {
   const limit = rateLimitMap.get(ip);
   
   if (!limit || now > limit.resetTime) {
-    rateLimitMap.set(ip, { count: 1, resetTime: now + 15 * 60 * 1000 }); // 15 minutes
+    // Reset window: 2 minutes
+    rateLimitMap.set(ip, { count: 1, resetTime: now + 2 * 60 * 1000 });
     return true;
   }
   
-  if (limit.count >= 5) { // 5 attempts per 15 minutes
+  // Allow up to 10 attempts per 2 minutes
+  if (limit.count >= 10) {
     return false;
   }
   
@@ -189,6 +191,9 @@ export async function POST(request: NextRequest) {
         JWT_SECRET,
         { expiresIn: '1h' } // 1 hour expiration
       );
+
+      // Reset rate limit on successful login
+      try { rateLimitMap.delete(clientIP); } catch {}
 
       console.log(`Admin login successful from IP: ${clientIP}`);
 

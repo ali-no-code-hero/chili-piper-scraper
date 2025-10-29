@@ -36,6 +36,7 @@ export default function SecureAdminPanel() {
     customKey: ''
   });
   const [showFullKey, setShowFullKey] = useState<number | null>(null);
+  const [fullKeys, setFullKeys] = useState<Record<number, string>>({});
 
   // Check if user is already authenticated (token in localStorage)
   useEffect(() => {
@@ -230,9 +231,22 @@ export default function SecureAdminPanel() {
       const data = await response.json();
       if (data.success) {
         setShowFullKey(id);
-        // Copy to clipboard
-        navigator.clipboard.writeText(data.fullKey);
-        setMessage('Full API key copied to clipboard!');
+        setFullKeys(prev => ({ ...prev, [id]: data.fullKey }));
+        // Copy to clipboard with fallback
+        const text = String(data.fullKey || '');
+        if (navigator?.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(text).then(() => setMessage('Full API key copied to clipboard!')).catch(() => {});
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed';
+          ta.style.left = '-9999px';
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          try { document.execCommand('copy'); setMessage('Full API key copied to clipboard!'); } catch {}
+          document.body.removeChild(ta);
+        }
       }
     } catch (error) {
       setMessage('Error retrieving full API key');
@@ -416,12 +430,32 @@ export default function SecureAdminPanel() {
                         {showFullKey === key.id ? (
                           <div className="bg-yellow-100 p-2 rounded">
                             <div className="text-xs text-gray-600 mb-1">Full API Key (copied to clipboard):</div>
-                            <div className="break-all">{key.key}</div>
+                            <div className="break-all">{fullKeys[key.id] || key.key}</div>
                             <button
                               onClick={() => setShowFullKey(null)}
                               className="text-xs text-blue-600 hover:text-blue-800 mt-1"
                             >
                               Hide
+                            </button>
+                            <button
+                              onClick={() => {
+                                const text = String(fullKeys[key.id] || key.key || '');
+                                if (navigator?.clipboard && window.isSecureContext) {
+                                  navigator.clipboard.writeText(text).then(() => setMessage('Copied!')).catch(() => {});
+                                } else {
+                                  const ta = document.createElement('textarea');
+                                  ta.value = text;
+                                  ta.style.position = 'fixed';
+                                  ta.style.left = '-9999px';
+                                  document.body.appendChild(ta);
+                                  ta.focus(); ta.select();
+                                  try { document.execCommand('copy'); setMessage('Copied!'); } catch {}
+                                  document.body.removeChild(ta);
+                                }
+                              }}
+                              className="ml-3 text-xs text-blue-600 hover:text-blue-800 mt-1"
+                            >
+                              Copy
                             </button>
                           </div>
                         ) : (

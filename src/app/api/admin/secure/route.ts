@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 
+// Load environment variables
+if (typeof window === 'undefined') {
+  require('dotenv').config();
+}
+
 // Mock API key manager for local testing (no database)
 class MockApiKeyManager {
   private apiKeys = new Map<string, any>();
@@ -88,8 +93,14 @@ const apiKeyManager = new MockApiKeyManager();
 
 // Admin credentials (for local testing)
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
-const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi'; // password: password
+const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || '$2a$10$8/0PUitA5JirayZ.yaRQ0eITj6puAdr/sSvGJ0B6qPImIR3u9.VQO'; // password: AdminPass123!
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret';
+
+// Debug logging
+console.log('🔐 Admin credentials loaded:');
+console.log('  ADMIN_USERNAME:', ADMIN_USERNAME);
+console.log('  ADMIN_PASSWORD_HASH:', ADMIN_PASSWORD_HASH ? 'SET' : 'NOT SET');
+console.log('  JWT_SECRET:', JWT_SECRET ? 'SET' : 'NOT SET');
 
 // Rate limiting (simple in-memory store)
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();

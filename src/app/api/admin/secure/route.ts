@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
         const keys = apiKeyManager.getAllApiKeys();
         return NextResponse.json({
           success: true,
-          apiKeys: keys.map(key => ({
+          apiKeys: (keys as any[]).map((key: any) => ({
             ...key,
             key: key.key.substring(0, 20) + '...' // Mask the key
           }))
@@ -244,7 +244,7 @@ export async function GET(request: NextRequest) {
         const keys = apiKeyManager.getAllApiKeys();
         return NextResponse.json({
           success: true,
-          apiKeys: keys.map(key => ({
+          apiKeys: (keys as any[]).map((key: any) => ({
             ...key,
             key: key.key.substring(0, 20) + '...' // Mask the key
           }))

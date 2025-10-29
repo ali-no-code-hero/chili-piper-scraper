@@ -61,35 +61,36 @@ export class SecurityMiddleware {
 
     for (const [field, rules] of Object.entries(schema)) {
       const value = data[field];
+      const typedRules = rules as any;
       
-      if (rules.required && (!value || value.toString().trim() === '')) {
+      if (typedRules.required && (!value || value.toString().trim() === '')) {
         errors.push(`${field} is required`);
         continue;
       }
 
       if (value) {
         // String validation
-        if (rules.type === 'string') {
+        if (typedRules.type === 'string') {
           if (typeof value !== 'string') {
             errors.push(`${field} must be a string`);
             continue;
           }
           
-          if (rules.minLength && value.length < rules.minLength) {
-            errors.push(`${field} must be at least ${rules.minLength} characters`);
+          if (typedRules.minLength && value.length < typedRules.minLength) {
+            errors.push(`${field} must be at least ${typedRules.minLength} characters`);
           }
           
-          if (rules.maxLength && value.length > rules.maxLength) {
-            errors.push(`${field} must be no more than ${rules.maxLength} characters`);
+          if (typedRules.maxLength && value.length > typedRules.maxLength) {
+            errors.push(`${field} must be no more than ${typedRules.maxLength} characters`);
           }
           
-          if (rules.pattern && !rules.pattern.test(value)) {
+          if (typedRules.pattern && !typedRules.pattern.test(value)) {
             errors.push(`${field} format is invalid`);
           }
         }
 
         // Email validation
-        if (rules.type === 'email') {
+        if (typedRules.type === 'email') {
           const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
           if (!emailRegex.test(value)) {
             errors.push(`${field} must be a valid email address`);
@@ -97,7 +98,7 @@ export class SecurityMiddleware {
         }
 
         // Phone validation
-        if (rules.type === 'phone') {
+        if (typedRules.type === 'phone') {
           const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
           if (!phoneRegex.test(value.replace(/[\s\-\(\)]/g, ''))) {
             errors.push(`${field} must be a valid phone number`);

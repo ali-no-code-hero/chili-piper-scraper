@@ -1,7 +1,11 @@
 {
   "/_global-error/page": "/_global-error",
   "/_not-found/page": "/_not-found",
+  "/admin/secure/page": "/admin/secure",
+  "/api/admin/secure/route": "/api/admin/secure",
   "/api/get-slots-mock/route": "/api/get-slots-mock",
+  "/api/get-slots-per-day-stream/route": "/api/get-slots-per-day-stream",
+  "/api/get-slots-stream/route": "/api/get-slots-stream",
   "/api/get-slots/route": "/api/get-slots",
   "/api/health/route": "/api/health",
   "/api/test-simple/route": "/api/test-simple",

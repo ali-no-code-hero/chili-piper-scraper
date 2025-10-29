@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { ChiliPiperScraper } from '@/lib/scraper';
 import { SecurityMiddleware, ValidationSchemas } from '@/lib/security-middleware';
 
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!securityResult.allowed) {
-      return new Response(
+      return new NextResponse(
         JSON.stringify({
           success: false,
           error: 'Security check failed',
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
           status: securityResult.response?.status || 400,
           headers: {
             'Content-Type': 'application/json',
-            ...security.addSecurityHeaders(new Response()).headers
+            ...security.addSecurityHeaders(new NextResponse()).headers
           }
         }
       );
@@ -164,12 +164,12 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const response = new Response(readableStream, {
+    const response = new NextResponse(readableStream, {
       headers: {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache, no-transform',
         'Connection': 'keep-alive',
-        ...security.addSecurityHeaders(new Response()).headers
+        ...security.addSecurityHeaders(new NextResponse()).headers
       },
     });
 
@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
       error: error instanceof Error ? error.message : 'Unknown error'
     }, request.headers.get('x-forwarded-for') || 'unknown');
     
-    return new Response(
+    return new NextResponse(
       JSON.stringify({
         success: false,
         error: 'Internal Server Error',
@@ -193,7 +193,7 @@ export async function POST(request: NextRequest) {
         status: 500,
         headers: {
           'Content-Type': 'application/json',
-          ...security.addSecurityHeaders(new Response()).headers
+          ...security.addSecurityHeaders(new NextResponse()).headers
         }
       }
     );
@@ -201,6 +201,6 @@ export async function POST(request: NextRequest) {
 }
 
 export async function OPTIONS(request: NextRequest) {
-  const response = new Response(null, { status: 200 });
+  const response = new NextResponse(null, { status: 200 });
   return security.configureCORS(response);
 }

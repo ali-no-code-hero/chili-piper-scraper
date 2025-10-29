@@ -290,7 +290,8 @@
     "bundlePagesRouterDependencies": false,
     "configFileName": "next.config.js",
     "serverExternalPackages": [
-      "playwright"
+      "playwright-core",
+      "@sparticuz/chromium"
     ],
     "turbopack": {
       "root": "/Users/alisyed/chili-piper-scarpe"

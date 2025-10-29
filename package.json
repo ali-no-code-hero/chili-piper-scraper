@@ -13,6 +13,7 @@
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^9.6.0",
     "jsonwebtoken": "^9.0.2",
     "next": "^16.0.0",
     "playwright": "^1.56.1",
@@ -22,7 +23,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.16",
-    "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^7.6.11",
     "@types/jsonwebtoken": "^9.0.5",
     "@types/node": "^24.9.1",
     "autoprefixer": "^10.4.21",

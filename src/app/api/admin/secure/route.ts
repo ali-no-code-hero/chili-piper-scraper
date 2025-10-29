@@ -43,7 +43,7 @@ class MockApiKeyManager {
   }
 
   updateApiKey(id: number, updates: any): any {
-    for (const [key, apiKey] of this.apiKeys.entries()) {
+    for (const [key, apiKey] of Array.from(this.apiKeys.entries())) {
       if (apiKey.id === id) {
         const updated = { ...apiKey, ...updates };
         this.apiKeys.set(key, updated);
@@ -54,7 +54,7 @@ class MockApiKeyManager {
   }
 
   deleteApiKey(id: number): boolean {
-    for (const [key, apiKey] of this.apiKeys.entries()) {
+    for (const [key, apiKey] of Array.from(this.apiKeys.entries())) {
       if (apiKey.id === id) {
         this.apiKeys.delete(key);
         return true;
@@ -64,7 +64,7 @@ class MockApiKeyManager {
   }
 
   getApiKeyById(id: number): any {
-    for (const apiKey of this.apiKeys.values()) {
+    for (const apiKey of Array.from(this.apiKeys.values())) {
       if (apiKey.id === id) {
         return apiKey;
       }

@@ -40,6 +40,18 @@
       "namedRegex": "^/_not\\-found(?:/)?$"
     },
     {
+      "page": "/admin/secure",
+      "regex": "^/admin/secure(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin/secure(?:/)?$"
+    },
+    {
+      "page": "/api/admin/secure",
+      "regex": "^/api/admin/secure(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/admin/secure(?:/)?$"
+    },
+    {
       "page": "/api/get-slots",
       "regex": "^/api/get\\-slots(?:/)?$",
       "routeKeys": {},
@@ -50,6 +62,18 @@
       "regex": "^/api/get\\-slots\\-mock(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/api/get\\-slots\\-mock(?:/)?$"
+    },
+    {
+      "page": "/api/get-slots-per-day-stream",
+      "regex": "^/api/get\\-slots\\-per\\-day\\-stream(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/get\\-slots\\-per\\-day\\-stream(?:/)?$"
+    },
+    {
+      "page": "/api/get-slots-stream",
+      "regex": "^/api/get\\-slots\\-stream(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/get\\-slots\\-stream(?:/)?$"
     },
     {
       "page": "/api/health",

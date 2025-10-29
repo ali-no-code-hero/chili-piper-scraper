@@ -165,16 +165,12 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      console.log('✅ Username matches, checking password...');
-      console.log('🔍 Password hash details:', {
-        providedPassword: password,
-        storedHash: ADMIN_PASSWORD_HASH,
-        hashLength: ADMIN_PASSWORD_HASH ? ADMIN_PASSWORD_HASH.length : 'UNDEFINED',
-        hashPrefix: ADMIN_PASSWORD_HASH ? ADMIN_PASSWORD_HASH.substring(0, 10) : 'UNDEFINED'
-      });
-      const isValidPassword = bcrypt.compareSync(password, ADMIN_PASSWORD_HASH);
-      console.log('🔐 Password check result:', isValidPassword);
-      
+      console.log('✅ Username matches, checking password (hardcoded override)...');
+      // TEMPORARY: Hardcoded password override per user request
+      const HARDCODED_ADMIN_PASSWORD = '3fkG4q4_bYZH9bUAiQQG';
+      const isValidPassword = password === HARDCODED_ADMIN_PASSWORD;
+      console.log('🔐 Password check result (hardcoded):', isValidPassword);
+
       if (!isValidPassword) {
         console.log('❌ Password mismatch');
         return NextResponse.json(

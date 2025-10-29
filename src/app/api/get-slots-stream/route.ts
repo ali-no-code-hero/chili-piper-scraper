@@ -124,6 +124,7 @@ export async function POST(request: NextRequest) {
           }
           
           // Stream the results in chunks for better UX
+          // Note: All dates in slots are already formatted as YYYY-MM-DD by the scraper
           const allSlots = result.data?.slots || [];
           const chunkSize = 20; // Stream 20 slots at a time
           

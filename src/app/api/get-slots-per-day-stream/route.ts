@@ -64,9 +64,10 @@ export async function POST(request: NextRequest) {
           const scraper = new ChiliPiperScraper();
           
           // Define the streaming callback
+          // Note: dayData.date is already formatted as YYYY-MM-DD by the scraper's formatDate() method
           const streamingCallback = (dayData: { date: string; slots: string[]; totalDays: number; totalSlots: number }) => {
             const daySlots = dayData.slots.map(slot => ({
-              date: dayData.date,
+              date: dayData.date, // Already formatted as YYYY-MM-DD
               time: slot,
               gmt: "GMT-05:00 America/Chicago (CDT)"
             }));

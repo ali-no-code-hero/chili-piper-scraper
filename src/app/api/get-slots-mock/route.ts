@@ -8,7 +8,9 @@ function validateApiKey(authHeader: string): boolean {
   }
   
   const token = authHeader.substring(7);
-  return !!apiKeyManager.validateApiKey(token);
+  const ok = !!apiKeyManager.validateApiKey(token);
+  console.log('[MOCK] validateApiKey token prefix:', token.substring(0, 12), 'ok:', ok);
+  return ok;
 }
 
 export async function POST(request: NextRequest) {

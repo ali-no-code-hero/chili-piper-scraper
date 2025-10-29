@@ -62,12 +62,12 @@ export async function POST(request: NextRequest) {
     
     // Simulate scraping with mock data
     const mockSlots = [
-      { date: 'Monday, Oct 28, 2025', time: '8:00 AM', gmt: 'GMT-05:00 America/Chicago (CDT)' },
-      { date: 'Monday, Oct 28, 2025', time: '8:35 AM', gmt: 'GMT-05:00 America/Chicago (CDT)' },
-      { date: 'Monday, Oct 28, 2025', time: '9:00 AM', gmt: 'GMT-05:00 America/Chicago (CDT)' },
-      { date: 'Tuesday, Oct 29, 2025', time: '8:00 AM', gmt: 'GMT-05:00 America/Chicago (CDT)' },
-      { date: 'Tuesday, Oct 29, 2025', time: '8:35 AM', gmt: 'GMT-05:00 America/Chicago (CDT)' },
-      { date: 'Wednesday, Oct 30, 2025', time: '9:00 AM', gmt: 'GMT-05:00 America/Chicago (CDT)' }
+      { date: '2025-10-28', time: '8:00 AM', gmt: 'GMT-05:00 America/Chicago (CDT)' },
+      { date: '2025-10-28', time: '8:35 AM', gmt: 'GMT-05:00 America/Chicago (CDT)' },
+      { date: '2025-10-28', time: '9:00 AM', gmt: 'GMT-05:00 America/Chicago (CDT)' },
+      { date: '2025-10-29', time: '8:00 AM', gmt: 'GMT-05:00 America/Chicago (CDT)' },
+      { date: '2025-10-29', time: '8:35 AM', gmt: 'GMT-05:00 America/Chicago (CDT)' },
+      { date: '2025-10-30', time: '9:00 AM', gmt: 'GMT-05:00 America/Chicago (CDT)' }
     ];
     
     const result = {

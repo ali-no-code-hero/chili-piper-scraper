@@ -24,6 +24,80 @@ export class ChiliPiperScraper {
     this.baseUrl = formUrl || process.env.CHILI_PIPER_FORM_URL || "https://cincpro.chilipiper.com/concierge-router/link/lp-request-a-demo-agent-advice";
   }
 
+  /**
+   * Formats a date string from formats like "Thursday 30th October Thu30Oct" 
+   * or "Monday 27th October Mon 27 Oct" to "YYYY-MM-DD" format
+   */
+  private formatDate(dateString: string): string {
+    try {
+      // Extract day and month from patterns like:
+      // - "Thursday 30th October Thu30Oct"
+      // - "Monday 27th October Mon 27 Oct"
+      // - "Wednesday 29th October Wed29Oct"
+      
+      const monthMap: Record<string, number> = {
+        'january': 1, 'jan': 1,
+        'february': 2, 'feb': 2,
+        'march': 3, 'mar': 3,
+        'april': 4, 'apr': 4,
+        'may': 5,
+        'june': 6, 'jun': 6,
+        'july': 7, 'jul': 7,
+        'august': 8, 'aug': 8,
+        'september': 9, 'sep': 9, 'sept': 9,
+        'october': 10, 'oct': 10,
+        'november': 11, 'nov': 11,
+        'december': 12, 'dec': 12
+      };
+
+      // Remove common suffixes and clean up
+      let cleanDate = dateString.replace('Press enter to navigate available slots', '').trim();
+      cleanDate = cleanDate.replace('is selected', '').trim();
+      
+      // Extract day number (supports formats like "30th", "27th", "1st", "2nd", "3rd")
+      const dayMatch = cleanDate.match(/(\d{1,2})(?:st|nd|rd|th)/i);
+      if (!dayMatch) {
+        console.warn(`Could not extract day from date string: ${dateString}`);
+        return dateString; // Return original if parsing fails
+      }
+      
+      const day = parseInt(dayMatch[1], 10);
+      
+      // Extract month name (full or abbreviated)
+      let month: number | null = null;
+      const lowerDate = cleanDate.toLowerCase();
+      
+      for (const [monthName, monthNum] of Object.entries(monthMap)) {
+        if (lowerDate.includes(monthName)) {
+          month = monthNum;
+          break;
+        }
+      }
+      
+      if (month === null) {
+        console.warn(`Could not extract month from date string: ${dateString}`);
+        return dateString; // Return original if parsing fails
+      }
+      
+      // Determine year - assume current year or next year if date has passed
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      let year = currentYear;
+      
+      // If the parsed date (with current year) is in the past, use next year
+      const testDate = new Date(year, month - 1, day);
+      if (testDate < now && testDate.getMonth() === month - 1 && testDate.getDate() === day) {
+        year = currentYear + 1;
+      }
+      
+      // Format as YYYY-MM-DD
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    } catch (error) {
+      console.warn(`Error formatting date "${dateString}":`, error);
+      return dateString; // Return original if parsing fails
+    }
+  }
+
   async scrapeSlots(
     firstName: string,
     lastName: string,
@@ -170,50 +244,48 @@ export class ChiliPiperScraper {
       
       console.log("Form submitted successfully");
       
-      // New behavior: Try to detect calendar immediately (flow changed; no intermediate page)
-      console.log("🔎 Checking for calendar directly after submit...");
-      const immediateCalendarSelectors = [
-        'button[data-test-id*="days:"]',
-        '[data-id="calendar-day-button"]',
-        'button:has-text("Monday")',
-        'button:has-text("Tuesday")',
-        'button:has-text("Wednesday")',
-        'button:has-text("Thursday")',
-        'button:has-text("Friday")'
+      // Wait for the intermediate step (call now vs schedule meeting) - ULTRA FAST
+      console.log("⏳ Waiting for call/schedule choice page...");
+      await page.waitForTimeout(100); // Ultra-fast optimization
+      
+      // Look for "Schedule a meeting" or similar options
+      const scheduleSelectors = [
+        'button:has-text("Schedule a meeting")',
+        'button:has-text("Schedule")',
+        'button:has-text("Book a meeting")',
+        'button:has-text("Schedule later")',
+        '[data-test-id*="schedule"]',
+        'button[data-test-id*="schedule"]'
       ];
-      let calendarImmediatelyFound = false;
-      for (const sel of immediateCalendarSelectors) {
+      
+      let scheduleClicked = false;
+      for (const selector of scheduleSelectors) {
         try {
-          await page.waitForSelector(sel, { timeout: 800 });
-          console.log(`✅ Calendar detected immediately using: ${sel}`);
-          calendarImmediatelyFound = true;
+          console.log(`🔍 Looking for schedule button: ${selector}`);
+          await page.waitForSelector(selector, { timeout: 1000 }); // Ultra-fast optimization // Reduced from 3000ms
+          await page.click(selector);
+          console.log(`✅ Successfully clicked schedule button using selector: ${selector}`);
+          scheduleClicked = true;
           break;
-        } catch {}
-      }
-
-      if (!calendarImmediatelyFound) {
-        // Fallback: attempt "Schedule a meeting" page if it still appears occasionally
-        console.log("🪂 Calendar not detected immediately; attempting schedule button fallback...");
-        const scheduleSelectors = [
-          'button:has-text("Schedule a meeting")',
-          'button:has-text("Schedule")',
-          'button:has-text("Book a meeting")',
-          'button:has-text("Schedule later")',
-          '[data-test-id*="schedule"]',
-          'button[data-test-id*="schedule"]'
-        ];
-        for (const selector of scheduleSelectors) {
-          try {
-            console.log(`🔍 Looking for schedule button: ${selector}`);
-            await page.waitForSelector(selector, { timeout: 700 });
-            await page.click(selector);
-            console.log(`✅ Clicked schedule button: ${selector}`);
-            break;
-          } catch {}
+        } catch (error) {
+          console.log(`❌ Schedule selector failed: ${selector}`);
+          continue;
         }
       }
-      // Short settle time before calendar detection
-      await page.waitForTimeout(200);
+      
+      if (scheduleClicked) {
+        console.log("✅ Proceeding to schedule a meeting");
+        // Wait for the calendar page to load after clicking schedule - ULTRA FAST
+        console.log("⏳ Waiting 0.2 seconds for calendar to fully load...");
+        await page.waitForTimeout(200); // Ultra-fast optimization
+        console.log("✅ Calendar should be fully loaded now");
+      } else {
+        console.log("⚠️ No schedule button found, assuming we're already on calendar page");
+        // Wait longer for the calendar page to load and adjust - ULTRA FAST
+        console.log("⏳ Waiting 0.2 seconds for calendar to fully load...");
+        await page.waitForTimeout(200); // Ultra-fast optimization
+        console.log("✅ Calendar should be fully loaded now");
+      }
       
       // Wait for calendar elements with multiple possible selectors
       const calendarSelectors = [
@@ -251,9 +323,10 @@ export class ChiliPiperScraper {
       // Flatten the slots into the requested format
       const flattenedSlots: SlotData[] = [];
       for (const [dateKey, dayInfo] of Object.entries(slots)) {
+        const formattedDate = this.formatDate(dateKey);
         for (const timeSlot of dayInfo.slots) {
           flattenedSlots.push({
-            date: dateKey,
+            date: formattedDate,
             time: timeSlot,
             gmt: 'GMT-05:00 America/Chicago (CDT)'
           });
@@ -283,18 +356,6 @@ export class ChiliPiperScraper {
   }
 
   private async fillFieldWithFallback(page: any, selectors: string[], value: string, fieldName: string): Promise<void> {
-    // 1) Try by accessible label first (most robust)
-    try {
-      const labelToTry = fieldName;
-      console.log(`🔍 Trying getByLabel for ${fieldName}: '${labelToTry}'`);
-      const loc = page.getByLabel(labelToTry, { exact: false });
-      await loc.first().waitFor({ timeout: 1500 });
-      await loc.first().fill(value);
-      console.log(`✅ Filled ${fieldName} via getByLabel('${labelToTry}')`);
-      return;
-    } catch {}
-
-    // 2) Try in main page with provided CSS selectors
     for (const selector of selectors) {
       try {
         console.log(`🔍 Trying selector for ${fieldName}: ${selector}`);
@@ -307,29 +368,6 @@ export class ChiliPiperScraper {
         continue;
       }
     }
-
-    // 3) Try within iframes (Chili Piper sometimes nests inputs)
-    const frames = page.frames();
-    for (const frame of frames) {
-      for (const selector of selectors) {
-        try {
-          console.log(`🔍 Trying iframe selector for ${fieldName}: ${selector}`);
-          await frame.waitForSelector(selector, { timeout: 1500 });
-          await frame.fill(selector, value);
-          console.log(`✅ Filled ${fieldName} inside iframe using selector: ${selector}`);
-          return;
-        } catch {}
-      }
-      // Try labeled lookup inside frame
-      try {
-        const loc = frame.getByLabel(fieldName, { exact: false });
-        await loc.first().waitFor({ timeout: 1000 });
-        await loc.first().fill(value);
-        console.log(`✅ Filled ${fieldName} via getByLabel inside iframe`);
-        return;
-      } catch {}
-    }
-
     throw new Error(`Could not find ${fieldName} field with any of the provided selectors`);
   }
 
@@ -399,8 +437,9 @@ export class ChiliPiperScraper {
             // Call the streaming callback if provided
             if (onDayComplete) {
               const totalSlots = Object.values(allSlots).reduce((sum, day) => sum + day.slots.length, 0);
+              const formattedDate = this.formatDate(dateKey);
               onDayComplete({
-                date: dateKey,
+                date: formattedDate,
                 slots: slots,
                 totalDays: Object.keys(allSlots).length,
                 totalSlots: totalSlots

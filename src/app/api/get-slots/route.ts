@@ -65,14 +65,14 @@ export async function POST(request: NextRequest) {
     
         console.log('🔍 Starting scraping process...');
         
-        // Run the scraping
-        const scraper = new ChiliPiperScraper();
-        const result = await scraper.scrapeSlots(
-          body.first_name,
-          body.last_name,
-          body.email,
-          body.phone
-        );
+          // Run the scraping
+          const scraper = new ChiliPiperScraper();
+          const result = await scraper.scrapeSlots(
+            body.first_name,
+            body.last_name,
+            body.email,
+            body.phone
+          );
         
         if (!result.success) {
           console.log(`❌ Scraping failed: ${result.error}`);

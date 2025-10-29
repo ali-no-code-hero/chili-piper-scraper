@@ -24,7 +24,8 @@ export class ChiliPiperScraper {
     firstName: string,
     lastName: string,
     email: string,
-    phone: string
+    phone: string,
+    onDayComplete?: (dayData: { date: string; slots: string[]; totalDays: number; totalSlots: number }) => void
   ): Promise<ScrapingResult> {
     try {
       console.log(`🎯 Starting scrape for ${firstName} ${lastName} (${email})`);
@@ -54,8 +55,8 @@ export class ChiliPiperScraper {
       console.log(`Navigating to: ${this.baseUrl}`);
       await page.goto(this.baseUrl, { waitUntil: 'domcontentloaded' });
       
-      // Wait for page to load completely
-      await page.waitForTimeout(2000);
+      // Wait for page to load completely - ULTRA FAST
+      await page.waitForTimeout(200); // Ultra-fast optimization
       
       // Try multiple selectors for form fields
       console.log("🔍 Looking for form fields...");
@@ -148,7 +149,7 @@ export class ChiliPiperScraper {
       for (const selector of submitSelectors) {
         try {
           console.log(`🔍 Trying submit selector: ${selector}`);
-          await page.waitForSelector(selector, { timeout: 2000 });
+          await page.waitForSelector(selector, { timeout: 1000 }); // Ultra-fast optimization
           await page.click(selector);
           console.log(`✅ Successfully clicked submit button using selector: ${selector}`);
           submitClicked = true;
@@ -165,10 +166,48 @@ export class ChiliPiperScraper {
       
       console.log("Form submitted successfully");
       
-          // Wait longer for the calendar page to load and adjust
-          console.log("⏳ Waiting 5 seconds for calendar to fully load...");
-          await page.waitForTimeout(5000);
-          console.log("✅ Calendar should be fully loaded now");
+      // Wait for the intermediate step (call now vs schedule meeting) - ULTRA FAST
+      console.log("⏳ Waiting for call/schedule choice page...");
+      await page.waitForTimeout(100); // Ultra-fast optimization
+      
+      // Look for "Schedule a meeting" or similar options
+      const scheduleSelectors = [
+        'button:has-text("Schedule a meeting")',
+        'button:has-text("Schedule")',
+        'button:has-text("Book a meeting")',
+        'button:has-text("Schedule later")',
+        '[data-test-id*="schedule"]',
+        'button[data-test-id*="schedule"]'
+      ];
+      
+      let scheduleClicked = false;
+      for (const selector of scheduleSelectors) {
+        try {
+          console.log(`🔍 Looking for schedule button: ${selector}`);
+          await page.waitForSelector(selector, { timeout: 1000 }); // Ultra-fast optimization // Reduced from 3000ms
+          await page.click(selector);
+          console.log(`✅ Successfully clicked schedule button using selector: ${selector}`);
+          scheduleClicked = true;
+          break;
+        } catch (error) {
+          console.log(`❌ Schedule selector failed: ${selector}`);
+          continue;
+        }
+      }
+      
+      if (scheduleClicked) {
+        console.log("✅ Proceeding to schedule a meeting");
+        // Wait for the calendar page to load after clicking schedule - ULTRA FAST
+        console.log("⏳ Waiting 0.2 seconds for calendar to fully load...");
+        await page.waitForTimeout(200); // Ultra-fast optimization
+        console.log("✅ Calendar should be fully loaded now");
+      } else {
+        console.log("⚠️ No schedule button found, assuming we're already on calendar page");
+        // Wait longer for the calendar page to load and adjust - ULTRA FAST
+        console.log("⏳ Waiting 0.2 seconds for calendar to fully load...");
+        await page.waitForTimeout(200); // Ultra-fast optimization
+        console.log("✅ Calendar should be fully loaded now");
+      }
       
       // Wait for calendar elements with multiple possible selectors
       const calendarSelectors = [
@@ -185,7 +224,7 @@ export class ChiliPiperScraper {
       let calendarFound = false;
       for (const selector of calendarSelectors) {
         try {
-          await page.waitForSelector(selector, { timeout: 10000 }); // Increased from 2000ms to 10000ms
+          await page.waitForSelector(selector, { timeout: 1000 }); // Ultra-fast optimization // Reduced from 5000ms to 2000ms
           console.log(`✅ Calendar loaded successfully using selector: ${selector}`);
           calendarFound = true;
           break;
@@ -199,7 +238,7 @@ export class ChiliPiperScraper {
         throw new Error('Could not find calendar elements with any of the provided selectors');
       }
 
-      const slots = await this.getAvailableSlots(page);
+      const slots = await this.getAvailableSlots(page, onDayComplete);
       
       await browser.close();
       
@@ -253,11 +292,11 @@ export class ChiliPiperScraper {
     throw new Error(`Could not find ${fieldName} field with any of the provided selectors`);
   }
 
-  private async getAvailableSlots(page: any): Promise<Record<string, { slots: string[] }>> {
+  private async getAvailableSlots(page: any, onDayComplete?: (dayData: { date: string; slots: string[]; totalDays: number; totalSlots: number }) => void): Promise<Record<string, { slots: string[] }>> {
     const allSlots: Record<string, { slots: string[] }> = {};
     
     console.log("🚀 Starting comprehensive slot collection");
-    console.log("🎯 Goal: Collect ALL available booking days (9+ days)");
+    console.log("🎯 Goal: Collect ALL available booking days (7+ days)");
     console.log("📋 Strategy: Emulate manual browser process - collect all days from current view, then navigate");
 
     // Simple approach: collect from Week 1, navigate to Week 2, collect from Week 2
@@ -269,13 +308,13 @@ export class ChiliPiperScraper {
       console.log(`📊 Current total: ${Object.keys(allSlots).length} days`);
       
       // Stop if we have enough
-      if (Object.keys(allSlots).length >= 9) {
+      if (Object.keys(allSlots).length >= 7) {
         console.log(`🎯 Target reached! Stopping collection.`);
         break;
       }
       
       console.log(`⏳ Waiting for calendar to be ready...`);
-      await page.waitForTimeout(1000); // Give calendar time to stabilize
+      await page.waitForTimeout(100); // Ultra-fast optimization
       
       // Get ALL enabled day buttons from the current calendar view (Week 1 AND Week 2)
       const dayButtons = await this.getAllEnabledDayButtons(page);
@@ -305,7 +344,7 @@ export class ChiliPiperScraper {
           // Click the button to see its slots
           console.log(`🖱️ Clicking ${dateKey}...`);
           await buttonInfo.button.click();
-          await page.waitForTimeout(1000);
+          await page.waitForTimeout(50); // Ultra-fast optimization
           
           // Get time slots for this day
           const slots = await this.getTimeSlotsForCurrentDay(page);
@@ -315,10 +354,21 @@ export class ChiliPiperScraper {
             allSlots[dateKey] = { slots };
             newDaysAdded++;
             console.log(`✅ Added ${dateKey}: ${slots.length} slots (total days: ${Object.keys(allSlots).length})`);
+            
+            // Call the streaming callback if provided
+            if (onDayComplete) {
+              const totalSlots = Object.values(allSlots).reduce((sum, day) => sum + day.slots.length, 0);
+              onDayComplete({
+                date: dateKey,
+                slots: slots,
+                totalDays: Object.keys(allSlots).length,
+                totalSlots: totalSlots
+              });
+            }
           }
           
           // Stop if we have enough days
-          if (Object.keys(allSlots).length >= 9) {
+          if (Object.keys(allSlots).length >= 7) {
             console.log(`🎯 Target reached! Collected ${Object.keys(allSlots).length} days.`);
             break;
           }
@@ -331,21 +381,21 @@ export class ChiliPiperScraper {
       console.log(`📊 Progress: ${Object.keys(allSlots).length} total days collected (${newDaysAdded} new from this attempt)`);
       
       // If we have enough days or didn't add any new ones, stop
-      if (Object.keys(allSlots).length >= 9 || newDaysAdded === 0) {
+      if (Object.keys(allSlots).length >= 7 || newDaysAdded === 0) {
         console.log(`✅ Collection complete. Total days: ${Object.keys(allSlots).length}`);
         break;
       }
       
       // If we still don't have enough days, navigate to next week
-      if (Object.keys(allSlots).length < 9) {
-        console.log(`🔄 Only have ${Object.keys(allSlots).length} days (target: 9). Navigating to next week...`);
+      if (Object.keys(allSlots).length < 7) {
+        console.log(`🔄 Only have ${Object.keys(allSlots).length} days (target: 7). Navigating to next week...`);
         
         const navSuccess = await this.navigateToNextWeek(page);
         console.log(`🧭 Navigation result: ${navSuccess}`);
         
         if (navSuccess) {
-          console.log(`⏳ Waiting 5 seconds for calendar to update...`);
-          await page.waitForTimeout(5000);
+          console.log(`⏳ Waiting for calendar to update...`);
+          await page.waitForTimeout(100); // Ultra-fast optimization
           console.log(`✅ Calendar updated, will continue in next iteration`);
         } else {
           console.log(`❌ Navigation failed or button disabled. Collected ${Object.keys(allSlots).length} days total.`);
@@ -388,8 +438,8 @@ export class ChiliPiperScraper {
       }
     }
     
-    // Wait a moment for calendar to stabilize
-    await page.waitForTimeout(500);
+    // Wait a moment for calendar to stabilize - ULTRA FAST
+    await page.waitForTimeout(200); // Ultra-fast optimization
     
     // Get all day buttons
     console.log(`🔍 Querying all day buttons with selector 'button[data-test-id*="days:"]'...`);
@@ -500,7 +550,7 @@ export class ChiliPiperScraper {
       return weekSlots;
     }
     
-    await page.waitForTimeout(500); // Increased from 100ms to 500ms
+    await page.waitForTimeout(200); // Ultra-fast optimization
 
     // Find all day buttons using multiple selectors
     let dayButtons = [];
@@ -556,7 +606,7 @@ export class ChiliPiperScraper {
         // Always click the button to select it and get its slots
         console.log(`🖱️ Clicking day button ${i + 1} (selected: ${isSelected})`);
         await button.click();
-        await page.waitForTimeout(1000); // Wait for slots to load
+        await page.waitForTimeout(100); // Ultra-fast optimization
         
         // Get the selected date information from the clicked button
         let dateText = "Unknown Date";
@@ -606,7 +656,7 @@ export class ChiliPiperScraper {
           console.log(`⚠️ No slots found for ${dateText}`);
         }
         
-        await page.waitForTimeout(500); // Wait between button clicks
+        await page.waitForTimeout(50); // Ultra-fast optimization
       } catch (error) {
         console.log(`❌ Error processing button ${i + 1}: ${error}`);
         continue;
@@ -631,9 +681,9 @@ export class ChiliPiperScraper {
         await nextWeekButton.click();
         console.log("✅ Successfully clicked next week button");
         
-        // Wait longer for calendar to fully update with new dates
-        await page.waitForTimeout(3000); // Increased to 3 seconds
-        console.log("⏳ Completed 3-second wait");
+        // Wait longer for calendar to fully update with new dates - ULTRA FAST
+        await page.waitForTimeout(100); // Ultra-fast optimization
+        console.log("⏳ Completed wait");
         
         // Wait for calendar to update with multiple possible selectors
         const calendarSelectors = [
@@ -658,11 +708,11 @@ export class ChiliPiperScraper {
         
         if (calendarUpdated) {
           console.log("✅ Successfully moved to next week");
-          await page.waitForTimeout(1000); // Additional wait for calendar to stabilize
+          await page.waitForTimeout(100); // Ultra-fast optimization
           return true;
         } else {
           console.log("⚠️ Calendar update verification failed - but continuing anyway");
-          await page.waitForTimeout(1000);
+          await page.waitForTimeout(100); // Ultra-fast optimization
           return true; // Return true anyway to continue the loop
         }
       } else {

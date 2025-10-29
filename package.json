@@ -1,7 +1,7 @@
 {
   "name": "chili-piper-scraper",
   "version": "1.0.0",
-  "description": "Chili Piper Slot Scraper - Next.js Application",
+  "description": "Production-ready Chili Piper slot scraper with API key management and streaming support",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -12,6 +12,8 @@
   "dependencies": {
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
     "next": "^16.0.0",
     "playwright": "^1.56.1",
     "react": "^19.2.0",
@@ -20,6 +22,8 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.16",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.5",
     "@types/node": "^24.9.1",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.6",
@@ -38,7 +42,8 @@
     "playwright",
     "scraping",
     "chili-piper",
-    "railway"
+    "api",
+    "automation"
   ],
   "author": "",
   "license": "ISC",

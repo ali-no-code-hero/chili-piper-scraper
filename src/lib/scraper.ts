@@ -18,7 +18,11 @@ export interface ScrapingResult {
 }
 
 export class ChiliPiperScraper {
-  private baseUrl = "https://cincpro.chilipiper.com/concierge-router/link/lp-request-a-demo-agent-advice";
+  private baseUrl: string;
+
+  constructor(formUrl?: string) {
+    this.baseUrl = formUrl || process.env.CHILI_PIPER_FORM_URL || "https://cincpro.chilipiper.com/concierge-router/link/lp-request-a-demo-agent-advice";
+  }
 
   async scrapeSlots(
     firstName: string,

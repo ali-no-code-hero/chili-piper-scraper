@@ -1,107 +1,65 @@
 import { NextRequest } from 'next/server';
 import { ChiliPiperScraper } from '@/lib/scraper';
+import { SecurityMiddleware, ValidationSchemas } from '@/lib/security-middleware';
 
-// Production API keys for Chili Piper Slot Scraper
-const VALID_API_KEYS = [
-  'cp_live_abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567',  // vendor_1
-  'cp_live_xyz789uvw456rst123qpo098nml765kji432hgf109edc876bca543',  // vendor_2  
-  'cp_live_internal_team_key_2024_secure_123456789abcdef',           // internal_team
-  'cp_live_demo_client_key_2024_secure_987654321fedcba'              // demo_client
-];
-
-function validateApiKey(authHeader: string): boolean {
-  if (!authHeader.startsWith('Bearer ')) {
-    return false;
-  }
-  
-  const token = authHeader.substring(7);
-  return VALID_API_KEYS.includes(token);
-}
+const security = new SecurityMiddleware();
 
 export async function POST(request: NextRequest) {
   try {
     console.log('🔍 Get-Slots Per-Day Streaming API - Request received');
     
-    // Check authentication
-    const authHeader = request.headers.get('Authorization') || '';
-    console.log(`🔍 Auth header: ${authHeader.substring(0, 20)}...`);
-    
-    if (!validateApiKey(authHeader)) {
-      console.log('❌ Authentication failed');
+    // Apply security middleware
+    const securityResult = await security.secureRequest(request, {
+      requireAuth: true,
+      rateLimit: { maxRequests: 30, windowMs: 15 * 60 * 1000 }, // 30 requests per 15 minutes (streaming is more resource intensive)
+      inputSchema: ValidationSchemas.scrapeRequest,
+      allowedMethods: ['POST']
+    });
+
+    if (!securityResult.allowed) {
       return new Response(
         JSON.stringify({
           success: false,
-          error: 'Unauthorized',
-          message: 'Invalid or missing API key. Please provide a valid Bearer token.',
-          usage: {
-            example: 'Authorization: Bearer your-api-key-here'
-          }
+          error: 'Security check failed',
+          message: 'Request blocked by security middleware'
         }),
         { 
-          status: 401,
+          status: securityResult.response?.status || 400,
           headers: {
             'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            ...security.addSecurityHeaders(new Response()).headers
           }
         }
       );
     }
+
+    const body = securityResult.sanitizedData!;
+    console.log(`✅ Parsed and validated data:`, body);
     
-    console.log('✅ Authentication successful');
-    
-    // Parse request body
-    const body = await request.json();
-    console.log(`✅ Parsed data:`, body);
-    
-    // Validate required fields
-    const requiredFields = ['first_name', 'last_name', 'email', 'phone'];
-    const missingFields = requiredFields.filter(field => !body[field]);
-    
-    if (missingFields.length > 0) {
-      console.log(`❌ Missing required fields: ${missingFields.join(', ')}`);
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: 'Missing required fields',
-          message: `The following fields are required: ${missingFields.join(', ')}`
-        }),
-        { 
-          status: 400,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-          }
-        }
-      );
-    }
+    const clientIP = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
+    const userAgent = request.headers.get('user-agent') || 'unknown';
     
     console.log('🔍 Starting per-day streaming scraping process...');
+
+    const encoder = new TextEncoder();
     
-    // Create a streaming response
-    const stream = new ReadableStream({
+    const readableStream = new ReadableStream({
       async start(controller) {
-        const encoder = new TextEncoder();
+        const initialResponse = {
+          success: true,
+          streaming: true,
+          message: "Starting slot collection...",
+          data: {
+            total_slots: 0,
+            total_days: 0,
+            slots: [],
+            note: "Streaming results per day as they become available"
+          }
+        };
+        
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(initialResponse)}\n\n`));
         
         try {
-          // Send initial response
-          const initialResponse = {
-            success: true,
-            streaming: true,
-            message: 'Starting slot collection...',
-            data: {
-              total_slots: 0,
-              total_days: 0,
-              slots: [],
-              note: 'Streaming results per day as they become available'
-            }
-          };
-          
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(initialResponse)}\n\n`));
-          
           // Create scraper with streaming callback
           const scraper = new ChiliPiperScraper();
           
@@ -139,86 +97,103 @@ export async function POST(request: NextRequest) {
           
           if (!result.success) {
             console.log(`❌ Scraping failed: ${result.error}`);
+            security.logSecurityEvent('STREAMING_SCRAPING_FAILED', {
+              endpoint: '/api/get-slots-per-day-stream',
+              userAgent,
+              error: result.error
+            }, clientIP);
+            
             const errorResponse = {
               success: false,
+              streaming: false,
               error: 'Scraping failed',
-              message: result.error
+              message: result.error || 'Unknown scraping error'
             };
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorResponse)}\n\n`));
             controller.close();
             return;
           }
-          
-          // Send final completion response
+
+          // Final response after all chunks are sent
           const finalResponse = {
             success: true,
             streaming: false,
-            message: 'Slot collection completed',
-            data: result.data
+            message: "Slot collection completed",
+            data: {
+              total_slots: result.data?.total_slots || 0,
+              total_days: result.data?.total_days || 0,
+              note: `Found ${result.data?.total_days || 0} days with ${result.data?.total_slots || 0} total booking slots`,
+              slots: result.data?.slots || [] // Send all slots in the final response
+            }
           };
-          
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(finalResponse)}\n\n`));
           controller.close();
-          
+
+          // Log successful streaming
+          security.logSecurityEvent('STREAMING_SUCCESS', {
+            endpoint: '/api/get-slots-per-day-stream',
+            userAgent,
+            daysFound: result.data?.total_days,
+            slotsFound: result.data?.total_slots
+          }, clientIP);
+
         } catch (error) {
-          console.error('❌ Streaming error:', error);
+          console.error('❌ Streaming API error during scraping:', error);
+          security.logSecurityEvent('STREAMING_ERROR', {
+            endpoint: '/api/get-slots-per-day-stream',
+            userAgent,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          }, clientIP);
+          
           const errorResponse = {
             success: false,
-            error: 'Streaming failed',
+            streaming: false,
+            error: 'Internal Server Error',
             message: error instanceof Error ? error.message : 'Unknown error occurred'
           };
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorResponse)}\n\n`));
           controller.close();
         }
-      }
-    });
-    
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      },
+      cancel() {
+        console.log('Client disconnected from streaming API.');
+        security.logSecurityEvent('STREAMING_DISCONNECTED', {
+          endpoint: '/api/get-slots-per-day-stream',
+          userAgent
+        }, clientIP);
       },
     });
+
+    const response = new Response(readableStream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        ...security.addSecurityHeaders(new Response()).headers
+      },
+    });
+
+    return security.configureCORS(response);
     
   } catch (error) {
     console.error('❌ API error:', error);
     
-    if (error instanceof SyntaxError) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: 'Invalid JSON',
-          message: 'Request body must be valid JSON'
-        }),
-        { 
-          status: 400,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-          }
-        }
-      );
-    }
+    security.logSecurityEvent('STREAMING_API_ERROR', {
+      endpoint: '/api/get-slots-per-day-stream',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, request.headers.get('x-forwarded-for') || 'unknown');
     
     return new Response(
       JSON.stringify({
         success: false,
         error: 'Internal Server Error',
-        message: error instanceof Error ? error.message : 'Unknown error occurred'
+        message: 'An unexpected error occurred'
       }),
       { 
         status: 500,
         headers: {
           'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          ...security.addSecurityHeaders(new Response()).headers
         }
       }
     );
@@ -226,12 +201,6 @@ export async function POST(request: NextRequest) {
 }
 
 export async function OPTIONS(request: NextRequest) {
-  return new Response(null, {
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    },
-  });
+  const response = new Response(null, { status: 200 });
+  return security.configureCORS(response);
 }

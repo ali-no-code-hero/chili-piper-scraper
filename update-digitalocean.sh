@@ -36,3 +36,4 @@ echo "✅ Update complete!"
 echo ""
 echo "🧪 Test your API:"
 echo "curl -X POST http://localhost:3000/api/health"
+

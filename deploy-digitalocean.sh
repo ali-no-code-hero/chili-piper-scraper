@@ -165,3 +165,4 @@ echo "   pm2 restart         - Restart application"
 echo "   pm2 monit           - Monitor in real-time"
 echo ""
 echo "🎉 Your Chili Piper Scraper is now running on Digital Ocean!"
+

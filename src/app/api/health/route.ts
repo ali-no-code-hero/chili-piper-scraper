@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { SecurityMiddleware } from '@/lib/security-middleware';
+
+const security = new SecurityMiddleware();
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,10 +16,11 @@ export async function GET(request: NextRequest) {
       }
     };
 
-    return NextResponse.json(response);
+    const nextResponse = NextResponse.json(response);
+    return security.addSecurityHeaders(nextResponse);
   } catch (error) {
     console.error('Health check error:', error);
-    return NextResponse.json(
+    const nextResponse = NextResponse.json(
       { 
         error: 'Internal Server Error',
         details: error instanceof Error ? error.message : 'Unknown error',
@@ -24,16 +28,11 @@ export async function GET(request: NextRequest) {
       },
       { status: 500 }
     );
+    return security.addSecurityHeaders(nextResponse);
   }
 }
 
 export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, {
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    },
-  });
+  const response = new NextResponse(null, { status: 200 });
+  return security.configureCORS(response);
 }

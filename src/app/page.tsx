@@ -26,7 +26,7 @@ export default function Home() {
     last_name: 'SyedTEST',
     email: 'ali+test@mm.ventures',
     phone: '5127673628',
-    api_token: 'cp_live_demo_client_key_2024_secure_987654321fedcba'
+    api_token: ''
   });
   
   const [loading, setLoading] = useState(false);

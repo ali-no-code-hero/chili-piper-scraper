@@ -131,75 +131,125 @@ export class ChiliPiperScraper {
       });
 
       console.log(`Navigating to: ${this.baseUrl}`);
-      await page.goto(this.baseUrl, { waitUntil: 'domcontentloaded' });
+      await page.goto(this.baseUrl, { waitUntil: 'networkidle', timeout: 60000 });
       
-      // Wait for page to load completely - ULTRA FAST
-      await page.waitForTimeout(200); // Ultra-fast optimization
+      // Wait for page to load completely - give more time for form to render
+      console.log("⏳ Waiting for page to fully load...");
+      await page.waitForTimeout(3000); // Increased wait time for form to render (3 seconds)
+      
+      // Wait for any form elements to be present
+      try {
+        await page.waitForSelector('input, textbox, [data-test-id*="Field"], form', { timeout: 10000 });
+        console.log("✅ Form elements detected on page");
+      } catch (error) {
+        console.log("⚠️ No form elements found with initial check, proceeding anyway...");
+      }
       
       // Try multiple selectors for form fields
       console.log("🔍 Looking for form fields...");
       
       // Try different selectors for First Name (based on actual Chili Piper form)
+      // Added more comprehensive selectors including role-based and label-based
       const firstNameSelectors = [
         '[data-test-id="GuestFormField-PersonFirstName"]',
+        '[data-test-id*="FirstName"]',
+        '[data-test-id*="first-name"]',
+        '[data-test-id*="firstname"]',
+        '[data-test-id*="First"]',
+        'input[data-test-id="GuestFormField-PersonFirstName"]',
+        'input[data-test-id*="FirstName"]',
+        'input[data-test-id*="first-name"]',
+        'input[aria-label*="first name" i]',
         'textbox[aria-label="First Name"]',
         'input[aria-label="First Name"]',
+        'input[aria-label*="First Name" i]',
         'textbox:has-text("First Name")',
         'input:has-text("First Name")',
         'input[name="FirstName"]',
         'input[name="first_name"]',
         'input[name="firstName"]',
-        'input[placeholder*="First"]',
-        'input[placeholder*="first"]',
-        'input[id*="first"]',
-        'input[id*="First"]'
+        'input[name*="first" i]',
+        'input[placeholder*="First" i]',
+        'input[placeholder*="first" i]',
+        'input[id*="first" i]',
+        'input[id*="First"]',
+        'input[type="text"]:near(:text("First Name"), 50)',
+        '[role="textbox"][aria-label*="First" i]'
       ];
       
       const lastNameSelectors = [
         '[data-test-id="GuestFormField-PersonLastName"]',
+        '[data-test-id*="LastName"]',
+        '[data-test-id*="last-name"]',
+        '[data-test-id*="lastname"]',
+        '[data-test-id*="Last"]',
+        'input[data-test-id="GuestFormField-PersonLastName"]',
+        'input[data-test-id*="LastName"]',
+        'input[data-test-id*="last-name"]',
         'textbox[aria-label="Last Name"]',
         'input[aria-label="Last Name"]',
+        'input[aria-label*="Last Name" i]',
+        'input[aria-label*="last name" i]',
         'textbox:has-text("Last Name")',
         'input:has-text("Last Name")',
         'input[name="LastName"]',
         'input[name="last_name"]',
         'input[name="lastName"]',
-        'input[placeholder*="Last"]',
-        'input[placeholder*="last"]',
-        'input[id*="last"]',
-        'input[id*="Last"]'
+        'input[name*="last" i]',
+        'input[placeholder*="Last" i]',
+        'input[placeholder*="last" i]',
+        'input[id*="last" i]',
+        'input[id*="Last" i]',
+        '[role="textbox"][aria-label*="Last" i]'
       ];
       
       const emailSelectors = [
         '[data-test-id="GuestFormField-PersonEmail"]',
+        '[data-test-id*="Email"]',
+        '[data-test-id*="email"]',
+        'input[data-test-id="GuestFormField-PersonEmail"]',
+        'input[data-test-id*="Email"]',
         'textbox[aria-label="Email"]',
         'input[aria-label="Email"]',
+        'input[aria-label*="Email" i]',
+        'input[aria-label*="email" i]',
         'textbox:has-text("Email")',
         'input:has-text("Email")',
         'input[name="Email"]',
         'input[name="email"]',
+        'input[name*="email" i]',
         'input[type="email"]',
-        'input[placeholder*="email"]',
-        'input[placeholder*="Email"]',
-        'input[id*="email"]',
-        'input[id*="Email"]'
+        'input[placeholder*="email" i]',
+        'input[placeholder*="Email" i]',
+        'input[id*="email" i]',
+        'input[id*="Email" i]',
+        '[role="textbox"][aria-label*="Email" i]'
       ];
       
       const phoneSelectors = [
         '[data-test-id="PhoneField-input"]',
+        '[data-test-id*="Phone"]',
+        '[data-test-id*="phone"]',
+        'input[data-test-id="PhoneField-input"]',
+        'input[data-test-id*="Phone"]',
         'textbox[aria-label="Phone number"]',
         'input[aria-label="Phone number"]',
+        'input[aria-label*="Phone number" i]',
+        'input[aria-label*="phone number" i]',
+        'input[aria-label*="Phone" i]',
         'textbox:has-text("Phone number")',
         'input:has-text("Phone number")',
         'input[name="Phone"]',
         'input[name="phone"]',
         'input[name="PhoneNumber"]',
         'input[name="phone_number"]',
+        'input[name*="phone" i]',
         'input[type="tel"]',
-        'input[placeholder*="phone"]',
-        'input[placeholder*="Phone"]',
-        'input[id*="phone"]',
-        'input[id*="Phone"]'
+        'input[placeholder*="phone" i]',
+        'input[placeholder*="Phone" i]',
+        'input[id*="phone" i]',
+        'input[id*="Phone" i]',
+        '[role="textbox"][aria-label*="Phone" i]'
       ];
       
       // Fill form fields with fallback selectors
@@ -356,18 +406,137 @@ export class ChiliPiperScraper {
   }
 
   private async fillFieldWithFallback(page: any, selectors: string[], value: string, fieldName: string): Promise<void> {
+    // First, try all CSS selectors
     for (const selector of selectors) {
       try {
         console.log(`🔍 Trying selector for ${fieldName}: ${selector}`);
         await page.waitForSelector(selector, { timeout: 2000 });
-        await page.fill(selector, value);
-        console.log(`✅ Successfully filled ${fieldName} using selector: ${selector}`);
-        return;
+        
+        // Try multiple methods to fill the field
+        try {
+          await page.fill(selector, value);
+          console.log(`✅ Successfully filled ${fieldName} using selector: ${selector} (method: fill)`);
+          return;
+        } catch (fillError) {
+          try {
+            // Try typing instead of filling
+            await page.click(selector);
+            await page.type(selector, value, { delay: 50 });
+            console.log(`✅ Successfully filled ${fieldName} using selector: ${selector} (method: type)`);
+            return;
+          } catch (typeError) {
+            // Try using evaluate to set value directly
+            await page.evaluate((sel: string, val: string) => {
+              const element = document.querySelector(sel) as HTMLInputElement;
+              if (element) {
+                element.value = val;
+                element.dispatchEvent(new Event('input', { bubbles: true }));
+                element.dispatchEvent(new Event('change', { bubbles: true }));
+              }
+            }, selector, value);
+            console.log(`✅ Successfully filled ${fieldName} using selector: ${selector} (method: evaluate)`);
+            return;
+          }
+        }
       } catch (error) {
         console.log(`❌ Selector failed for ${fieldName}: ${selector}`);
         continue;
       }
     }
+
+    // If CSS selectors fail, try finding by label text
+    try {
+      console.log(`🔍 Trying to find ${fieldName} by label text...`);
+      const labelTexts = [
+        'First Name', 'first name', 'firstName', 'first_name',
+        'Last Name', 'last name', 'lastName', 'last_name',
+        'Email', 'email', 'E-mail', 'e-mail',
+        'Phone', 'phone', 'Phone Number', 'phone number', 'PhoneNumber'
+      ];
+      
+      for (const labelText of labelTexts) {
+        if (fieldName.toLowerCase().includes('first') && !labelText.toLowerCase().includes('first')) continue;
+        if (fieldName.toLowerCase().includes('last') && !labelText.toLowerCase().includes('last')) continue;
+        if (fieldName.toLowerCase().includes('email') && !labelText.toLowerCase().includes('email') && !labelText.toLowerCase().includes('e-mail')) continue;
+        if (fieldName.toLowerCase().includes('phone') && !labelText.toLowerCase().includes('phone')) continue;
+
+        try {
+          // Try finding label and then associated input
+          const xpath = `//label[contains(text(), '${labelText}')]/following-sibling::input | //label[contains(text(), '${labelText}')]//input | //label[contains(text(), '${labelText}')]/../input`;
+          const elements = await page.$x(xpath);
+          if (elements.length > 0) {
+            await elements[0].click();
+            await elements[0].type(value, { delay: 50 });
+            console.log(`✅ Successfully filled ${fieldName} using XPath label: ${labelText}`);
+            return;
+          }
+        } catch (xpathError) {
+          continue;
+        }
+      }
+    } catch (labelError) {
+      console.log(`❌ Label-based search failed for ${fieldName}`);
+    }
+
+    // Last resort: try to find all inputs and match by position/type
+    try {
+      console.log(`🔍 Last resort: trying to find ${fieldName} by input position...`);
+      const allInputs = await page.$$('input[type="text"], input[type="email"], input[type="tel"], input:not([type])');
+      
+      if (fieldName.toLowerCase().includes('first') && allInputs.length > 0) {
+        await allInputs[0].click();
+        await allInputs[0].type(value, { delay: 50 });
+        console.log(`✅ Successfully filled ${fieldName} using first input element`);
+        return;
+      }
+      if (fieldName.toLowerCase().includes('last') && allInputs.length > 1) {
+        await allInputs[1].click();
+        await allInputs[1].type(value, { delay: 50 });
+        console.log(`✅ Successfully filled ${fieldName} using second input element`);
+        return;
+      }
+      if (fieldName.toLowerCase().includes('email')) {
+        const emailInput = await page.$('input[type="email"]');
+        if (emailInput) {
+          await emailInput.click();
+          await emailInput.type(value, { delay: 50 });
+          console.log(`✅ Successfully filled ${fieldName} using email input type`);
+          return;
+        }
+      }
+      if (fieldName.toLowerCase().includes('phone')) {
+        const phoneInput = await page.$('input[type="tel"]');
+        if (phoneInput) {
+          await phoneInput.click();
+          await phoneInput.type(value, { delay: 50 });
+          console.log(`✅ Successfully filled ${fieldName} using tel input type`);
+          return;
+        }
+      }
+    } catch (positionError) {
+      console.log(`❌ Position-based search failed for ${fieldName}`);
+    }
+
+    // Final error - log available form elements for debugging
+    console.log(`❌ All methods failed for ${fieldName}. Debugging page structure...`);
+    try {
+      const formElements = await page.evaluate(() => {
+        const inputs = Array.from(document.querySelectorAll('input, textarea, [role="textbox"]'));
+        return inputs.map((el: any) => ({
+          tag: el.tagName,
+          type: el.type || 'none',
+          name: el.name || 'none',
+          id: el.id || 'none',
+          placeholder: el.placeholder || 'none',
+          'aria-label': el.getAttribute('aria-label') || 'none',
+          'data-test-id': el.getAttribute('data-test-id') || 'none'
+        }));
+      });
+      console.log(`📋 Available form elements on page:`, JSON.stringify(formElements, null, 2));
+    } catch (debugError) {
+      console.log(`⚠️ Could not debug page structure: ${debugError}`);
+    }
+
     throw new Error(`Could not find ${fieldName} field with any of the provided selectors`);
   }
 

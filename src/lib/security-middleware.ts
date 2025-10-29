@@ -1,28 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ApiKeyManager } from '@/lib/api-key-manager';
 
-// Mock API key manager for local testing
-class MockApiKeyManager {
-  private apiKeys = new Map<string, any>();
-
-  constructor() {
-    // Add a default API key for testing
-    this.apiKeys.set('cp_live_demo_client_key_2024_secure_987654321fedcba', {
-      id: 1,
-      key: 'cp_live_demo_client_key_2024_secure_987654321fedcba',
-      name: 'Demo Client',
-      description: 'Demo API key for testing',
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      usageCount: 0
-    });
-  }
-
-  validateApiKey(key: string): any {
-    return this.apiKeys.get(key) || null;
-  }
-}
-
-const apiKeyManager = new MockApiKeyManager();
+// Use persistent manager (SQLite in prod, in-memory fallback in dev)
+const apiKeyManager = new ApiKeyManager(process.env.DATABASE_URL);
 
 export interface SecurityConfig {
   maxRequests?: number;
@@ -137,9 +117,8 @@ export class SecurityMiddleware {
     }
     
     const token = authHeader.substring(7);
-    const apiKey = apiKeyManager.validateApiKey(token);
-    
-    return { valid: !!apiKey, apiKey };
+    const ok = apiKeyManager.validateApiKey(token);
+    return { valid: !!ok, apiKey: ok ? { key: token } : undefined };
   }
 
   // Security headers middleware

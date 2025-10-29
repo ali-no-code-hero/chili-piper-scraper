@@ -1,8 +1,8 @@
+require('dotenv').config();
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    serverComponentsExternalPackages: ['better-sqlite3']
-  },
+  serverExternalPackages: ['better-sqlite3'],
   env: {
     ADMIN_USERNAME: process.env.ADMIN_USERNAME,
     ADMIN_PASSWORD_HASH: process.env.ADMIN_PASSWORD_HASH,

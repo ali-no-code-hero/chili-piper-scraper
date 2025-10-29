@@ -154,16 +154,23 @@ export async function POST(request: NextRequest) {
     const { action, username, password } = body;
 
     if (action === 'login') {
+      console.log('🔍 Login attempt:', { username, password: password ? 'PROVIDED' : 'MISSING', adminUsername: ADMIN_USERNAME });
+      
       // Validate credentials
       if (username !== ADMIN_USERNAME) {
+        console.log('❌ Username mismatch:', { provided: username, expected: ADMIN_USERNAME });
         return NextResponse.json(
           { success: false, error: 'Invalid credentials' },
           { status: 401 }
         );
       }
 
+      console.log('✅ Username matches, checking password...');
       const isValidPassword = bcrypt.compareSync(password, ADMIN_PASSWORD_HASH);
+      console.log('🔐 Password check result:', isValidPassword);
+      
       if (!isValidPassword) {
+        console.log('❌ Password mismatch');
         return NextResponse.json(
           { success: false, error: 'Invalid credentials' },
           { status: 401 }

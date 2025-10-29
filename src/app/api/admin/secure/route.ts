@@ -166,6 +166,12 @@ export async function POST(request: NextRequest) {
       }
 
       console.log('✅ Username matches, checking password...');
+      console.log('🔍 Password hash details:', {
+        providedPassword: password,
+        storedHash: ADMIN_PASSWORD_HASH,
+        hashLength: ADMIN_PASSWORD_HASH ? ADMIN_PASSWORD_HASH.length : 'UNDEFINED',
+        hashPrefix: ADMIN_PASSWORD_HASH ? ADMIN_PASSWORD_HASH.substring(0, 10) : 'UNDEFINED'
+      });
       const isValidPassword = bcrypt.compareSync(password, ADMIN_PASSWORD_HASH);
       console.log('🔐 Password check result:', isValidPassword);
       

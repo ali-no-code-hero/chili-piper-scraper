@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-// Production API keys for Chili Piper Slot Scraper
-const VALID_API_KEYS = [
-  'cp_live_abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567',  // vendor_1
-  'cp_live_xyz789uvw456rst123qpo098nml765kji432hgf109edc876bca543',  // vendor_2  
-  'cp_live_internal_team_key_2024_secure_123456789abcdef',           // internal_team
-  'cp_live_demo_client_key_2024_secure_987654321fedcba'              // demo_client
-];
+import { ApiKeyManager } from '@/lib/api-key-manager';
+const apiKeyManager = new ApiKeyManager(process.env.DATABASE_URL);
 
 function validateApiKey(authHeader: string): boolean {
   if (!authHeader.startsWith('Bearer ')) {
@@ -14,7 +8,7 @@ function validateApiKey(authHeader: string): boolean {
   }
   
   const token = authHeader.substring(7);
-  return VALID_API_KEYS.includes(token);
+  return !!apiKeyManager.validateApiKey(token);
 }
 
 export async function POST(request: NextRequest) {

@@ -1,95 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import { ApiKeyManager } from '@/lib/api-key-manager';
 
 // Load environment variables
 if (typeof window === 'undefined') {
   require('dotenv').config();
 }
 
-// Mock API key manager for local testing (no database)
-class MockApiKeyManager {
-  private apiKeys = new Map<string, any>();
-
-  constructor() {
-    // Add a default API key for testing
-    this.apiKeys.set('cp_live_demo_client_key_2024_secure_987654321fedcba', {
-      id: 1,
-      key: 'cp_live_demo_client_key_2024_secure_987654321fedcba',
-      name: 'Demo Client',
-      description: 'Demo API key for testing',
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      usageCount: 0
-    });
-  }
-
-  validateApiKey(key: string): any {
-    return this.apiKeys.get(key) || null;
-  }
-
-  createApiKey(name: string, description?: string, customKey?: string): any {
-    const key = customKey || `cp_live_${Math.random().toString(36).substring(2, 15)}`;
-    const apiKey = {
-      id: Date.now(),
-      key,
-      name,
-      description: description || '',
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      usageCount: 0
-    };
-    this.apiKeys.set(key, apiKey);
-    return apiKey;
-  }
-
-  getAllApiKeys(): any[] {
-    return Array.from(this.apiKeys.values());
-  }
-
-  updateApiKey(id: number, updates: any): any {
-    for (const [key, apiKey] of Array.from(this.apiKeys.entries())) {
-      if (apiKey.id === id) {
-        const updated = { ...apiKey, ...updates };
-        this.apiKeys.set(key, updated);
-        return updated;
-      }
-    }
-    return null;
-  }
-
-  deleteApiKey(id: number): boolean {
-    for (const [key, apiKey] of Array.from(this.apiKeys.entries())) {
-      if (apiKey.id === id) {
-        this.apiKeys.delete(key);
-        return true;
-      }
-    }
-    return false;
-  }
-
-  getApiKeyById(id: number): any {
-    for (const apiKey of Array.from(this.apiKeys.values())) {
-      if (apiKey.id === id) {
-        return apiKey;
-      }
-    }
-    return null;
-  }
-
-  getUsageStats(): any[] {
-    return Array.from(this.apiKeys.values()).map(key => ({
-      name: key.name,
-      key: key.key.substring(0, 20) + '...',
-      total_requests: key.usageCount,
-      avg_response_time: 0,
-      successful_requests: key.usageCount,
-      last_request: null
-    }));
-  }
-}
-
-const apiKeyManager = new MockApiKeyManager();
+// Use persistent API Key Manager (better-sqlite3 in prod, in-memory fallback in dev)
+const apiKeyManager = new ApiKeyManager(process.env.DATABASE_URL);
 
 // Admin credentials (for local testing)
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';

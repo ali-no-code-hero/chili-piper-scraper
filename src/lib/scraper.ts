@@ -170,48 +170,50 @@ export class ChiliPiperScraper {
       
       console.log("Form submitted successfully");
       
-      // Wait for the intermediate step (call now vs schedule meeting) - ULTRA FAST
-      console.log("⏳ Waiting for call/schedule choice page...");
-      await page.waitForTimeout(100); // Ultra-fast optimization
-      
-      // Look for "Schedule a meeting" or similar options
-      const scheduleSelectors = [
-        'button:has-text("Schedule a meeting")',
-        'button:has-text("Schedule")',
-        'button:has-text("Book a meeting")',
-        'button:has-text("Schedule later")',
-        '[data-test-id*="schedule"]',
-        'button[data-test-id*="schedule"]'
+      // New behavior: Try to detect calendar immediately (flow changed; no intermediate page)
+      console.log("🔎 Checking for calendar directly after submit...");
+      const immediateCalendarSelectors = [
+        'button[data-test-id*="days:"]',
+        '[data-id="calendar-day-button"]',
+        'button:has-text("Monday")',
+        'button:has-text("Tuesday")',
+        'button:has-text("Wednesday")',
+        'button:has-text("Thursday")',
+        'button:has-text("Friday")'
       ];
-      
-      let scheduleClicked = false;
-      for (const selector of scheduleSelectors) {
+      let calendarImmediatelyFound = false;
+      for (const sel of immediateCalendarSelectors) {
         try {
-          console.log(`🔍 Looking for schedule button: ${selector}`);
-          await page.waitForSelector(selector, { timeout: 1000 }); // Ultra-fast optimization // Reduced from 3000ms
-          await page.click(selector);
-          console.log(`✅ Successfully clicked schedule button using selector: ${selector}`);
-          scheduleClicked = true;
+          await page.waitForSelector(sel, { timeout: 800 });
+          console.log(`✅ Calendar detected immediately using: ${sel}`);
+          calendarImmediatelyFound = true;
           break;
-        } catch (error) {
-          console.log(`❌ Schedule selector failed: ${selector}`);
-          continue;
+        } catch {}
+      }
+
+      if (!calendarImmediatelyFound) {
+        // Fallback: attempt "Schedule a meeting" page if it still appears occasionally
+        console.log("🪂 Calendar not detected immediately; attempting schedule button fallback...");
+        const scheduleSelectors = [
+          'button:has-text("Schedule a meeting")',
+          'button:has-text("Schedule")',
+          'button:has-text("Book a meeting")',
+          'button:has-text("Schedule later")',
+          '[data-test-id*="schedule"]',
+          'button[data-test-id*="schedule"]'
+        ];
+        for (const selector of scheduleSelectors) {
+          try {
+            console.log(`🔍 Looking for schedule button: ${selector}`);
+            await page.waitForSelector(selector, { timeout: 700 });
+            await page.click(selector);
+            console.log(`✅ Clicked schedule button: ${selector}`);
+            break;
+          } catch {}
         }
       }
-      
-      if (scheduleClicked) {
-        console.log("✅ Proceeding to schedule a meeting");
-        // Wait for the calendar page to load after clicking schedule - ULTRA FAST
-        console.log("⏳ Waiting 0.2 seconds for calendar to fully load...");
-        await page.waitForTimeout(200); // Ultra-fast optimization
-        console.log("✅ Calendar should be fully loaded now");
-      } else {
-        console.log("⚠️ No schedule button found, assuming we're already on calendar page");
-        // Wait longer for the calendar page to load and adjust - ULTRA FAST
-        console.log("⏳ Waiting 0.2 seconds for calendar to fully load...");
-        await page.waitForTimeout(200); // Ultra-fast optimization
-        console.log("✅ Calendar should be fully loaded now");
-      }
+      // Short settle time before calendar detection
+      await page.waitForTimeout(200);
       
       // Wait for calendar elements with multiple possible selectors
       const calendarSelectors = [
@@ -281,6 +283,18 @@ export class ChiliPiperScraper {
   }
 
   private async fillFieldWithFallback(page: any, selectors: string[], value: string, fieldName: string): Promise<void> {
+    // 1) Try by accessible label first (most robust)
+    try {
+      const labelToTry = fieldName;
+      console.log(`🔍 Trying getByLabel for ${fieldName}: '${labelToTry}'`);
+      const loc = page.getByLabel(labelToTry, { exact: false });
+      await loc.first().waitFor({ timeout: 1500 });
+      await loc.first().fill(value);
+      console.log(`✅ Filled ${fieldName} via getByLabel('${labelToTry}')`);
+      return;
+    } catch {}
+
+    // 2) Try in main page with provided CSS selectors
     for (const selector of selectors) {
       try {
         console.log(`🔍 Trying selector for ${fieldName}: ${selector}`);
@@ -293,6 +307,29 @@ export class ChiliPiperScraper {
         continue;
       }
     }
+
+    // 3) Try within iframes (Chili Piper sometimes nests inputs)
+    const frames = page.frames();
+    for (const frame of frames) {
+      for (const selector of selectors) {
+        try {
+          console.log(`🔍 Trying iframe selector for ${fieldName}: ${selector}`);
+          await frame.waitForSelector(selector, { timeout: 1500 });
+          await frame.fill(selector, value);
+          console.log(`✅ Filled ${fieldName} inside iframe using selector: ${selector}`);
+          return;
+        } catch {}
+      }
+      // Try labeled lookup inside frame
+      try {
+        const loc = frame.getByLabel(fieldName, { exact: false });
+        await loc.first().waitFor({ timeout: 1000 });
+        await loc.first().fill(value);
+        console.log(`✅ Filled ${fieldName} via getByLabel inside iframe`);
+        return;
+      } catch {}
+    }
+
     throw new Error(`Could not find ${fieldName} field with any of the provided selectors`);
   }
 

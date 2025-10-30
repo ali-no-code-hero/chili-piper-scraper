@@ -118,8 +118,8 @@ export class ChiliPiperScraper {
 
       const page = await browser.newPage();
       
-      // Optimize page settings
-      page.setDefaultNavigationTimeout(60000);
+      // Optimize page settings - reduced timeout for faster failures
+      page.setDefaultNavigationTimeout(30000); // Reduced from 60000ms for faster timeouts
       await page.route("**/*", (route) => {
         if (route.request().resourceType() === "image" || 
             route.request().resourceType() === "stylesheet" || 
@@ -131,15 +131,16 @@ export class ChiliPiperScraper {
       });
 
       console.log(`Navigating to: ${this.baseUrl}`);
-      await page.goto(this.baseUrl, { waitUntil: 'networkidle', timeout: 60000 });
+      // Use 'domcontentloaded' instead of 'networkidle' for faster loading (saves 5-8 seconds)
+      await page.goto(this.baseUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       
-      // Wait for page to load completely - give more time for form to render
-      console.log("⏳ Waiting for page to fully load...");
-      await page.waitForTimeout(3000); // Increased wait time for form to render (3 seconds)
+      // Wait for page to load completely - optimized for speed
+      console.log("⏳ Waiting for form to render...");
+      await page.waitForTimeout(1000); // Reduced from 3000ms to 1000ms for faster execution
       
-      // Wait for any form elements to be present
+      // Wait for any form elements to be present - reduced timeout
       try {
-        await page.waitForSelector('input, textbox, [data-test-id*="Field"], form', { timeout: 10000 });
+        await page.waitForSelector('input, textbox, [data-test-id*="Field"], form', { timeout: 3000 });
         console.log("✅ Form elements detected on page");
       } catch (error) {
         console.log("⚠️ No form elements found with initial check, proceeding anyway...");
@@ -294,9 +295,9 @@ export class ChiliPiperScraper {
       
       console.log("Form submitted successfully");
       
-      // Wait for the intermediate step (call now vs schedule meeting) - ULTRA FAST
+      // Wait for the intermediate step (call now vs schedule meeting) - optimized
       console.log("⏳ Waiting for call/schedule choice page...");
-      await page.waitForTimeout(100); // Ultra-fast optimization
+      await page.waitForTimeout(50); // Reduced from 100ms
       
       // Look for "Schedule a meeting" or similar options
       const scheduleSelectors = [
@@ -325,15 +326,15 @@ export class ChiliPiperScraper {
       
       if (scheduleClicked) {
         console.log("✅ Proceeding to schedule a meeting");
-        // Wait for the calendar page to load after clicking schedule - ULTRA FAST
-        console.log("⏳ Waiting 0.2 seconds for calendar to fully load...");
-        await page.waitForTimeout(200); // Ultra-fast optimization
+        // Wait for the calendar page to load after clicking schedule - optimized
+        console.log("⏳ Waiting for calendar to load...");
+        await page.waitForTimeout(100); // Reduced from 200ms
         console.log("✅ Calendar should be fully loaded now");
       } else {
         console.log("⚠️ No schedule button found, assuming we're already on calendar page");
-        // Wait longer for the calendar page to load and adjust - ULTRA FAST
-        console.log("⏳ Waiting 0.2 seconds for calendar to fully load...");
-        await page.waitForTimeout(200); // Ultra-fast optimization
+        // Wait for the calendar page to load - optimized
+        console.log("⏳ Waiting for calendar to load...");
+        await page.waitForTimeout(100); // Reduced from 200ms
         console.log("✅ Calendar should be fully loaded now");
       }
       
@@ -410,7 +411,7 @@ export class ChiliPiperScraper {
     for (const selector of selectors) {
       try {
         console.log(`🔍 Trying selector for ${fieldName}: ${selector}`);
-        await page.waitForSelector(selector, { timeout: 2000 });
+        await page.waitForSelector(selector, { timeout: 1000 }); // Reduced from 2000ms for faster execution
         
         // Try multiple methods to fill the field
         try {
@@ -562,7 +563,7 @@ export class ChiliPiperScraper {
       }
       
       console.log(`⏳ Waiting for calendar to be ready...`);
-      await page.waitForTimeout(100); // Ultra-fast optimization
+      await page.waitForTimeout(50); // Optimized - reduced from 100ms
       
       // Get ALL enabled day buttons from the current calendar view (Week 1 AND Week 2)
       const dayButtons = await this.getAllEnabledDayButtons(page);
@@ -592,7 +593,7 @@ export class ChiliPiperScraper {
           // Click the button to see its slots
           console.log(`🖱️ Clicking ${dateKey}...`);
           await buttonInfo.button.click();
-          await page.waitForTimeout(50); // Ultra-fast optimization
+          await page.waitForTimeout(25); // Optimized - reduced from 50ms
           
           // Get time slots for this day
           const slots = await this.getTimeSlotsForCurrentDay(page);
@@ -687,8 +688,8 @@ export class ChiliPiperScraper {
       }
     }
     
-    // Wait a moment for calendar to stabilize - ULTRA FAST
-    await page.waitForTimeout(200); // Ultra-fast optimization
+    // Wait a moment for calendar to stabilize - optimized
+    await page.waitForTimeout(100); // Reduced from 200ms for faster execution
     
     // Get all day buttons
     console.log(`🔍 Querying all day buttons with selector 'button[data-test-id*="days:"]'...`);
@@ -799,7 +800,7 @@ export class ChiliPiperScraper {
       return weekSlots;
     }
     
-    await page.waitForTimeout(200); // Ultra-fast optimization
+    await page.waitForTimeout(100); // Optimized - reduced from 200ms
 
     // Find all day buttons using multiple selectors
     let dayButtons = [];

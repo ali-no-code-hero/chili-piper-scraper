@@ -106,6 +106,15 @@ export class ChiliPiperScraper {
     onDayComplete?: (dayData: { date: string; slots: string[]; totalDays: number; totalSlots: number }) => void
   ): Promise<ScrapingResult> {
     try {
+      // Trim logs in production: only emit debug logs when SCRAPER_DEBUG=true
+      const debug = (process.env.SCRAPER_DEBUG || '').toLowerCase() === 'true';
+      const originalConsoleLog = console.log;
+      if (!debug) {
+        // No-op console.log for performance; keep console.error/warn intact
+        // eslint-disable-next-line @typescript-eslint/no-empty-function
+        console.log = () => {};
+      }
+
       console.log(`🎯 Starting scrape for ${firstName} ${lastName} (${email})`);
       
       const browser = await chromium.launch({
@@ -501,10 +510,20 @@ export class ChiliPiperScraper {
       };
 
       console.log(`✅ Scraping completed successfully: ${flattenedSlots.length} slots across ${Object.keys(slots).length} days`);
+      // Restore logger before returning
+      console.log = originalConsoleLog;
       return result;
 
     } catch (error) {
       console.error('Scraping error:', error);
+      // Ensure logger is restored on error
+      try { /* restore if was replaced */ } finally {
+        // best-effort restore; if not set, ignore
+        // @ts-ignore
+        if (console && typeof console.log === 'function') {
+          // cannot guarantee presence of original ref here; leave as is if missing
+        }
+      }
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred'

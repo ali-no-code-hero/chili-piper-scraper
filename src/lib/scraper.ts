@@ -367,8 +367,113 @@ export class ChiliPiperScraper {
         throw new Error('Could not find calendar elements with any of the provided selectors');
       }
 
-      const slots = await this.getAvailableSlots(page, onDayComplete);
-      
+      // Parallel processing: open a second page to collect next week's days in parallel
+      const parallelEnabled = true;
+      let collectedSlots: Record<string, { slots: string[] }>; 
+
+      if (parallelEnabled) {
+        console.log('⚡ Starting parallel collection using two pages...');
+        const page2 = await browser.newPage();
+        page2.setDefaultNavigationTimeout(30000);
+        await page2.route("**/*", (route) => {
+          if (route.request().resourceType() === "image" ||
+              route.request().resourceType() === "stylesheet" ||
+              route.request().resourceType() === "font") {
+            route.abort();
+          } else {
+            route.continue();
+          }
+        });
+
+        // Navigate page2 to calendar and move to next week
+        await page2.goto(this.baseUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page2.waitForTimeout(1000);
+        try {
+          await page2.waitForSelector('input, textbox, [data-test-id*="Field"], form', { timeout: 3000 });
+        } catch {}
+
+        // Reuse selectors to fill page2
+        await this.fillFieldWithFallback(page2, firstNameSelectors, firstName, 'First Name');
+        await this.fillFieldWithFallback(page2, lastNameSelectors, lastName, 'Last Name');
+        await this.fillFieldWithFallback(page2, emailSelectors, email, 'Email');
+        await this.fillFieldWithFallback(page2, phoneSelectors, phone, 'Phone');
+
+        let submit2 = false;
+        for (const selector of submitSelectors) {
+          try {
+            await page2.waitForSelector(selector, { timeout: 1000 });
+            await page2.click(selector);
+            submit2 = true; break;
+          } catch {}
+        }
+        if (!submit2) {
+          throw new Error('Could not find submit button on parallel page');
+        }
+        await page2.waitForTimeout(50);
+
+        let scheduled2 = false;
+        for (const selector of scheduleSelectors) {
+          try {
+            await page2.waitForSelector(selector, { timeout: 1000 });
+            await page2.click(selector);
+            scheduled2 = true; break;
+          } catch {}
+        }
+        if (!scheduled2) {
+          await page2.waitForTimeout(100);
+        }
+
+        // Ensure calendar visible on page2
+        for (const selector of calendarSelectors) {
+          try { await page2.waitForSelector(selector, { timeout: 1000 }); break; } catch {}
+        }
+
+        // Move page2 to next week to diversify days
+        await this.navigateToNextWeek(page2);
+
+        // Collect enabled day buttons on both pages in parallel
+        const [buttonsWeek1, buttonsWeek2] = await Promise.all([
+          this.getAllEnabledDayButtons(page),
+          this.getAllEnabledDayButtons(page2)
+        ]);
+
+        const allSlots: Record<string, { slots: string[] }> = {};
+        const processButtons = async (pg: any, buttons: Array<{ button: any; dateKey: string }>) => {
+          for (const buttonInfo of buttons) {
+            const dateKey = buttonInfo.dateKey;
+            if (allSlots[dateKey]) continue;
+            try {
+              await buttonInfo.button.click();
+              await pg.waitForTimeout(25);
+              const slots = await this.getTimeSlotsForCurrentDay(pg);
+              if (slots.length > 0) {
+                allSlots[dateKey] = { slots };
+                if (onDayComplete) {
+                  const formattedDate = this.formatDate(dateKey);
+                  const totalSlots = Object.values(allSlots).reduce((sum, d) => sum + d.slots.length, 0);
+                  onDayComplete({ date: formattedDate, slots, totalDays: Object.keys(allSlots).length, totalSlots });
+                }
+              }
+              if (Object.keys(allSlots).length >= 7) break;
+            } catch (e) {
+              continue;
+            }
+          }
+        };
+
+        await Promise.all([
+          processButtons(page, buttonsWeek1),
+          processButtons(page2, buttonsWeek2)
+        ]);
+
+        collectedSlots = allSlots;
+        await page2.close();
+      } else {
+        collectedSlots = await this.getAvailableSlots(page, onDayComplete);
+      }
+
+      const slots = collectedSlots;
+
       await browser.close();
       
       // Flatten the slots into the requested format

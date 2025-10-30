@@ -705,8 +705,8 @@ export class ChiliPiperScraper {
     console.log(`🎯 Goal: Collect up to ${MAX_DAYS} days or ${MAX_SLOTS} total slots (early-exit enabled)`);
     console.log("📋 Strategy: Collect current view, navigate if needed; stop early when thresholds met");
 
-    // Simple approach: collect from Week 1, navigate to Week 2, collect from Week 2
-    const maxAttempts = 3;
+    // Collect across multiple weeks until targets met
+    const maxAttempts = 8;
     
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       console.log(`\n=====================================`);
@@ -837,16 +837,16 @@ export class ChiliPiperScraper {
     
     console.log(`🔍 getAllEnabledDayButtons() starting...`);
     
-    // Wait for day buttons - use a broader selector
+    // Wait for day buttons - generalized selector (month-independent)
     try {
-      console.log(`⏳ Waiting for 'button[data-test-id*="days:Oct"]' selector...`);
-      await page.waitForSelector('button[data-test-id*="days:Oct"]', { timeout: 5000 });
-      console.log(`✅ Found Oct buttons`);
+      console.log(`⏳ Waiting for 'button[data-test-id*="days:"]' selector...`);
+      await page.waitForSelector('button[data-test-id*="days:"]', { timeout: 5000 });
+      console.log(`✅ Found day buttons`);
     } catch (error) {
-      console.log(`⚠️ Oct buttons not found, trying any day buttons...`);
+      console.log(`⚠️ 'days:' buttons not found, trying alternative selectors...`);
       try {
-        await page.waitForSelector('button[data-test-id*="days:"]', { timeout: 2000 });
-        console.log(`✅ Found any day buttons`);
+        await page.waitForSelector('[data-id="calendar-day-button"], [data-test-id*="day"]', { timeout: 3000 });
+        console.log(`✅ Found day buttons via alternative selector`);
       } catch (error2) {
         console.log(`❌ No day buttons found with any selector`);
         return enabledButtons;
@@ -857,8 +857,10 @@ export class ChiliPiperScraper {
     await page.waitForTimeout(40); // Reduced from 50ms to 40ms
     
     // Get all day buttons
-    console.log(`🔍 Querying all day buttons with selector 'button[data-test-id*="days:"]'...`);
-    const dayButtons = await page.$$('button[data-test-id*="days:"]');
+    console.log(`🔍 Querying all day buttons with selector 'button[data-test-id*="days:"], [data-id="calendar-day-button"], [data-test-id*="day"]'...`);
+    const dayButtons = (await page.$$('button[data-test-id*="days:"]')).concat(
+      await page.$$('.calendar-day-button, [data-id="calendar-day-button"], [data-test-id*="day"]')
+    );
     console.log(`📊 Total day buttons found: ${dayButtons.length}`);
     
     for (let i = 0; i < dayButtons.length; i++) {

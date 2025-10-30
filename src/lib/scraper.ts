@@ -843,47 +843,60 @@ export class ChiliPiperScraper {
   }
 
   private async getTimeSlotsForCurrentDay(page: any): Promise<string[]> {
-    // Use the correct selector based on the HTML structure
-    const timeSlotSelectors = [
-      'button[data-test-id^="slot-"]',  // This matches data-test-id="slot-8:30AM", etc.
-      '[data-id="calendar-slot"]',      // This is the data-id attribute
+    // Fast path: single DOM evaluation collecting all likely slot elements
+    try {
+      const slots: string[] = await page.evaluate(() => {
+        const selectors = [
+          'button[data-test-id^="slot-"]',
+          '[data-id="calendar-slot"]',
+          'button'
+        ];
+        const seen = new Set<string>();
+        const results: string[] = [];
+        const isTimeLike = (t: string) => /\d{1,2}:\d{2}\s?(AM|PM)/i.test(t.trim());
+        for (const sel of selectors) {
+          const nodes = Array.from(document.querySelectorAll(sel)) as HTMLElement[];
+          for (const n of nodes) {
+            const txt = (n.innerText || n.textContent || '').trim();
+            if (!txt) continue;
+            if (!isTimeLike(txt)) continue;
+            if (seen.has(txt)) continue;
+            seen.add(txt);
+            results.push(txt);
+          }
+        }
+        return results;
+      });
+      console.log(`✅ Returning ${slots.length} time slots (DOM-eval fast path)`);
+      return slots;
+    } catch (error) {
+      console.log('⚠️ Fast path failed, falling back to element iteration');
+    }
+
+    // Fallback path (rare)
+    const fallbackSelectors = [
+      'button[data-test-id^="slot-"]',
+      '[data-id="calendar-slot"]',
       'button:has-text("AM")',
       'button:has-text("PM")',
       'button:has-text(":")'
     ];
-    
-    let timeSlotElements = [];
-    for (const selector of timeSlotSelectors) {
+    for (const selector of fallbackSelectors) {
       try {
-        console.log(`🔍 Trying time slot selector: ${selector}`);
         const elements = await page.$$(selector);
-        console.log(`📊 Found ${elements.length} elements with selector: ${selector}`);
         if (elements.length > 0) {
-          timeSlotElements = elements;
-          break;
+          const texts = await Promise.all(elements.map((el: any) => el.textContent()));
+          const filtered = texts
+            .filter(t => t && t.trim().length > 0)
+            .map(t => t!.trim());
+          if (filtered.length > 0) {
+            console.log(`✅ Returning ${filtered.length} time slots (fallback via ${selector})`);
+            return filtered;
+          }
         }
-      } catch (error) {
-        console.log(`❌ Selector failed: ${selector}`);
-        continue;
-      }
+      } catch {}
     }
-    
-    console.log(`📋 Processing ${timeSlotElements.length} time slot elements...`);
-    const timeSlots = await Promise.all(
-      timeSlotElements.map(async (slot: any) => {
-        try {
-          const text = await slot.textContent();
-          console.log(`  📝 Slot text: ${text}`);
-          return text;
-        } catch (error) {
-          return null;
-        }
-      })
-    );
-    
-    const filtered = timeSlots.filter(slot => slot && slot.trim().length > 0).map(slot => slot.trim());
-    console.log(`✅ Returning ${filtered.length} time slots`);
-    return filtered;
+    return [];
   }
 
   private async getCurrentWeekSlots(page: any): Promise<Array<{ date: string; slots: string[] }>> {

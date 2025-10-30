@@ -136,11 +136,11 @@ export class ChiliPiperScraper {
       
       // Wait for page to load completely - optimized for speed
       console.log("⏳ Waiting for form to render...");
-      await page.waitForTimeout(1000); // Reduced from 3000ms to 1000ms for faster execution
+      await page.waitForTimeout(700); // Reduced from 1000ms to 700ms
       
       // Wait for any form elements to be present - reduced timeout
       try {
-        await page.waitForSelector('input, textbox, [data-test-id*="Field"], form', { timeout: 3000 });
+        await page.waitForSelector('input, textbox, [data-test-id*="Field"], form', { timeout: 2000 });
         console.log("✅ Form elements detected on page");
       } catch (error) {
         console.log("⚠️ No form elements found with initial check, proceeding anyway...");
@@ -297,7 +297,7 @@ export class ChiliPiperScraper {
       
       // Wait for the intermediate step (call now vs schedule meeting) - optimized
       console.log("⏳ Waiting for call/schedule choice page...");
-      await page.waitForTimeout(50); // Reduced from 100ms
+      await page.waitForTimeout(25); // Reduced from 50ms
       
       // Look for "Schedule a meeting" or similar options
       const scheduleSelectors = [
@@ -705,7 +705,7 @@ export class ChiliPiperScraper {
           // Click the button to see its slots
           console.log(`🖱️ Clicking ${dateKey}...`);
           await buttonInfo.button.click();
-          await page.waitForTimeout(25); // Optimized - reduced from 50ms
+          await page.waitForTimeout(10); // Reduced from 25ms
           
           // Get time slots for this day
           const slots = await this.getTimeSlotsForCurrentDay(page);
@@ -808,7 +808,7 @@ export class ChiliPiperScraper {
     }
     
     // Wait a moment for calendar to stabilize - optimized
-    await page.waitForTimeout(100); // Reduced from 200ms for faster execution
+    await page.waitForTimeout(50); // Reduced from 100ms
     
     // Get all day buttons
     console.log(`🔍 Querying all day buttons with selector 'button[data-test-id*="days:"]'...`);
@@ -932,7 +932,7 @@ export class ChiliPiperScraper {
       return weekSlots;
     }
     
-    await page.waitForTimeout(100); // Optimized - reduced from 200ms
+    await page.waitForTimeout(75); // Reduced from 100ms
 
     // Find all day buttons using multiple selectors
     let dayButtons = [];

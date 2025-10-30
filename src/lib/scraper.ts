@@ -367,8 +367,9 @@ export class ChiliPiperScraper {
         throw new Error('Could not find calendar elements with any of the provided selectors');
       }
 
-      // Parallel processing toggle (disabled due to added overhead); can re-enable after further tuning
-      const parallelEnabled = false;
+      // Parallel processing toggle via environment flag for safe rollout/rollback
+      // Enable by setting SCRAPE_ENABLE_CONCURRENT_DAYS=true
+      const parallelEnabled = (process.env.SCRAPE_ENABLE_CONCURRENT_DAYS || '').toLowerCase() === 'true';
       let collectedSlots: Record<string, { slots: string[] }>; 
 
       if (parallelEnabled) {

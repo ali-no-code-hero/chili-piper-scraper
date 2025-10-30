@@ -652,8 +652,8 @@ export class ChiliPiperScraper {
     // Early-exit controls to reduce latency
     const maxDaysEnv = parseInt(process.env.SCRAPE_MAX_DAYS || '', 10);
     const maxSlotsEnv = parseInt(process.env.SCRAPE_MAX_SLOTS || '', 10);
-    const MAX_DAYS = Number.isFinite(maxDaysEnv) && maxDaysEnv > 0 ? maxDaysEnv : 3; // default 3 days
-    const MAX_SLOTS = Number.isFinite(maxSlotsEnv) && maxSlotsEnv > 0 ? maxSlotsEnv : 40; // default 40 slots
+    const MAX_DAYS = Number.isFinite(maxDaysEnv) && maxDaysEnv > 0 ? maxDaysEnv : 7; // default 7 days
+    const MAX_SLOTS = Number.isFinite(maxSlotsEnv) && maxSlotsEnv > 0 ? maxSlotsEnv : Number.MAX_SAFE_INTEGER; // default unlimited
     
     console.log("🚀 Starting comprehensive slot collection");
     console.log(`🎯 Goal: Collect up to ${MAX_DAYS} days or ${MAX_SLOTS} total slots (early-exit enabled)`);

@@ -364,6 +364,7 @@ export class ChiliPiperScraper {
       ];
       
       let calendarFound = false;
+      let calendarContext: any = page;
       for (const selector of calendarSelectors) {
         try {
           await page.waitForSelector(selector, { timeout: 4000 }); // Increased to 4s to tolerate slow renders
@@ -374,6 +375,24 @@ export class ChiliPiperScraper {
           console.log(`❌ Calendar selector failed: ${selector}`);
           continue;
         }
+      }
+      
+      if (!calendarFound) {
+        try {
+          const frames = page.frames();
+          for (const frame of frames) {
+            for (const selector of calendarSelectors) {
+              try {
+                await frame.waitForSelector(selector, { timeout: 2000 });
+                console.log(`✅ Calendar found inside iframe using selector: ${selector}`);
+                calendarFound = true;
+                calendarContext = frame;
+                break;
+              } catch {}
+            }
+            if (calendarFound) break;
+          }
+        } catch {}
       }
       
       if (!calendarFound) {
@@ -483,7 +502,7 @@ export class ChiliPiperScraper {
         collectedSlots = allSlots;
         await page2.close();
       } else {
-        collectedSlots = await this.getAvailableSlots(page, onDayComplete);
+        collectedSlots = await this.getAvailableSlots(calendarContext, onDayComplete);
       }
 
       const slots = collectedSlots;

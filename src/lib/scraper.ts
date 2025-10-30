@@ -145,7 +145,7 @@ export class ChiliPiperScraper {
       
       // Wait for page to load completely - optimized for speed
       console.log("⏳ Waiting for form to render...");
-      await page.waitForTimeout(700); // Reduced from 1000ms to 700ms
+      await page.waitForTimeout(600); // Reduced from 700ms to 600ms
       
       // Wait for any form elements to be present - reduced timeout
       try {
@@ -807,6 +807,7 @@ export class ChiliPiperScraper {
 
   private async getAllEnabledDayButtons(page: any): Promise<Array<{ button: any; dateKey: string }>> {
     const enabledButtons: Array<{ button: any; dateKey: string }> = [];
+    const seenDateKeys = new Set<string>();
     
     console.log(`🔍 getAllEnabledDayButtons() starting...`);
     
@@ -827,7 +828,7 @@ export class ChiliPiperScraper {
     }
     
     // Wait a moment for calendar to stabilize - optimized
-    await page.waitForTimeout(50); // Reduced from 100ms
+    await page.waitForTimeout(40); // Reduced from 50ms to 40ms
     
     // Get all day buttons
     console.log(`🔍 Querying all day buttons with selector 'button[data-test-id*="days:"]'...`);
@@ -847,8 +848,13 @@ export class ChiliPiperScraper {
           const dateKey = buttonText.replace('Press enter to navigate available slots', '').trim();
           const cleanDateKey = dateKey.replace('is selected', '').trim();
           
-          enabledButtons.push({ button, dateKey: cleanDateKey });
-          console.log(`✅ Added enabled button ${i + 1}: ${cleanDateKey}`);
+          if (seenDateKeys.has(cleanDateKey)) {
+            console.log(`⏭️ Skipping duplicate date key: ${cleanDateKey}`);
+          } else {
+            seenDateKeys.add(cleanDateKey);
+            enabledButtons.push({ button, dateKey: cleanDateKey });
+            console.log(`✅ Added enabled button ${i + 1}: ${cleanDateKey}`);
+          }
         } else {
           console.log(`⏭️ Button ${i + 1} skipped: ${!isEnabled ? 'disabled' : 'no text'}`);
         }

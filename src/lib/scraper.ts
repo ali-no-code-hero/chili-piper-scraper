@@ -349,20 +349,24 @@ export class ChiliPiperScraper {
       
       // Wait for calendar elements with multiple possible selectors
       const calendarSelectors = [
+        '[data-test-id*="calendar"]',
+        '[data-id="calendar"]',
+        'div[aria-label*="Calendar" i]',
+        '[role="grid"]',
+        'button[data-test-id*="days:"]',
+        '[data-test-id*="day"]',
+        '[data-id="calendar-day-button"]',
         'button:has-text("Monday")',
         'button:has-text("Tuesday")',
         'button:has-text("Wednesday")',
         'button:has-text("Thursday")',
-        'button:has-text("Friday")',
-        '[data-test-id*="calendar"]',
-        '[data-test-id*="day"]',
-        '[data-id="calendar-day-button"]'
+        'button:has-text("Friday")'
       ];
       
       let calendarFound = false;
       for (const selector of calendarSelectors) {
         try {
-          await page.waitForSelector(selector, { timeout: 1000 }); // Ultra-fast optimization // Reduced from 5000ms to 2000ms
+          await page.waitForSelector(selector, { timeout: 4000 }); // Increased to 4s to tolerate slow renders
           console.log(`✅ Calendar loaded successfully using selector: ${selector}`);
           calendarFound = true;
           break;

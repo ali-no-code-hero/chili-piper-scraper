@@ -367,8 +367,8 @@ export class ChiliPiperScraper {
         throw new Error('Could not find calendar elements with any of the provided selectors');
       }
 
-      // Parallel processing: open a second page to collect next week's days in parallel
-      const parallelEnabled = true;
+      // Parallel processing toggle (disabled due to added overhead); can re-enable after further tuning
+      const parallelEnabled = false;
       let collectedSlots: Record<string, { slots: string[] }>; 
 
       if (parallelEnabled) {
@@ -648,10 +648,16 @@ export class ChiliPiperScraper {
 
   private async getAvailableSlots(page: any, onDayComplete?: (dayData: { date: string; slots: string[]; totalDays: number; totalSlots: number }) => void): Promise<Record<string, { slots: string[] }>> {
     const allSlots: Record<string, { slots: string[] }> = {};
+
+    // Early-exit controls to reduce latency
+    const maxDaysEnv = parseInt(process.env.SCRAPE_MAX_DAYS || '', 10);
+    const maxSlotsEnv = parseInt(process.env.SCRAPE_MAX_SLOTS || '', 10);
+    const MAX_DAYS = Number.isFinite(maxDaysEnv) && maxDaysEnv > 0 ? maxDaysEnv : 3; // default 3 days
+    const MAX_SLOTS = Number.isFinite(maxSlotsEnv) && maxSlotsEnv > 0 ? maxSlotsEnv : 40; // default 40 slots
     
     console.log("🚀 Starting comprehensive slot collection");
-    console.log("🎯 Goal: Collect ALL available booking days (7+ days)");
-    console.log("📋 Strategy: Emulate manual browser process - collect all days from current view, then navigate");
+    console.log(`🎯 Goal: Collect up to ${MAX_DAYS} days or ${MAX_SLOTS} total slots (early-exit enabled)`);
+    console.log("📋 Strategy: Collect current view, navigate if needed; stop early when thresholds met");
 
     // Simple approach: collect from Week 1, navigate to Week 2, collect from Week 2
     const maxAttempts = 3;
@@ -661,8 +667,8 @@ export class ChiliPiperScraper {
       console.log(`=== COLLECTION ATTEMPT ${attempt}/${maxAttempts} ===`);
       console.log(`📊 Current total: ${Object.keys(allSlots).length} days`);
       
-      // Stop if we have enough
-      if (Object.keys(allSlots).length >= 7) {
+      // Stop if we have enough days
+      if (Object.keys(allSlots).length >= MAX_DAYS) {
         console.log(`🎯 Target reached! Stopping collection.`);
         break;
       }
@@ -720,10 +726,17 @@ export class ChiliPiperScraper {
                 totalSlots: totalSlots
               });
             }
+
+            // Early-exit if total slots threshold reached
+            const grandTotalSlots = Object.values(allSlots).reduce((sum, d) => sum + d.slots.length, 0);
+            if (grandTotalSlots >= MAX_SLOTS) {
+              console.log(`🎯 Slot target reached! Total slots: ${grandTotalSlots}. Stopping.`);
+              break;
+            }
           }
           
           // Stop if we have enough days
-          if (Object.keys(allSlots).length >= 7) {
+          if (Object.keys(allSlots).length >= MAX_DAYS) {
             console.log(`🎯 Target reached! Collected ${Object.keys(allSlots).length} days.`);
             break;
           }
@@ -736,13 +749,13 @@ export class ChiliPiperScraper {
       console.log(`📊 Progress: ${Object.keys(allSlots).length} total days collected (${newDaysAdded} new from this attempt)`);
       
       // If we have enough days or didn't add any new ones, stop
-      if (Object.keys(allSlots).length >= 7 || newDaysAdded === 0) {
+      if (Object.keys(allSlots).length >= MAX_DAYS || newDaysAdded === 0) {
         console.log(`✅ Collection complete. Total days: ${Object.keys(allSlots).length}`);
         break;
       }
       
       // If we still don't have enough days, navigate to next week
-      if (Object.keys(allSlots).length < 7) {
+      if (Object.keys(allSlots).length < MAX_DAYS) {
         console.log(`🔄 Only have ${Object.keys(allSlots).length} days (target: 7). Navigating to next week...`);
         
         const navSuccess = await this.navigateToNextWeek(page);

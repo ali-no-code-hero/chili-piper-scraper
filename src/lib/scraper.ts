@@ -145,7 +145,7 @@ export class ChiliPiperScraper {
       
       // Wait for page to load completely - optimized for speed
       console.log("⏳ Waiting for form to render...");
-      await page.waitForTimeout(600); // Reduced from 700ms to 600ms
+      await page.waitForTimeout(800); // Slightly increased to ensure inputs mount
       
       // Wait for any form elements to be present - reduced timeout
       try {
@@ -170,6 +170,9 @@ export class ChiliPiperScraper {
         'input[data-test-id*="FirstName"]',
         'input[data-test-id*="first-name"]',
         'input[aria-label*="first name" i]',
+        'input[aria-labelledby*="first" i]',
+        'label:has-text("First Name") ~ * input',
+        'label:has-text("First Name") + div input',
         'textbox[aria-label="First Name"]',
         'input[aria-label="First Name"]',
         'input[aria-label*="First Name" i]',

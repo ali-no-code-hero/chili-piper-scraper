@@ -1,4 +1,6 @@
-import { chromium } from 'playwright';
+import { chromium, Browser } from 'playwright';
+import { browserPool } from './browser-pool';
+import { getCalendarContextPool } from './calendar-context-pool';
 
 export interface SlotData {
   date: string;
@@ -19,9 +21,63 @@ export interface ScrapingResult {
 
 export class ChiliPiperScraper {
   private baseUrl: string;
+  private routingId: string | null = null;
+  private phoneFieldId: string;
+  private static resultCache: Map<string, { timestamp: number; result: ScrapingResult } > = new Map();
+  private static readonly CACHE_TTL_MS: number = parseInt(process.env.SCRAPE_CACHE_TTL_MS || '60000', 10);
 
   constructor(formUrl?: string) {
     this.baseUrl = formUrl || process.env.CHILI_PIPER_FORM_URL || "https://cincpro.chilipiper.com/concierge-router/link/lp-request-a-demo-agent-advice";
+    
+    // Extract routing ID from environment, URL, or leave null for form-based approach
+    this.routingId = process.env.CHILI_PIPER_ROUTING_ID || null;
+    
+    // If no routing ID in env, try to extract from URL if it's already in routing format
+    if (!this.routingId && this.baseUrl.includes('/routing/')) {
+      const match = this.baseUrl.match(/\/routing\/([^/?]+)/);
+      if (match) {
+        this.routingId = match[1];
+        // Normalize baseUrl to remove routing part for consistency
+        this.baseUrl = this.baseUrl.replace(/\/routing\/[^/?]+/, '/link/');
+        console.log(`📋 Extracted routing ID from URL: ${this.routingId}`);
+      }
+    }
+    
+    // Phone field ID from HTML (aa1e0f82-816d-478f-bf04-64a447af86b3) - can be overridden via env
+    this.phoneFieldId = process.env.CHILI_PIPER_PHONE_FIELD_ID || 'aa1e0f82-816d-478f-bf04-64a447af86b3';
+  }
+
+  /**
+   * Builds a parameterized URL that skips form filling by passing data as query params
+   * Format: base-url?PersonFirstName=...&PersonLastName=...&PersonEmail=...&phoneParam=...
+   * Example: https://cincpro.chilipiper.com/concierge-router/link/lp-request-a-demo-agent-advice?PersonFirstName=Ali&PersonLastName=Syed&PersonEmail=ali@example.com
+   */
+  private buildParameterizedUrl(firstName: string, lastName: string, email: string, phone: string): string {
+    // Always use the simple prefill format - just add query params to base URL
+    const urlParts = new URL(this.baseUrl);
+    
+    // Build query parameters (prefill form fields)
+    const params = new URLSearchParams({
+      PersonFirstName: firstName,
+      PersonLastName: lastName,
+      PersonEmail: email,
+    });
+
+    // Add phone field - use the field ID from HTML as the parameter name
+    // Field ID: aa1e0f82-816d-478f-bf04-64a447af86b3 (can be overridden via CHILI_PIPER_PHONE_FIELD_ID)
+    // Phone should start with + if not already present
+    const phoneValue = phone.startsWith('+') ? phone : `+${phone}`;
+    params.append(this.phoneFieldId, phoneValue);
+
+    // Append params to existing URL params (if any)
+    const existingParams = new URLSearchParams(urlParts.search);
+    for (const [key, value] of params.entries()) {
+      existingParams.set(key, value);
+    }
+
+    const finalUrl = `${urlParts.origin}${urlParts.pathname}?${existingParams.toString()}`;
+    console.log(`🔗 Built prefill URL (form filling skipped): ${finalUrl.substring(0, 150)}...`);
+    return finalUrl;
   }
 
   /**
@@ -98,6 +154,26 @@ export class ChiliPiperScraper {
     }
   }
 
+  /**
+   * Validates that a time slot string is in the correct format and filters out malformed entries
+   */
+  private isValidTimeSlot(timeSlot: string): boolean {
+    const trimmed = timeSlot.trim();
+    // Reject empty strings
+    if (!trimmed) return false;
+    // Reject strings that contain unwanted patterns like timezone info
+    // Examples: "coordinated universal time", "Central Daylight Time (02:34 PM)", etc.
+    if (/coordinated|universal\s+time|time\s+zone|daylight\s+time|standard\s+time|\(.*\)/i.test(trimmed)) {
+      return false;
+    }
+    // Reject strings longer than reasonable time format (e.g., "9:30 AM" should be max ~12 chars)
+    if (trimmed.length > 12) {
+      return false;
+    }
+    // Must match standard time pattern like "9:30 AM" or "09:30 PM" or "2:45 PM"
+    return /\d{1,2}:\d{2}\s?(AM|PM)/i.test(trimmed);
+  }
+
   async scrapeSlots(
     firstName: string,
     lastName: string,
@@ -116,172 +192,84 @@ export class ChiliPiperScraper {
       }
 
       console.log(`🎯 Starting scrape for ${firstName} ${lastName} (${email})`);
+      const strictMode = (process.env.STRICT_SELECTORS || '').toLowerCase() === 'true';
       
-      const browser = await chromium.launch({
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-dev-shm-usage'
-        ]
-      });
+      // Build parameterized URL to skip form filling (much faster!)
+      // Always use prefill URL format - just adds query params to base URL
+      const targetUrl = this.buildParameterizedUrl(firstName, lastName, email, phone);
+      const useParameterizedUrl = true; // Always use prefill URLs for faster scraping
+      
+      // Short-lived cache check (use parameterized URL for cache key if available)
+      const cacheKey = useParameterizedUrl ? targetUrl : `${this.baseUrl}`;
+      const cached = ChiliPiperScraper.resultCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < ChiliPiperScraper.CACHE_TTL_MS) {
+        console.log('🗃️ Returning cached result');
+        return cached.result;
+      }
 
-      const page = await browser.newPage();
-      
-      // Optimize page settings - reduced timeout for faster failures
-      page.setDefaultNavigationTimeout(30000); // Reduced from 60000ms for faster timeouts
-      await page.route("**/*", (route) => {
-        if (route.request().resourceType() === "image" || 
-            route.request().resourceType() === "stylesheet" || 
-            route.request().resourceType() === "font") {
+      // Try warm post-form calendar context first (only if not using parameterized URL)
+      const calendarPool = getCalendarContextPool(this.baseUrl);
+      let page: any | null = null;
+      if (!useParameterizedUrl && calendarPool.isReady()) {
+        page = await calendarPool.getCalendarPage();
+      }
+
+      // Use browser pool directly if no warm context
+      const browser = await browserPool.getBrowser();
+      if (!page) {
+        page = await browser.newPage();
+      }
+      page.setDefaultNavigationTimeout(20000);
+      // Aggressive resource blocking
+      await page.route("**/*", (route: any) => {
+        const url = route.request().url();
+        const rt = route.request().resourceType();
+        if (rt === 'image' || rt === 'stylesheet' || rt === 'font' || rt === 'media' ||
+            url.includes('google-analytics') || url.includes('googletagmanager') || url.includes('analytics') ||
+            url.includes('facebook.net') || url.includes('doubleclick') || url.includes('ads') || url.includes('tracking') ||
+            url.includes('pixel') || url.includes('beacon')) {
           route.abort();
-        } else {
-          route.continue();
+          return;
         }
+        route.continue();
       });
-
-      console.log(`Navigating to: ${this.baseUrl}`);
-      // Use 'domcontentloaded' instead of 'networkidle' for faster loading (saves 5-8 seconds)
-      await page.goto(this.baseUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       
-      // Wait for page to load completely - optimized for speed
-      console.log("⏳ Waiting for form to render...");
-      await page.waitForTimeout(800); // Slightly increased to ensure inputs mount
-      
-      // Wait for any form elements to be present - reduced timeout
-      try {
-        await page.waitForSelector('input, textbox, [data-test-id*="Field"], form', { timeout: 2000 });
-        console.log("✅ Form elements detected on page");
-      } catch (error) {
-        console.log("⚠️ No form elements found with initial check, proceeding anyway...");
+      // Navigate to parameterized URL or base URL
+      if (!useParameterizedUrl && !calendarPool.isReady()) {
+        await page.goto(this.baseUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      } else if (useParameterizedUrl) {
+        console.log(`🚀 Navigating directly to parameterized URL (skipping form)`);
+        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
       }
       
-      // Try multiple selectors for form fields
-      console.log("🔍 Looking for form fields...");
+      // Wait for page to be ready - check for any form elements or submit button
+      try {
+        await page.waitForSelector('input, button[type="submit"], [data-test-id*="Field"], form', { timeout: 3000 });
+      } catch {
+        // Page may already be on calendar, continue
+      }
       
-      // Try different selectors for First Name (based on actual Chili Piper form)
-      // Added more comprehensive selectors including role-based and label-based
-      const firstNameSelectors = [
-        '[data-test-id="GuestFormField-PersonFirstName"]',
-        '[data-test-id*="FirstName"]',
-        '[data-test-id*="first-name"]',
-        '[data-test-id*="firstname"]',
-        '[data-test-id*="First"]',
-        'input[data-test-id="GuestFormField-PersonFirstName"]',
-        'input[data-test-id*="FirstName"]',
-        'input[data-test-id*="first-name"]',
-        'input[aria-label*="first name" i]',
-        'input[aria-labelledby*="first" i]',
-        'label:has-text("First Name") ~ * input',
-        'label:has-text("First Name") + div input',
-        'textbox[aria-label="First Name"]',
-        'input[aria-label="First Name"]',
-        'input[aria-label*="First Name" i]',
-        'textbox:has-text("First Name")',
-        'input:has-text("First Name")',
-        'input[name="FirstName"]',
-        'input[name="first_name"]',
-        'input[name="firstName"]',
-        'input[name*="first" i]',
-        'input[placeholder*="First" i]',
-        'input[placeholder*="first" i]',
-        'input[id*="first" i]',
-        'input[id*="First"]',
-        'input[type="text"]:near(:text("First Name"), 50)',
-        '[role="textbox"][aria-label*="First" i]'
-      ];
+      // Note: We always use prefill URLs now, so warm calendar context is not used
+
+      // Skip form filling entirely - form is pre-filled via URL params
+      // Only need to click Submit button
+      console.log("⚡ Using prefill URL - form fields are already filled!");
+      // Wait for form to be visible (indicates prefill has loaded)
+      try {
+        await page.waitForSelector('input, form, [data-test-id*="Field"]', { timeout: 2000 });
+      } catch {
+        // Form might not be visible if page went directly to calendar
+      }
       
-      const lastNameSelectors = [
-        '[data-test-id="GuestFormField-PersonLastName"]',
-        '[data-test-id*="LastName"]',
-        '[data-test-id*="last-name"]',
-        '[data-test-id*="lastname"]',
-        '[data-test-id*="Last"]',
-        'input[data-test-id="GuestFormField-PersonLastName"]',
-        'input[data-test-id*="LastName"]',
-        'input[data-test-id*="last-name"]',
-        'textbox[aria-label="Last Name"]',
-        'input[aria-label="Last Name"]',
-        'input[aria-label*="Last Name" i]',
-        'input[aria-label*="last name" i]',
-        'textbox:has-text("Last Name")',
-        'input:has-text("Last Name")',
-        'input[name="LastName"]',
-        'input[name="last_name"]',
-        'input[name="lastName"]',
-        'input[name*="last" i]',
-        'input[placeholder*="Last" i]',
-        'input[placeholder*="last" i]',
-        'input[id*="last" i]',
-        'input[id*="Last" i]',
-        '[role="textbox"][aria-label*="Last" i]'
-      ];
-      
-      const emailSelectors = [
-        '[data-test-id="GuestFormField-PersonEmail"]',
-        '[data-test-id*="Email"]',
-        '[data-test-id*="email"]',
-        'input[data-test-id="GuestFormField-PersonEmail"]',
-        'input[data-test-id*="Email"]',
-        'textbox[aria-label="Email"]',
-        'input[aria-label="Email"]',
-        'input[aria-label*="Email" i]',
-        'input[aria-label*="email" i]',
-        'textbox:has-text("Email")',
-        'input:has-text("Email")',
-        'input[name="Email"]',
-        'input[name="email"]',
-        'input[name*="email" i]',
-        'input[type="email"]',
-        'input[placeholder*="email" i]',
-        'input[placeholder*="Email" i]',
-        'input[id*="email" i]',
-        'input[id*="Email" i]',
-        '[role="textbox"][aria-label*="Email" i]'
-      ];
-      
-      const phoneSelectors = [
-        '[data-test-id="PhoneField-input"]',
-        '[data-test-id*="Phone"]',
-        '[data-test-id*="phone"]',
-        'input[data-test-id="PhoneField-input"]',
-        'input[data-test-id*="Phone"]',
-        'textbox[aria-label="Phone number"]',
-        'input[aria-label="Phone number"]',
-        'input[aria-label*="Phone number" i]',
-        'input[aria-label*="phone number" i]',
-        'input[aria-label*="Phone" i]',
-        'textbox:has-text("Phone number")',
-        'input:has-text("Phone number")',
-        'input[name="Phone"]',
-        'input[name="phone"]',
-        'input[name="PhoneNumber"]',
-        'input[name="phone_number"]',
-        'input[name*="phone" i]',
-        'input[type="tel"]',
-        'input[placeholder*="phone" i]',
-        'input[placeholder*="Phone" i]',
-        'input[id*="phone" i]',
-        'input[id*="Phone" i]',
-        '[role="textbox"][aria-label*="Phone" i]'
-      ];
-      
-      // Fill form fields with fallback selectors
-      await this.fillFieldWithFallback(page, firstNameSelectors, firstName, 'First Name');
-      await this.fillFieldWithFallback(page, lastNameSelectors, lastName, 'Last Name');
-      await this.fillFieldWithFallback(page, emailSelectors, email, 'Email');
-      await this.fillFieldWithFallback(page, phoneSelectors, phone, 'Phone');
-      
-      // Click the submit button with fallback selectors
+      // Now just click Submit button (form fields are pre-filled via URL)
       const submitSelectors = [
         'button[type="submit"]',
         'input[type="submit"]',
         'button:has-text("Submit")',
         'button:has-text("Continue")',
-        'button:has-text("Next")',
-        'button:has-text("Book")',
-        'button:has-text("Schedule")',
-        '[data-testid*="submit"]',
-        '[data-testid*="continue"]',
+        '[data-test-id="GuestForm-submit-button"]',
+        'button[data-test-id*="submit"]',
+        'button[data-test-id*="continue"]',
         '.submit-button',
         '.continue-button'
       ];
@@ -289,8 +277,8 @@ export class ChiliPiperScraper {
       let submitClicked = false;
       for (const selector of submitSelectors) {
         try {
-          console.log(`🔍 Trying submit selector: ${selector}`);
-          await page.waitForSelector(selector, { timeout: 1000 }); // Ultra-fast optimization
+          console.log(`🔍 Looking for submit button: ${selector}`);
+          await page.waitForSelector(selector, { timeout: 2000 });
           await page.click(selector);
           console.log(`✅ Successfully clicked submit button using selector: ${selector}`);
           submitClicked = true;
@@ -302,17 +290,33 @@ export class ChiliPiperScraper {
       }
       
       if (!submitClicked) {
-        throw new Error('Could not find submit button with any of the provided selectors');
+        console.log("⚠️ Submit button not found - page may have auto-submitted or gone directly to calendar");
+      } else {
+        console.log("✅ Form submitted (fields were pre-filled via URL)");
+        // Wait for page to transition after submit
+        try {
+          await page.waitForSelector('[data-test-id="ConciergeLiveBox-book"], [data-id="concierge-live-book"], button[data-test-id*="schedule"], [data-id="calendar-day-button"]', { timeout: 3000 });
+        } catch {
+          // Page may have already transitioned
+        }
       }
       
-      console.log("Form submitted successfully");
-      
       // Wait for the intermediate step (call now vs schedule meeting) - optimized
+      // This step happens whether using parameterized URL or form filling
       console.log("⏳ Waiting for call/schedule choice page...");
-      await page.waitForTimeout(25); // Reduced from 50ms
+      // Wait for schedule button or calendar to appear
+      try {
+        await page.waitForSelector('[data-test-id="ConciergeLiveBox-book"], [data-id="concierge-live-book"], [data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 2000 });
+      } catch {
+        // Page may have already loaded calendar
+      }
       
-      // Look for "Schedule a meeting" or similar options
+      // Look for "Schedule a meeting" or similar options (optional - sometimes page goes directly to calendar)
+      // Based on HTML: data-test-id="ConciergeLiveBox-book" or data-id="concierge-live-book"
+      // This is needed for both parameterized URLs and form-based flows
       const scheduleSelectors = [
+        '[data-test-id="ConciergeLiveBox-book"]',
+        '[data-id="concierge-live-book"]',
         'button:has-text("Schedule a meeting")',
         'button:has-text("Schedule")',
         'button:has-text("Book a meeting")',
@@ -321,11 +325,12 @@ export class ChiliPiperScraper {
         'button[data-test-id*="schedule"]'
       ];
       
+      // Check for schedule button (page might go directly to calendar, or show schedule option)
       let scheduleClicked = false;
       for (const selector of scheduleSelectors) {
         try {
           console.log(`🔍 Looking for schedule button: ${selector}`);
-          await page.waitForSelector(selector, { timeout: 1000 }); // Ultra-fast optimization // Reduced from 3000ms
+          await page.waitForSelector(selector, { timeout: 1000 });
           await page.click(selector);
           console.log(`✅ Successfully clicked schedule button using selector: ${selector}`);
           scheduleClicked = true;
@@ -336,35 +341,44 @@ export class ChiliPiperScraper {
         }
       }
       
+      // Wait for calendar page to load (whether we clicked schedule or went directly to calendar)
       if (scheduleClicked) {
         console.log("✅ Proceeding to schedule a meeting");
-        // Wait for the calendar page to load after clicking schedule - optimized
-        console.log("⏳ Waiting for calendar to load...");
-        await page.waitForTimeout(100); // Reduced from 200ms
-        console.log("✅ Calendar should be fully loaded now");
+        // Wait for calendar elements to appear
+        try {
+          await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 3000 });
+        } catch {
+          // Calendar might already be visible
+        }
       } else {
-        console.log("⚠️ No schedule button found, assuming we're already on calendar page");
-        // Wait for the calendar page to load - optimized
-        console.log("⏳ Waiting for calendar to load...");
-        await page.waitForTimeout(100); // Reduced from 200ms
-        console.log("✅ Calendar should be fully loaded now");
+        console.log("ℹ️ No schedule button found - page may have gone directly to calendar");
+        // Wait for calendar elements to appear
+        try {
+          await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 3000 });
+        } catch {
+          // Calendar might already be visible
+        }
       }
       
-      // Wait for calendar elements with multiple possible selectors
-      const calendarSelectors = [
-        '[data-test-id*="calendar"]',
-        '[data-id="calendar"]',
-        'div[aria-label*="Calendar" i]',
-        '[role="grid"]',
-        'button[data-test-id*="days:"]',
-        '[data-test-id*="day"]',
-        '[data-id="calendar-day-button"]',
-        'button:has-text("Monday")',
-        'button:has-text("Tuesday")',
-        'button:has-text("Wednesday")',
-        'button:has-text("Thursday")',
-        'button:has-text("Friday")'
-      ];
+      // Wait for calendar elements - prioritize selectors based on actual HTML structure
+      // HTML shows: data-id="calendar-day-button" and data-test-id="days:Oct/Fri Oct 31 2025..."
+      const calendarSelectors = strictMode
+        ? ['[data-id="calendar-day-button"]', 'button[data-test-id^="days:"]']
+        : [
+            '[data-id="calendar-day-button"]', // Most reliable based on HTML
+            'button[data-test-id^="days:"]', // Exact match from HTML: days:Oct/Fri Oct 31...
+            '[data-id="calendar-day-button-selected"]', // Selected day variant
+            '[data-test-id*="calendar"]',
+            '[data-id="calendar"]',
+            'div[aria-label*="Calendar" i]',
+            '[role="grid"]',
+            '[data-test-id*="day"]',
+            'button:has-text("Monday")',
+            'button:has-text("Tuesday")',
+            'button:has-text("Wednesday")',
+            'button:has-text("Thursday")',
+            'button:has-text("Friday")'
+          ];
       
       let calendarFound = false;
       let calendarContext: any = page;
@@ -380,6 +394,24 @@ export class ChiliPiperScraper {
         }
       }
       
+      if (!calendarFound) {
+        // Retry once - wait for calendar to stabilize
+        console.log('🔁 Calendar not found, retrying detection once...');
+        try {
+          await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 2000 });
+        } catch {
+          // Continue even if not found
+        }
+        for (const selector of calendarSelectors) {
+          try {
+            await page.waitForSelector(selector, { timeout: 4000 });
+            console.log(`✅ Calendar loaded on retry using selector: ${selector}`);
+            calendarFound = true;
+            break;
+          } catch {}
+        }
+      }
+
       if (!calendarFound) {
         try {
           const frames = page.frames();
@@ -399,124 +431,77 @@ export class ChiliPiperScraper {
       }
       
       if (!calendarFound) {
-        throw new Error('Could not find calendar elements with any of the provided selectors');
-      }
-
-      // Parallel processing toggle via environment flag for safe rollout/rollback
-      // Enable by setting SCRAPE_ENABLE_CONCURRENT_DAYS=true
-      const parallelEnabled = (process.env.SCRAPE_ENABLE_CONCURRENT_DAYS || '').toLowerCase() === 'true';
-      let collectedSlots: Record<string, { slots: string[] }>; 
-
-      if (parallelEnabled) {
-        console.log('⚡ Starting parallel collection using two pages...');
-        const page2 = await browser.newPage();
-        page2.setDefaultNavigationTimeout(30000);
-        await page2.route("**/*", (route) => {
-          if (route.request().resourceType() === "image" ||
-              route.request().resourceType() === "stylesheet" ||
-              route.request().resourceType() === "font") {
-            route.abort();
-          } else {
-            route.continue();
-          }
-        });
-
-        // Navigate page2 to calendar and move to next week
-        await page2.goto(this.baseUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        await page2.waitForTimeout(1000);
+        // Final fallback: wait for day buttons broadly (5s)
         try {
-          await page2.waitForSelector('input, textbox, [data-test-id*="Field"], form', { timeout: 3000 });
+          await page.waitForSelector('button[data-test-id*="days:"], [data-id="calendar-day-button"], [data-test-id*="day"]', { timeout: 5000 });
+          console.log('✅ Fallback: detected day buttons without calendar container');
+          calendarFound = true;
+          calendarContext = page;
         } catch {}
-
-        // Reuse selectors to fill page2
-        await this.fillFieldWithFallback(page2, firstNameSelectors, firstName, 'First Name');
-        await this.fillFieldWithFallback(page2, lastNameSelectors, lastName, 'Last Name');
-        await this.fillFieldWithFallback(page2, emailSelectors, email, 'Email');
-        await this.fillFieldWithFallback(page2, phoneSelectors, phone, 'Phone');
-
-        let submit2 = false;
-        for (const selector of submitSelectors) {
-          try {
-            await page2.waitForSelector(selector, { timeout: 1000 });
-            await page2.click(selector);
-            submit2 = true; break;
-          } catch {}
-        }
-        if (!submit2) {
-          throw new Error('Could not find submit button on parallel page');
-        }
-        await page2.waitForTimeout(50);
-
-        let scheduled2 = false;
-        for (const selector of scheduleSelectors) {
-          try {
-            await page2.waitForSelector(selector, { timeout: 1000 });
-            await page2.click(selector);
-            scheduled2 = true; break;
-          } catch {}
-        }
-        if (!scheduled2) {
-          await page2.waitForTimeout(100);
-        }
-
-        // Ensure calendar visible on page2
-        for (const selector of calendarSelectors) {
-          try { await page2.waitForSelector(selector, { timeout: 1000 }); break; } catch {}
-        }
-
-        // Move page2 to next week to diversify days
-        await this.navigateToNextWeek(page2);
-
-        // Collect enabled day buttons on both pages in parallel
-        const [buttonsWeek1, buttonsWeek2] = await Promise.all([
-          this.getAllEnabledDayButtons(page),
-          this.getAllEnabledDayButtons(page2)
-        ]);
-
-        const allSlots: Record<string, { slots: string[] }> = {};
-        const processButtons = async (pg: any, buttons: Array<{ button: any; dateKey: string }>) => {
-          for (const buttonInfo of buttons) {
-            const dateKey = buttonInfo.dateKey;
-            if (allSlots[dateKey]) continue;
-            try {
-              await buttonInfo.button.click();
-              await pg.waitForTimeout(25);
-              const slots = await this.getTimeSlotsForCurrentDay(pg);
-              if (slots.length > 0) {
-                allSlots[dateKey] = { slots };
-                if (onDayComplete) {
-                  const formattedDate = this.formatDate(dateKey);
-                  const totalSlots = Object.values(allSlots).reduce((sum, d) => sum + d.slots.length, 0);
-                  onDayComplete({ date: formattedDate, slots, totalDays: Object.keys(allSlots).length, totalSlots });
-                }
-              }
-              if (Object.keys(allSlots).length >= 7) break;
-            } catch (e) {
-              continue;
-            }
-          }
-        };
-
-        await Promise.all([
-          processButtons(page, buttonsWeek1),
-          processButtons(page2, buttonsWeek2)
-        ]);
-
-        collectedSlots = allSlots;
-        await page2.close();
-      } else {
-        collectedSlots = await this.getAvailableSlots(calendarContext, onDayComplete);
       }
+
+      if (!calendarFound) {
+        // Give it one more try with a longer wait - sometimes calendar takes a moment to render
+        console.log('⏳ Calendar not found initially, waiting a bit longer and retrying...');
+        // Wait for calendar to render
+        try {
+          await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 3000 });
+        } catch {
+          // Continue even if wait fails
+        }
+        for (const selector of calendarSelectors) {
+          try {
+            await page.waitForSelector(selector, { timeout: 3000 });
+            console.log(`✅ Calendar found on retry using selector: ${selector}`);
+            calendarFound = true;
+            calendarContext = page;
+            break;
+          } catch {}
+        }
+        
+        // Also check for day buttons in iframes
+        if (!calendarFound) {
+          try {
+            const frames = page.frames();
+            for (const frame of frames) {
+              try {
+                await frame.waitForSelector('button[data-test-id*="days:"], [data-id="calendar-day-button"]', { timeout: 2000 });
+                console.log(`✅ Calendar found in iframe`);
+                calendarFound = true;
+                calendarContext = frame;
+                break;
+              } catch {}
+            }
+          } catch {}
+        }
+        
+        if (!calendarFound) {
+          throw new Error('Could not find calendar elements with any of the provided selectors');
+        }
+      }
+
+      // Collect slots using sequential collection (fastest and most reliable)
+      const collectedSlots = await this.getAvailableSlots(calendarContext, onDayComplete);
 
       const slots = collectedSlots;
 
-      await browser.close();
-      
+      // Close page to free resources
+      try {
+        await page.close();
+      } catch (e) {
+        // Ignore if already closed
+      }
+
       // Flatten the slots into the requested format
       const flattenedSlots: SlotData[] = [];
       for (const [dateKey, dayInfo] of Object.entries(slots)) {
         const formattedDate = this.formatDate(dateKey);
         for (const timeSlot of dayInfo.slots) {
+          // Filter out malformed time slots (e.g., "coordinated universal time (09:31 PM)")
+          if (!this.isValidTimeSlot(timeSlot)) {
+            console.log(`⚠️ Filtering out invalid time slot: "${timeSlot}"`);
+            continue;
+          }
           flattenedSlots.push({
             date: formattedDate,
             time: timeSlot,
@@ -534,6 +519,11 @@ export class ChiliPiperScraper {
           slots: flattenedSlots
         }
       };
+
+      // Cache result briefly for repeated identical requests
+      try {
+        ChiliPiperScraper.resultCache.set(cacheKey, { timestamp: Date.now(), result });
+      } catch {}
 
       console.log(`✅ Scraping completed successfully: ${flattenedSlots.length} slots across ${Object.keys(slots).length} days`);
       // Restore logger before returning
@@ -692,6 +682,125 @@ export class ChiliPiperScraper {
     throw new Error(`Could not find ${fieldName} field with any of the provided selectors`);
   }
 
+  /**
+   * Extract slots from all visible days in a single DOM query (MUCH faster than clicking each day!)
+   * This method tries to read slot data directly from the DOM without clicking buttons.
+   */
+  private async extractAllVisibleDaySlots(pageOrFrame: any, dayButtons: Array<{ button: any; dateKey: string }>): Promise<Record<string, { slots: string[] }>> {
+    const result: Record<string, { slots: string[] }> = {};
+    const contexts: any[] = [pageOrFrame];
+    
+    // Build contexts (page + iframes)
+    try {
+      if (pageOrFrame.frames) {
+        const frames = pageOrFrame.frames();
+        contexts.push(...frames);
+      }
+    } catch {}
+    
+    console.log(`⚡ Attempting parallel extraction from ${dayButtons.length} visible days...`);
+    
+    // Try to extract all slots in a single DOM query using page.evaluate()
+    for (const ctx of contexts) {
+      try {
+        const extracted = await ctx.evaluate((dateKeys: string[]) => {
+          const slotsByDate: Record<string, string[]> = {};
+          
+          // Helper to check if text looks like a time slot
+          const isTimeSlot = (text: string): boolean => {
+            const trimmed = text.trim();
+            return /\d{1,2}:\d{2}\s?(AM|PM)/i.test(trimmed) && trimmed.length < 10;
+          };
+          
+          // Strategy 1: Look for slots grouped by date in data attributes or aria-labels
+          const allButtons = Array.from(document.querySelectorAll('button, [role="button"]')) as HTMLElement[];
+          const slotButtons: Array<{ text: string; date?: string }> = [];
+          
+          for (const btn of allButtons) {
+            const text = (btn.innerText || btn.textContent || '').trim();
+            if (!isTimeSlot(text)) continue;
+            
+            // Try to find associated date from nearby elements or data attributes
+            let associatedDate: string | undefined;
+            
+            // Check data attributes
+            const dateAttr = btn.getAttribute('data-date') || 
+                           btn.getAttribute('data-day') ||
+                           btn.getAttribute('aria-label')?.match(/(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)[^\s]*\s+\d+/)?.[0];
+            
+            if (dateAttr) {
+              associatedDate = dateAttr;
+            } else {
+              // Try to find date from parent container
+              let parent = btn.parentElement;
+              for (let i = 0; i < 5 && parent; i++) {
+                const parentText = parent.getAttribute('aria-label') || parent.getAttribute('data-date') || '';
+                const dateMatch = parentText.match(/(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)[^\s]*\s+\d+/i);
+                if (dateMatch) {
+                  associatedDate = dateMatch[0];
+                  break;
+                }
+                parent = parent.parentElement;
+              }
+            }
+            
+            slotButtons.push({ text, date: associatedDate });
+          }
+          
+          // Strategy 2: If we found slots but no dates, collect all unique slots
+          // (they might all be for the currently selected day)
+          if (slotButtons.length > 0) {
+            // Group by date if available, otherwise put all in a single array
+            for (const slot of slotButtons) {
+              const dateKey = slot.date || 'current';
+              if (!slotsByDate[dateKey]) {
+                slotsByDate[dateKey] = [];
+              }
+              if (!slotsByDate[dateKey].includes(slot.text)) {
+                slotsByDate[dateKey].push(slot.text);
+              }
+            }
+          }
+          
+          return slotsByDate;
+        }, dayButtons.map(db => db.dateKey));
+        
+        // If we extracted slots, try to match them with day buttons
+        if (Object.keys(extracted).length > 0) {
+          console.log(`✅ Extracted slots from DOM for ${Object.keys(extracted).length} date groups`);
+          
+          // If we have a 'current' group, it's likely for the selected day
+          // Try to match with the first day button or distribute across visible days
+          if (extracted['current'] && extracted['current'].length > 0) {
+            // This might be slots for the currently selected day
+            // We'll need to click to get slots for other days, but this gives us a head start
+            console.log(`📊 Found ${extracted['current'].length} slots for current selection`);
+            // Don't add to result yet - we'll handle this in the main loop
+          }
+          
+          // Add any date-matched slots
+          for (const [dateKey, slots] of Object.entries(extracted)) {
+            if (dateKey !== 'current' && Array.isArray(slots) && slots.length > 0) {
+              result[dateKey] = { slots: slots as string[] };
+            }
+          }
+          
+          // If we found date-matched slots, return early (success!)
+          if (Object.keys(result).length > 0) {
+            return result;
+          }
+        }
+      } catch (error) {
+        console.log(`⚠️ DOM extraction failed in context: ${error}`);
+        continue;
+      }
+    }
+    
+    // If DOM extraction didn't work, return empty (fallback to clicking method)
+    console.log(`⚠️ Parallel extraction found no slots - will fall back to sequential clicking`);
+    return result;
+  }
+
   private async getAvailableSlots(page: any, onDayComplete?: (dayData: { date: string; slots: string[]; totalDays: number; totalSlots: number }) => void): Promise<Record<string, { slots: string[] }>> {
     const allSlots: Record<string, { slots: string[] }> = {};
 
@@ -701,13 +810,13 @@ export class ChiliPiperScraper {
     const MAX_DAYS = Number.isFinite(maxDaysEnv) && maxDaysEnv > 0 ? maxDaysEnv : 7; // default 7 days
     const MAX_SLOTS = Number.isFinite(maxSlotsEnv) && maxSlotsEnv > 0 ? maxSlotsEnv : Number.MAX_SAFE_INTEGER; // default unlimited
     
-    console.log("🚀 Starting comprehensive slot collection");
+    console.log("🚀 Starting optimized slot collection (parallel extraction mode)");
     console.log(`🎯 Goal: Collect up to ${MAX_DAYS} days or ${MAX_SLOTS} total slots (early-exit enabled)`);
-    console.log("📋 Strategy: Collect current view, navigate if needed; stop early when thresholds met");
 
-    // Collect across multiple weeks until targets met
-    const maxAttempts = 8;
+    // Collect across multiple weeks until targets met - reduced attempts since we only need 7 days
+    const maxAttempts = 3; // Reduced from 12 - 7 days usually available in first week or two
     
+    let lastDateKeysSig = '';
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       console.log(`\n=====================================`);
       console.log(`=== COLLECTION ATTEMPT ${attempt}/${maxAttempts} ===`);
@@ -719,101 +828,134 @@ export class ChiliPiperScraper {
         break;
       }
       
-      console.log(`⏳ Waiting for calendar to be ready...`);
-      await page.waitForTimeout(50); // Optimized - reduced from 100ms
+      // Wait for day buttons to be rendered before collecting them
+      try {
+        await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 2000 });
+      } catch {
+        // Continue even if wait fails - buttons might already be present
+      }
       
-      // Get ALL enabled day buttons from the current calendar view (Week 1 AND Week 2)
+      // Get ALL enabled day buttons from the current calendar view
       const dayButtons = await this.getAllEnabledDayButtons(page);
       console.log(`📅 Found ${dayButtons.length} total enabled day buttons in current view`);
       
       // Log the date keys to see what we're getting
       const dateKeys = dayButtons.map(db => db.dateKey);
       console.log(`📋 Button dates: ${dateKeys.join(', ')}`);
+      const dateSig = dateKeys.join('|');
       
       if (dayButtons.length === 0) {
         console.log("❌ No enabled day buttons found. This is unexpected.");
         break;
       }
 
-      // Process ALL enabled day buttons (this collects both weeks at once!)
+      // Process all days sequentially for stability and speed
       let newDaysAdded = 0;
-      for (const buttonInfo of dayButtons) {
-        try {
-          const dateKey = buttonInfo.dateKey;
-          
-          // Skip if we already have this date
-          if (allSlots[dateKey]) {
-            console.log(`⏭️ Skipping ${dateKey} - already collected`);
-            continue;
-          }
-          
-          // Click the button to see its slots
-          console.log(`🖱️ Clicking ${dateKey}...`);
-          await buttonInfo.button.click();
-          await page.waitForTimeout(10); // Reduced from 25ms
-          
-          // Get time slots for this day
-          const slots = await this.getTimeSlotsForCurrentDay(page);
-          console.log(`📊 Got ${slots.length} slots for ${dateKey}`);
-          
-          if (slots.length > 0) {
-            allSlots[dateKey] = { slots };
-            newDaysAdded++;
-            console.log(`✅ Added ${dateKey}: ${slots.length} slots (total days: ${Object.keys(allSlots).length})`);
-            
-            // Call the streaming callback if provided
-            if (onDayComplete) {
-              const totalSlots = Object.values(allSlots).reduce((sum, day) => sum + day.slots.length, 0);
-              const formattedDate = this.formatDate(dateKey);
-              onDayComplete({
-                date: formattedDate,
-                slots: slots,
-                totalDays: Object.keys(allSlots).length,
-                totalSlots: totalSlots
-              });
-            }
-
-            // Early-exit if total slots threshold reached
-            const grandTotalSlots = Object.values(allSlots).reduce((sum, d) => sum + d.slots.length, 0);
-            if (grandTotalSlots >= MAX_SLOTS) {
-              console.log(`🎯 Slot target reached! Total slots: ${grandTotalSlots}. Stopping.`);
-              break;
-            }
-          }
-          
-          // Stop if we have enough days
+      // Filter out days that have already been collected
+      const remainingDays = dayButtons.filter(db => !allSlots[db.dateKey]);
+      
+      if (remainingDays.length > 0 && Object.keys(allSlots).length < MAX_DAYS) {
+        console.log(`🖱️ Processing ${remainingDays.length} days sequentially...`);
+        
+        // Process days one at a time for maximum stability
+        for (const buttonInfo of remainingDays) {
+          // Check if we've reached our target before processing next day
           if (Object.keys(allSlots).length >= MAX_DAYS) {
             console.log(`🎯 Target reached! Collected ${Object.keys(allSlots).length} days.`);
             break;
           }
-        } catch (error) {
-          console.log(`❌ Error processing day button: ${error}`);
-          continue;
+          
+          try {
+            const dateKey = buttonInfo.dateKey;
+            
+            if (allSlots[dateKey]) {
+              continue;
+            }
+            
+            console.log(`🖱️ Clicking day: ${dateKey}`);
+            // Click the day button
+            await buttonInfo.button.click();
+            
+            // Wait for slot buttons to appear after clicking day button
+            try { 
+              await page.waitForSelector('button[data-test-id^="slot-"], [data-id="calendar-slot"]', { timeout: 1000 }); 
+            } catch {
+              // Slots might already be visible or this day has no slots
+            }
+            
+            // Get time slots for this day
+            const slots = await this.getTimeSlotsForCurrentDay(page);
+            
+            if (slots.length > 0) {
+              allSlots[dateKey] = { slots };
+              newDaysAdded++;
+              console.log(`✅ Added ${dateKey}: ${slots.length} slots (total days: ${Object.keys(allSlots).length})`);
+              
+              if (onDayComplete) {
+                const totalSlots = Object.values(allSlots).reduce((sum, day) => sum + day.slots.length, 0);
+                const formattedDate = this.formatDate(dateKey);
+                onDayComplete({
+                  date: formattedDate,
+                  slots: slots,
+                  totalDays: Object.keys(allSlots).length,
+                  totalSlots: totalSlots
+                });
+              }
+
+              // Early-exit if total slots threshold reached
+              const grandTotalSlots = Object.values(allSlots).reduce((sum, d) => sum + d.slots.length, 0);
+              if (grandTotalSlots >= MAX_SLOTS) {
+                console.log(`🎯 Slot target reached! Total slots: ${grandTotalSlots}. Stopping.`);
+                break;
+              }
+            } else {
+              console.log(`⚠️ No slots found for ${dateKey}`);
+            }
+            
+          } catch (error) {
+            console.log(`❌ Error processing day button ${buttonInfo.dateKey}: ${error}`);
+            continue;
+          }
         }
       }
       
       console.log(`📊 Progress: ${Object.keys(allSlots).length} total days collected (${newDaysAdded} new from this attempt)`);
       
-      // If we have enough days or didn't add any new ones, stop
-      if (Object.keys(allSlots).length >= MAX_DAYS || newDaysAdded === 0) {
+      // If we have enough days, stop
+      if (Object.keys(allSlots).length >= MAX_DAYS) {
         console.log(`✅ Collection complete. Total days: ${Object.keys(allSlots).length}`);
         break;
       }
       
       // If we still don't have enough days, navigate to next week
       if (Object.keys(allSlots).length < MAX_DAYS) {
-        console.log(`🔄 Only have ${Object.keys(allSlots).length} days (target: 7). Navigating to next week...`);
+        console.log(`🔄 Only have ${Object.keys(allSlots).length} days (target: ${MAX_DAYS}). Navigating to next week...`);
         
         const navSuccess = await this.navigateToNextWeek(page);
-        console.log(`🧭 Navigation result: ${navSuccess}`);
         
         if (navSuccess) {
-          console.log(`⏳ Waiting for calendar to update...`);
-          await page.waitForTimeout(100); // Ultra-fast optimization
-          console.log(`✅ Calendar updated, will continue in next iteration`);
+          // Wait for calendar to update after navigation - look for day buttons
+          try { 
+            await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 2000 }); 
+          } catch {}
+          // If calendar didn't change, try one more next-week click
+          if (lastDateKeysSig === dateSig) {
+            await this.navigateToNextWeek(page);
+            // Wait for calendar to update
+            try {
+              await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 2000 });
+            } catch {}
+          }
+          lastDateKeysSig = dateSig;
         } else {
-          console.log(`❌ Navigation failed or button disabled. Collected ${Object.keys(allSlots).length} days total.`);
-          break;
+          // Only stop if navigation failed AND we didn't find any new days this attempt
+          if (newDaysAdded === 0) {
+            console.log(`❌ Navigation failed and no new days found. Collected ${Object.keys(allSlots).length} days total.`);
+            break;
+          } else {
+            console.log(`⚠️ Navigation failed but found ${newDaysAdded} new days. Will retry navigation on next attempt.`);
+            // Continue to next iteration to retry
+          }
         }
       }
     }
@@ -831,102 +973,178 @@ export class ChiliPiperScraper {
     return allSlots;
   }
 
-  private async getAllEnabledDayButtons(page: any): Promise<Array<{ button: any; dateKey: string }>> {
+  private async getAllEnabledDayButtons(pageOrFrame: any): Promise<Array<{ button: any; dateKey: string }>> {
     const enabledButtons: Array<{ button: any; dateKey: string }> = [];
+    const strictMode = (process.env.STRICT_SELECTORS || '').toLowerCase() === 'true';
     const seenDateKeys = new Set<string>();
-    
-    console.log(`🔍 getAllEnabledDayButtons() starting...`);
-    
-    // Wait for day buttons - generalized selector (month-independent)
-    try {
-      console.log(`⏳ Waiting for 'button[data-test-id*="days:"]' selector...`);
-      await page.waitForSelector('button[data-test-id*="days:"]', { timeout: 5000 });
-      console.log(`✅ Found day buttons`);
-    } catch (error) {
-      console.log(`⚠️ 'days:' buttons not found, trying alternative selectors...`);
+
+    console.log(`🔍 getAllEnabledDayButtons() starting (page + iframes)...`);
+
+    const buildContexts = (root: any) => {
+      const contexts: any[] = [root];
       try {
-        await page.waitForSelector('[data-id="calendar-day-button"], [data-test-id*="day"]', { timeout: 3000 });
-        console.log(`✅ Found day buttons via alternative selector`);
-      } catch (error2) {
-        console.log(`❌ No day buttons found with any selector`);
-        return enabledButtons;
+        const frames = root.frames ? root.frames() : [];
+        for (const f of frames) contexts.push(f);
+      } catch {}
+      return contexts;
+    };
+
+    const contexts = buildContexts(pageOrFrame);
+    const waitSelectors = strictMode
+      ? ['button[data-test-id^="days:"]', '[data-id="calendar-day-button"]']
+      : [
+          'button[data-test-id*="days:"]',
+          '[data-id="calendar-day-button"]',
+          '[data-test-id*="day"]'
+        ];
+
+      for (const ctx of contexts) {
+        // Skip wait - calendar should already be stable
+
+      // Ensure at least one matching selector is present in this context
+      let foundAny = false;
+      for (const sel of waitSelectors) {
+        try { await ctx.waitForSelector(sel, { timeout: 500 }); foundAny = true; break; } catch {}
       }
-    }
-    
-    // Wait a moment for calendar to stabilize - optimized
-    await page.waitForTimeout(40); // Reduced from 50ms to 40ms
-    
-    // Get all day buttons
-    console.log(`🔍 Querying all day buttons with selector 'button[data-test-id*="days:"], [data-id="calendar-day-button"], [data-test-id*="day"]'...`);
-    const dayButtons = (await page.$$('button[data-test-id*="days:"]')).concat(
-      await page.$$('.calendar-day-button, [data-id="calendar-day-button"], [data-test-id*="day"]')
-    );
-    console.log(`📊 Total day buttons found: ${dayButtons.length}`);
-    
-    for (let i = 0; i < dayButtons.length; i++) {
+      if (!foundAny) continue;
+
+      console.log(`🔍 Querying day buttons in a context...`);
+      let buttons: any[] = [];
       try {
-        const button = dayButtons[i];
-        const isEnabled = await button.isEnabled();
-        const buttonText = await button.textContent();
-        
-        console.log(`🔍 Button ${i + 1}: enabled=${isEnabled}, text='${buttonText?.substring(0, 60)}...'`);
-        
-        if (isEnabled && buttonText) {
-          // Extract date key from button text
-          const dateKey = buttonText.replace('Press enter to navigate available slots', '').trim();
-          const cleanDateKey = dateKey.replace('is selected', '').trim();
+        if (strictMode) {
+          const a = await ctx.$$('button[data-test-id^="days:"]');
+          const b = await ctx.$$('[data-id="calendar-day-button"]');
+          buttons = a.concat(b);
+        } else {
+          const a = await ctx.$$('button[data-test-id*="days:"]');
+          const b = await ctx.$$('.calendar-day-button, [data-id="calendar-day-button"], [data-test-id*="day"]');
+          buttons = a.concat(b);
+        }
+      } catch {}
+
+      console.log(`📊 Context has ${buttons.length} candidate day buttons`);
+
+      for (let i = 0; i < buttons.length; i++) {
+        try {
+          const button = buttons[i];
+          const buttonText = await button.textContent();
           
-          if (seenDateKeys.has(cleanDateKey)) {
-            console.log(`⏭️ Skipping duplicate date key: ${cleanDateKey}`);
-          } else {
+          // Check multiple ways a button could be enabled/clickable
+          let isEnabled = false;
+          try {
+            isEnabled = await button.isEnabled();
+          } catch {}
+          
+          // Also check if button is not explicitly disabled via attributes
+          let isDisabledAttr = false;
+          try {
+            const disabled = await button.getAttribute('disabled');
+            const ariaDisabled = await button.getAttribute('aria-disabled');
+            // Button is disabled if it has disabled="true" or aria-disabled="true"
+            isDisabledAttr = disabled === 'true' || disabled === '' || ariaDisabled === 'true';
+          } catch {}
+          
+          // Consider button clickable if:
+          // 1. isEnabled is true, OR
+          // 2. It doesn't have explicit disabled attributes (might still be clickable even if isEnabled is false)
+          // 3. Or if it has "is selected" text (currently selected date)
+          const hasSelectedText = buttonText?.includes('is selected') || false;
+          const isClickable = isEnabled || (!isDisabledAttr && !hasSelectedText) || hasSelectedText;
+          
+          console.log(`🔍 Button ${i + 1}: enabled=${isEnabled}, disabledAttr=${isDisabledAttr}, clickable=${isClickable}, text='${buttonText?.substring(0, 60)}...'`);
+
+          // Include button if it's clickable and has text (even if isEnabled is false, it might still be clickable)
+          if (isClickable && buttonText) {
+            const dateKey = buttonText.replace('Press enter to navigate available slots', '').trim();
+            const cleanDateKey = dateKey.replace('is selected', '').trim();
+            if (seenDateKeys.has(cleanDateKey)) {
+              continue;
+            }
             seenDateKeys.add(cleanDateKey);
             enabledButtons.push({ button, dateKey: cleanDateKey });
-            console.log(`✅ Added enabled button ${i + 1}: ${cleanDateKey}`);
           }
-        } else {
-          console.log(`⏭️ Button ${i + 1} skipped: ${!isEnabled ? 'disabled' : 'no text'}`);
+        } catch (err) {
+          console.log(`❌ Error inspecting button in context: ${err}`);
         }
-      } catch (error) {
-        console.log(`❌ Error checking button ${i + 1}: ${error}`);
       }
     }
-    
+
     console.log(`📊 getAllEnabledDayButtons() complete: returning ${enabledButtons.length} enabled buttons`);
     return enabledButtons;
   }
 
-  private async getTimeSlotsForCurrentDay(page: any): Promise<string[]> {
-    // Fast path: single DOM evaluation collecting all likely slot elements
+  private async getTimeSlotsForCurrentDay(pageOrFrame: any): Promise<string[]> {
+    // Optimized: try to find slots in any context (page or iframe)
+    const contexts: any[] = [pageOrFrame];
     try {
-      const slots: string[] = await page.evaluate(() => {
-        const selectors = [
-          'button[data-test-id^="slot-"]',
-          '[data-id="calendar-slot"]',
-          'button'
-        ];
-        const seen = new Set<string>();
-        const results: string[] = [];
-        const isTimeLike = (t: string) => /\d{1,2}:\d{2}\s?(AM|PM)/i.test(t.trim());
-        for (const sel of selectors) {
-          const nodes = Array.from(document.querySelectorAll(sel)) as HTMLElement[];
-          for (const n of nodes) {
-            const txt = (n.innerText || n.textContent || '').trim();
-            if (!txt) continue;
-            if (!isTimeLike(txt)) continue;
-            if (seen.has(txt)) continue;
+      if (pageOrFrame.frames) {
+        const frames = pageOrFrame.frames();
+        contexts.push(...frames);
+      }
+    } catch {}
+    
+    // Fast path: prioritize specific slot selectors first
+    for (const ctx of contexts) {
+      try {
+        const slots: string[] = await ctx.evaluate(() => {
+          // Based on HTML: data-test-id="slot-2:45PM" and data-id="calendar-slot"
+          const slotSelectors = ['button[data-test-id^="slot-"]', '[data-id="calendar-slot"]'];
+          const seen = new Set<string>();
+          const results: string[] = [];
+          const isTimeLike = (t: string) => {
+            const trimmed = t.trim();
+            // Reject strings that contain unwanted patterns like timezone info
+            // Examples: "coordinated universal time", "Central Daylight Time (02:34 PM)", etc.
+            if (/coordinated|universal\s+time|time\s+zone|daylight\s+time|standard\s+time|\(.*\)/i.test(trimmed)) {
+              return false;
+            }
+            // Reject strings longer than reasonable time format (e.g., "9:30 AM" should be max ~12 chars)
+            if (trimmed.length > 12) {
+              return false;
+            }
+            // Must match standard time pattern like "9:30 AM" or "09:30 PM" or "2:45 PM"
+            return /\d{1,2}:\d{2}\s?(AM|PM)/i.test(trimmed);
+          };
+          
+          // Try specific slot selectors first (faster, more accurate)
+          for (const sel of slotSelectors) {
+            const nodes = Array.from(document.querySelectorAll(sel)) as HTMLElement[];
+            for (const n of nodes) {
+              const txt = (n.innerText || n.textContent || '').trim();
+              if (!txt || !isTimeLike(txt) || seen.has(txt)) continue;
+              seen.add(txt);
+              results.push(txt);
+            }
+          }
+          
+          // If found, return early (most common case)
+          if (results.length > 0) return results;
+          
+          // Fallback to generic buttons only if needed
+          const buttons = Array.from(document.querySelectorAll('button')) as HTMLElement[];
+          for (const btn of buttons) {
+            const txt = (btn.innerText || btn.textContent || '').trim();
+            if (!txt || !isTimeLike(txt) || seen.has(txt)) continue;
             seen.add(txt);
             results.push(txt);
           }
+          // Filter out any malformed entries that might have slipped through
+          return results.filter(t => isTimeLike(t));
+        });
+        // Additional filtering in Node.js context (safety net)
+        const validSlots = slots.filter(slot => this.isValidTimeSlot(slot));
+        if (validSlots.length > 0) {
+          console.log(`✅ Returning ${validSlots.length} time slots (optimized, ${slots.length - validSlots.length} filtered)`);
+          return validSlots;
         }
-        return results;
-      });
-      console.log(`✅ Returning ${slots.length} time slots (DOM-eval fast path)`);
-      return slots;
-    } catch (error) {
-      console.log('⚠️ Fast path failed, falling back to element iteration');
+      } catch (error) {
+        continue;
+      }
     }
+    
+    console.log('⚠️ Fast path failed, trying fallback');
 
-    // Fallback path (rare)
+    // Fallback path (rare) - try all contexts
     const fallbackSelectors = [
       'button[data-test-id^="slot-"]',
       '[data-id="calendar-slot"]',
@@ -934,20 +1152,22 @@ export class ChiliPiperScraper {
       'button:has-text("PM")',
       'button:has-text(":")'
     ];
-    for (const selector of fallbackSelectors) {
-      try {
-        const elements = await page.$$(selector);
+    for (const ctx of contexts) {
+      for (const selector of fallbackSelectors) {
+        try {
+          const elements = await ctx.$$(selector);
         if (elements.length > 0) {
           const texts = await Promise.all(elements.map((el: any) => el.textContent()));
           const filtered = texts
-            .filter(t => t && t.trim().length > 0)
-            .map(t => t!.trim());
+            .filter((t: any) => t && t.trim().length > 0 && this.isValidTimeSlot(t))
+            .map((t: any) => t!.trim());
           if (filtered.length > 0) {
             console.log(`✅ Returning ${filtered.length} time slots (fallback via ${selector})`);
             return filtered;
           }
         }
       } catch {}
+      }
     }
     return [];
   }
@@ -985,7 +1205,12 @@ export class ChiliPiperScraper {
       return weekSlots;
     }
     
-    await page.waitForTimeout(75); // Reduced from 100ms
+    // Wait for day buttons to be fully rendered
+    try {
+      await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 1000 });
+    } catch {
+      // Buttons might already be rendered
+    }
 
     // Find all day buttons using multiple selectors
     let dayButtons = [];
@@ -1041,7 +1266,12 @@ export class ChiliPiperScraper {
         // Always click the button to select it and get its slots
         console.log(`🖱️ Clicking day button ${i + 1} (selected: ${isSelected})`);
         await button.click();
-        await page.waitForTimeout(100); // Ultra-fast optimization
+        // Wait for slot buttons to appear after clicking day
+        try {
+          await page.waitForSelector('button[data-test-id^="slot-"], [data-id="calendar-slot"]', { timeout: 500 });
+        } catch {
+          // Slots might already be visible or this day has no slots
+        }
         
         // Get the selected date information from the clicked button
         let dateText = "Unknown Date";
@@ -1091,7 +1321,7 @@ export class ChiliPiperScraper {
           console.log(`⚠️ No slots found for ${dateText}`);
         }
         
-        await page.waitForTimeout(50); // Ultra-fast optimization
+        // No wait needed - next button click will wait for slots to appear
       } catch (error) {
         console.log(`❌ Error processing button ${i + 1}: ${error}`);
         continue;
@@ -1101,63 +1331,110 @@ export class ChiliPiperScraper {
     return weekSlots;
   }
 
-  private async navigateToNextWeek(page: any): Promise<boolean> {
-    console.log("🔍 Looking for Next Week button...");
-    
-    try {
-      // Use getByRole which is more reliable than $ selector
-      console.log(`🔍 Trying getByRole('button', { name: 'Next Week' })...`);
-      const nextWeekButton = page.getByRole('button', { name: 'Next Week' });
-      const isEnabled = await nextWeekButton.isEnabled();
-      console.log(`📅 Next week button found: enabled=${isEnabled}`);
-      
-      if (isEnabled) {
-        console.log(`➡️ Clicking next week button...`);
-        await nextWeekButton.click();
-        console.log("✅ Successfully clicked next week button");
-        
-        // Wait longer for calendar to fully update with new dates - ULTRA FAST
-        await page.waitForTimeout(100); // Ultra-fast optimization
-        console.log("⏳ Completed wait");
-        
-        // Wait for calendar to update with multiple possible selectors
-        const calendarSelectors = [
-          'button[data-test-id*="days:"]',
-          'button:has-text("Monday")',
-          'button:has-text("Tuesday")',
-          'button:has-text("Wednesday")'
+  private async navigateToNextWeek(pageOrFrame: any): Promise<boolean> {
+    console.log("🔍 Looking for Next Week controls (including iframes)...");
+    const strictMode = (process.env.STRICT_SELECTORS || '').toLowerCase() === 'true';
+
+    const tryContexts = (rootPage: any) => {
+      const contexts: any[] = [rootPage];
+      try {
+        const frames = rootPage.frames ? rootPage.frames() : [];
+        for (const f of frames) contexts.push(f);
+      } catch {}
+      return contexts;
+    };
+
+    // Based on HTML: data-id="calendar-arrows-button-next" with aria-label="Next Week"
+    const nextSelectors: Array<{ byRole?: RegExp | string; css?: string }> = strictMode
+      ? [
+          { css: '[data-id="calendar-arrows-button-next"]' }, // Most reliable from HTML
+          { css: 'button[aria-label="Next Week"]' },
+          { byRole: /Next Week/i }
+        ]
+      : [
+          { css: '[data-id="calendar-arrows-button-next"]' }, // Most reliable from HTML
+          { css: 'button[aria-label="Next Week"]' },
+          { byRole: /Next Week/i },
+          { byRole: /Next/i },
+          { css: 'button[aria-label*="Next" i]' },
+          { css: '[data-test-id*="next" i]' },
+          { css: 'button:has-text("Next Week")' },
+          { css: 'button:has-text("Next")' }
         ];
-        
-        let calendarUpdated = false;
-        for (const calSelector of calendarSelectors) {
+
+    const verifySelectors = [
+      'button[data-test-id*="days:"]',
+      '[data-id="calendar-day-button"]',
+      'button:has-text("Monday")',
+      'button:has-text("Tuesday")',
+      'button:has-text("Wednesday")'
+    ];
+
+    // Try clicking next in any relevant context (page or iframe)
+    const contexts = tryContexts(pageOrFrame);
+    for (const ctx of contexts) {
+      try {
+        console.log('🔎 Checking context for next controls...');
+        // Try role-based first
+        for (const sel of nextSelectors) {
           try {
-            await page.waitForSelector(calSelector, { timeout: 3000 });
-            calendarUpdated = true;
-            console.log(`✅ Calendar updated verified with selector: ${calSelector}`);
-            break;
-          } catch (error) {
-            console.log(`❌ Calendar update verification failed with selector: ${calSelector}`);
-            continue;
-          }
+            if (sel.byRole) {
+              const roleName = sel.byRole;
+              const locator = typeof roleName === 'string'
+                ? ctx.getByRole('button', { name: roleName })
+                : ctx.getByRole('button', { name: roleName as RegExp });
+              const enabled = await locator.isEnabled();
+              console.log(`🔹 getByRole match enabled=${enabled}`);
+              if (enabled) {
+                await locator.click();
+                console.log('✅ Clicked next (byRole)');
+                // Wait for calendar to update after navigation
+                for (const v of verifySelectors) {
+                  try { 
+                    await ctx.waitForSelector(v, { timeout: 2000 }); 
+                    break; 
+                  } catch {}
+                }
+                return true;
+              }
+            } else if (sel.css) {
+              const el = await ctx.$(sel.css);
+              if (el && await el.isEnabled()) {
+                await el.click();
+                console.log(`✅ Clicked next via selector: ${sel.css}`);
+                // Wait for calendar to update after navigation
+                for (const v of verifySelectors) {
+                  try { 
+                    await ctx.waitForSelector(v, { timeout: 2000 }); 
+                    break; 
+                  } catch {}
+                }
+                return true;
+              }
+            }
+          } catch {}
         }
-        
-        if (calendarUpdated) {
-          console.log("✅ Successfully moved to next week");
-          await page.waitForTimeout(100); // Ultra-fast optimization
-          return true;
-        } else {
-          console.log("⚠️ Calendar update verification failed - but continuing anyway");
-          await page.waitForTimeout(100); // Ultra-fast optimization
-          return true; // Return true anyway to continue the loop
-        }
-      } else {
-        console.log(`❌ Next week button is disabled`);
-        return false;
-      }
-    } catch (error) {
-      console.log(`❌ Error finding/clicking Next Week button: ${error}`);
-      return false;
+      } catch {}
     }
+
+    // Fallback: try keyboard navigation on the root page
+    try {
+      if (pageOrFrame?.keyboard) {
+        console.log('⌨️ Fallback: sending ArrowRight key to navigate');
+        await pageOrFrame.keyboard.press('ArrowRight');
+        // Wait for calendar to update after keyboard navigation
+        for (const v of verifySelectors) {
+          try { 
+            await pageOrFrame.waitForSelector(v, { timeout: 2000 }); 
+            console.log('✅ Navigation likely succeeded (keyboard)'); 
+            return true; 
+          } catch {}
+        }
+      }
+    } catch {}
+
+    console.log('❌ Next week controls not found or disabled in all contexts');
+    return false;
   }
 }
 

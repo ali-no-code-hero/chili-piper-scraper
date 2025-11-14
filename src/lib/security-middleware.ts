@@ -324,6 +324,13 @@ export class SecurityMiddleware {
     // Import NextResponse dynamically to avoid issues if not available
     const { NextResponse } = await import('next/server');
     
+    console.error('🚀 secureRequest called:', {
+      url: request.url,
+      method: request.method,
+      requireAuth: config.requireAuth,
+      hasHeaders: !!request.headers
+    });
+    
     const clientIP = request.headers.get('x-forwarded-for') || 
                     request.headers.get('x-real-ip') || 
                     'unknown';

@@ -135,16 +135,38 @@ export class ChiliPiperScraper {
         return dateString; // Return original if parsing fails
       }
       
-      // Determine year - assume current year or next year if date has passed
+      // Determine year - assume current year, use next year only if date is clearly in the past
       const now = new Date();
       const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1; // getMonth() returns 0-11
+      const currentDay = now.getDate();
       let year = currentYear;
       
-      // If the parsed date (with current year) is in the past, use next year
-      const testDate = new Date(year, month - 1, day);
-      if (testDate < now && testDate.getMonth() === month - 1 && testDate.getDate() === day) {
+      // Compare dates: if the parsed month/day is before today's month/day by more than a month,
+      // it's likely next year. Otherwise, assume current year.
+      // This handles the case where calendar shows future dates starting from today
+      const monthDiff = month - currentMonth;
+      const dayDiff = day - currentDay;
+      
+      // If we're seeing dates that are significantly in the past (more than 30 days),
+      // it's likely next year. But be conservative - calendar usually shows future dates.
+      // Only use next year if:
+      // 1. Month is much earlier (e.g., January when we're in November/December)
+      // 2. Or if month is same/earlier AND day is much earlier AND we're past mid-year
+      if (monthDiff < -6) {
+        // More than 6 months earlier - likely next year (e.g., Jan when we're in Nov/Dec)
+        year = currentYear + 1;
+      } else if (monthDiff === 0 && dayDiff >= 0) {
+        // Same month, same day or future - definitely current year
+        year = currentYear;
+      } else if (monthDiff > 0) {
+        // Future month - current year
+        year = currentYear;
+      } else if (monthDiff < 0 && monthDiff >= -1 && dayDiff < -30) {
+        // Previous month but more than 30 days ago - likely next year
         year = currentYear + 1;
       }
+      // Otherwise, default to current year (most common case for calendars showing future dates)
       
       // Format as YYYY-MM-DD
       return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -179,7 +201,8 @@ export class ChiliPiperScraper {
     lastName: string,
     email: string,
     phone: string,
-    onDayComplete?: (dayData: { date: string; slots: string[]; totalDays: number; totalSlots: number }) => void
+    onDayComplete?: (dayData: { date: string; slots: string[]; totalDays: number; totalSlots: number }) => void,
+    maxDays?: number
   ): Promise<ScrapingResult> {
     try {
       // Trim logs in production: only emit debug logs when SCRAPER_DEBUG=true
@@ -481,7 +504,7 @@ export class ChiliPiperScraper {
       }
 
       // Collect slots using sequential collection (fastest and most reliable)
-      const collectedSlots = await this.getAvailableSlots(calendarContext, onDayComplete);
+      const collectedSlots = await this.getAvailableSlots(calendarContext, onDayComplete, maxDays);
 
       const slots = collectedSlots;
 
@@ -801,11 +824,12 @@ export class ChiliPiperScraper {
     return result;
   }
 
-  private async getAvailableSlots(page: any, onDayComplete?: (dayData: { date: string; slots: string[]; totalDays: number; totalSlots: number }) => void): Promise<Record<string, { slots: string[] }>> {
+  private async getAvailableSlots(page: any, onDayComplete?: (dayData: { date: string; slots: string[]; totalDays: number; totalSlots: number }) => void, maxDaysParam?: number): Promise<Record<string, { slots: string[] }>> {
     const allSlots: Record<string, { slots: string[] }> = {};
 
     // Early-exit controls to reduce latency
-    const maxDaysEnv = parseInt(process.env.SCRAPE_MAX_DAYS || '', 10);
+    // Use maxDaysParam if provided, otherwise check environment variable, otherwise default to 7
+    const maxDaysEnv = maxDaysParam || parseInt(process.env.SCRAPE_MAX_DAYS || '', 10);
     const maxSlotsEnv = parseInt(process.env.SCRAPE_MAX_SLOTS || '', 10);
     const MAX_DAYS = Number.isFinite(maxDaysEnv) && maxDaysEnv > 0 ? maxDaysEnv : 7; // default 7 days
     const MAX_SLOTS = Number.isFinite(maxSlotsEnv) && maxSlotsEnv > 0 ? maxSlotsEnv : Number.MAX_SAFE_INTEGER; // default unlimited

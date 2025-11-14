@@ -28,7 +28,23 @@ export async function POST(request: NextRequest) {
     const clientIP = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
     const userAgent = request.headers.get('user-agent') || 'unknown';
     
+    // Extract days parameter if provided
+    const requestedDays = body.days ? parseInt(body.days.toString(), 10) : undefined;
+    if (requestedDays && (requestedDays < 1 || requestedDays > 30)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Validation Error',
+          message: 'days parameter must be between 1 and 30'
+        },
+        { status: 400 }
+      );
+    }
+    
     console.log('🔍 Starting scraping process...');
+    if (requestedDays) {
+      console.log(`📅 Requested ${requestedDays} days`);
+    }
     
     // Run the scraping
     const scraper = new ChiliPiperScraper();
@@ -36,7 +52,9 @@ export async function POST(request: NextRequest) {
       body.first_name,
       body.last_name,
       body.email,
-      body.phone
+      body.phone,
+      undefined, // onDayComplete callback
+      requestedDays // maxDays parameter
     );
     
     if (!result.success) {

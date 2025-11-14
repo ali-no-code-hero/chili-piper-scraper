@@ -1,8 +1,5 @@
 {
-  "/admin/secure/page": "app/admin/secure/page.js",
-  "/api/admin/secure/route": "app/api/admin/secure/route.js",
-  "/api/get-slots-per-day-stream/route": "app/api/get-slots-per-day-stream/route.js",
+  "/api/get-slots-mock/route": "app/api/get-slots-mock/route.js",
   "/api/get-slots/route": "app/api/get-slots/route.js",
-  "/api/health/route": "app/api/health/route.js",
-  "/page": "app/page.js"
+  "/api/health/route": "app/api/health/route.js"
 }

@@ -1,0 +1,840 @@
+0 verbose cli /usr/local/bin/node /usr/local/bin/npm
+1 info using npm@10.9.2
+2 info using node@v22.16.0
+3 silly config load:file:/usr/local/lib/node_modules/npm/npmrc
+4 silly config load:file:/Users/alisyed/chili-piper-scarpe/.npmrc
+5 silly config load:file:/Users/alisyed/.npmrc
+6 silly config load:file:/usr/local/etc/npmrc
+7 verbose title npm install
+8 verbose argv "install" "--no-audit" "--no-fund"
+9 verbose logfile logs-max:10 dir:/Users/alisyed/chili-piper-scarpe/.npm-cache/_logs/2025-10-31T05_54_27_824Z-
+10 verbose logfile /Users/alisyed/chili-piper-scarpe/.npm-cache/_logs/2025-10-31T05_54_27_824Z-debug-0.log
+11 silly logfile done cleaning log files
+12 silly packumentCache heap:4345298944 maxSize:1086324736 maxEntrySize:543162368
+13 silly idealTree buildDeps
+14 silly fetch manifest fastify@^4.26.2
+15 silly packumentCache full:https://registry.npmjs.org/fastify cache-miss
+16 http fetch GET 200 https://registry.npmjs.org/npm 103ms
+17 http fetch GET 200 https://registry.npmjs.org/fastify 94ms (cache miss)
+18 silly packumentCache full:https://registry.npmjs.org/fastify set size:undefined disposed:false
+19 silly fetch manifest @fastify/cors@^9.0.1
+20 silly packumentCache full:https://registry.npmjs.org/@fastify%2fcors cache-miss
+21 http fetch GET 200 https://registry.npmjs.org/@fastify%2fcors 73ms (cache miss)
+22 silly packumentCache full:https://registry.npmjs.org/@fastify%2fcors set size:undefined disposed:false
+23 silly placeDep ROOT @fastify/cors@9.0.1 OK for: chili-piper-scraper@1.0.0 want: ^9.0.1
+24 silly placeDep ROOT fastify@4.29.1 OK for: chili-piper-scraper@1.0.0 want: ^4.26.2
+25 silly fetch manifest mnemonist@0.39.6
+26 silly packumentCache full:https://registry.npmjs.org/mnemonist cache-miss
+27 silly fetch manifest fastify-plugin@^4.0.0
+28 silly packumentCache full:https://registry.npmjs.org/fastify-plugin cache-miss
+29 silly fetch manifest pino@^9.0.0
+30 silly packumentCache full:https://registry.npmjs.org/pino cache-miss
+31 silly fetch manifest rfdc@^1.3.0
+32 silly packumentCache full:https://registry.npmjs.org/rfdc cache-miss
+33 silly fetch manifest avvio@^8.3.0
+34 silly packumentCache full:https://registry.npmjs.org/avvio cache-miss
+35 silly fetch manifest toad-cache@^3.3.0
+36 silly packumentCache full:https://registry.npmjs.org/toad-cache cache-miss
+37 silly fetch manifest find-my-way@^8.0.0
+38 silly packumentCache full:https://registry.npmjs.org/find-my-way cache-miss
+39 silly fetch manifest @fastify/error@^3.4.0
+40 silly packumentCache full:https://registry.npmjs.org/@fastify%2ferror cache-miss
+41 silly fetch manifest process-warning@^3.0.0
+42 silly packumentCache full:https://registry.npmjs.org/process-warning cache-miss
+43 silly fetch manifest abstract-logging@^2.0.1
+44 silly packumentCache full:https://registry.npmjs.org/abstract-logging cache-miss
+45 silly fetch manifest light-my-request@^5.11.0
+46 silly packumentCache full:https://registry.npmjs.org/light-my-request cache-miss
+47 http fetch GET 200 https://registry.npmjs.org/fastify-plugin 91ms (cache miss)
+48 silly packumentCache full:https://registry.npmjs.org/fastify-plugin set size:undefined disposed:false
+49 silly fetch manifest secure-json-parse@^2.7.0
+50 silly packumentCache full:https://registry.npmjs.org/secure-json-parse cache-miss
+51 http fetch GET 200 https://registry.npmjs.org/mnemonist 97ms (cache miss)
+52 silly packumentCache full:https://registry.npmjs.org/mnemonist set size:undefined disposed:false
+53 silly fetch manifest fast-json-stringify@^5.8.0
+54 silly packumentCache full:https://registry.npmjs.org/fast-json-stringify cache-miss
+55 http fetch GET 200 https://registry.npmjs.org/find-my-way 130ms (cache miss)
+56 silly packumentCache full:https://registry.npmjs.org/find-my-way set size:undefined disposed:false
+57 silly fetch manifest @fastify/ajv-compiler@^3.5.0
+58 silly packumentCache full:https://registry.npmjs.org/@fastify%2fajv-compiler cache-miss
+59 http fetch GET 200 https://registry.npmjs.org/toad-cache 136ms (cache miss)
+60 silly packumentCache full:https://registry.npmjs.org/toad-cache set size:undefined disposed:false
+61 silly fetch manifest fast-content-type-parse@^1.1.0
+62 silly packumentCache full:https://registry.npmjs.org/fast-content-type-parse cache-miss
+63 http fetch GET 200 https://registry.npmjs.org/fast-json-stringify 85ms (cache miss)
+64 silly packumentCache full:https://registry.npmjs.org/fast-json-stringify set size:undefined disposed:false
+65 silly fetch manifest @fastify/fast-json-stringify-compiler@^4.3.0
+66 silly packumentCache full:https://registry.npmjs.org/@fastify%2ffast-json-stringify-compiler cache-miss
+67 http fetch GET 200 https://registry.npmjs.org/secure-json-parse 96ms (cache miss)
+68 silly packumentCache full:https://registry.npmjs.org/secure-json-parse set size:undefined disposed:false
+69 http fetch GET 200 https://registry.npmjs.org/fast-content-type-parse 94ms (cache miss)
+70 silly packumentCache full:https://registry.npmjs.org/fast-content-type-parse set size:undefined disposed:false
+71 http fetch GET 200 https://registry.npmjs.org/@fastify%2ferror 244ms (cache miss)
+72 silly packumentCache full:https://registry.npmjs.org/@fastify%2ferror set size:undefined disposed:false
+73 http fetch GET 200 https://registry.npmjs.org/@fastify%2fajv-compiler 202ms (cache miss)
+74 silly packumentCache full:https://registry.npmjs.org/@fastify%2fajv-compiler set size:undefined disposed:false
+75 http fetch GET 200 https://registry.npmjs.org/rfdc 344ms (cache miss)
+76 silly packumentCache full:https://registry.npmjs.org/rfdc set size:undefined disposed:false
+77 http fetch GET 200 https://registry.npmjs.org/pino 344ms (cache miss)
+78 silly packumentCache full:https://registry.npmjs.org/pino set size:undefined disposed:false
+79 http fetch GET 200 https://registry.npmjs.org/light-my-request 349ms (cache miss)
+80 silly packumentCache full:https://registry.npmjs.org/light-my-request set size:undefined disposed:false
+81 http fetch GET 200 https://registry.npmjs.org/abstract-logging 351ms (cache miss)
+82 silly packumentCache full:https://registry.npmjs.org/abstract-logging set size:undefined disposed:false
+83 http fetch GET 200 https://registry.npmjs.org/process-warning 352ms (cache miss)
+84 silly packumentCache full:https://registry.npmjs.org/process-warning set size:undefined disposed:false
+85 http fetch GET 200 https://registry.npmjs.org/avvio 355ms (cache miss)
+86 silly packumentCache full:https://registry.npmjs.org/avvio set size:undefined disposed:false
+87 http fetch GET 200 https://registry.npmjs.org/@fastify%2ffast-json-stringify-compiler 192ms (cache miss)
+88 silly packumentCache full:https://registry.npmjs.org/@fastify%2ffast-json-stringify-compiler set size:undefined disposed:false
+89 silly placeDep ROOT fastify-plugin@4.5.1 OK for: @fastify/cors@9.0.1 want: ^4.0.0
+90 silly placeDep ROOT mnemonist@0.39.6 OK for: @fastify/cors@9.0.1 want: 0.39.6
+91 silly fetch manifest obliterator@^2.0.1
+92 silly packumentCache full:https://registry.npmjs.org/obliterator cache-miss
+93 http fetch GET 200 https://registry.npmjs.org/obliterator 106ms (cache miss)
+94 silly packumentCache full:https://registry.npmjs.org/obliterator set size:undefined disposed:false
+95 silly placeDep ROOT @fastify/ajv-compiler@3.6.0 OK for: fastify@4.29.1 want: ^3.5.0
+96 silly placeDep ROOT @fastify/error@3.4.1 OK for: fastify@4.29.1 want: ^3.4.0
+97 silly placeDep ROOT @fastify/fast-json-stringify-compiler@4.3.0 OK for: fastify@4.29.1 want: ^4.3.0
+98 silly placeDep ROOT abstract-logging@2.0.1 OK for: fastify@4.29.1 want: ^2.0.1
+99 silly placeDep ROOT avvio@8.4.0 OK for: fastify@4.29.1 want: ^8.3.0
+100 silly placeDep ROOT fast-content-type-parse@1.1.0 OK for: fastify@4.29.1 want: ^1.1.0
+101 silly placeDep ROOT fast-json-stringify@5.16.1 OK for: fastify@4.29.1 want: ^5.8.0
+102 silly placeDep ROOT find-my-way@8.2.2 OK for: fastify@4.29.1 want: ^8.0.0
+103 silly placeDep ROOT light-my-request@5.14.0 OK for: fastify@4.29.1 want: ^5.11.0
+104 silly placeDep ROOT pino@9.14.0 OK for: fastify@4.29.1 want: ^9.0.0
+105 silly placeDep ROOT process-warning@3.0.0 OK for: fastify@4.29.1 want: ^3.0.0
+106 silly placeDep ROOT rfdc@1.4.1 OK for: fastify@4.29.1 want: ^1.3.0
+107 silly placeDep ROOT secure-json-parse@2.7.0 OK for: fastify@4.29.1 want: ^2.7.0
+108 silly placeDep ROOT toad-cache@3.7.0 OK for: fastify@4.29.1 want: ^3.3.0
+109 silly fetch manifest ajv@^8.11.0
+110 silly packumentCache full:https://registry.npmjs.org/ajv cache-miss
+111 silly fetch manifest fast-uri@^2.0.0
+112 silly packumentCache full:https://registry.npmjs.org/fast-uri cache-miss
+113 silly fetch manifest ajv-formats@^2.1.1
+114 silly packumentCache full:https://registry.npmjs.org/ajv-formats cache-miss
+115 silly fetch manifest fast-json-stringify@^5.7.0
+116 silly packumentCache full:https://registry.npmjs.org/fast-json-stringify cache-miss
+117 silly fetch manifest fastq@^1.17.1
+118 silly packumentCache full:https://registry.npmjs.org/fastq cache-miss
+119 silly fetch manifest ajv@^8.10.0
+120 silly packumentCache full:https://registry.npmjs.org/ajv cache-miss
+121 silly fetch manifest rfdc@^1.2.0
+122 silly packumentCache full:https://registry.npmjs.org/rfdc cache-miss
+123 silly fetch manifest fast-uri@^2.1.0
+124 silly packumentCache full:https://registry.npmjs.org/fast-uri cache-miss
+125 silly fetch manifest ajv-formats@^3.0.1
+126 silly packumentCache full:https://registry.npmjs.org/ajv-formats cache-miss
+127 silly fetch manifest fast-deep-equal@^3.1.3
+128 silly packumentCache full:https://registry.npmjs.org/fast-deep-equal cache-miss
+129 silly fetch manifest json-schema-ref-resolver@^1.0.1
+130 silly packumentCache full:https://registry.npmjs.org/json-schema-ref-resolver cache-miss
+131 http cache https://registry.npmjs.org/rfdc 8ms (cache hit)
+132 silly packumentCache full:https://registry.npmjs.org/rfdc set size:45382 disposed:false
+133 silly fetch manifest @fastify/merge-json-schemas@^0.1.0
+134 silly packumentCache full:https://registry.npmjs.org/@fastify%2fmerge-json-schemas cache-miss
+135 http cache https://registry.npmjs.org/fast-json-stringify 11ms (cache hit)
+136 silly packumentCache full:https://registry.npmjs.org/fast-json-stringify set size:500350 disposed:false
+137 silly fetch manifest safe-regex2@^3.1.0
+138 silly packumentCache full:https://registry.npmjs.org/safe-regex2 cache-miss
+139 http fetch GET 200 https://registry.npmjs.org/fastq 37ms (cache miss)
+140 silly packumentCache full:https://registry.npmjs.org/fastq set size:undefined disposed:false
+141 silly fetch manifest fast-deep-equal@^3.1.3
+142 silly packumentCache full:https://registry.npmjs.org/fast-deep-equal cache-miss
+143 http fetch GET 200 https://registry.npmjs.org/fast-deep-equal 38ms (cache miss)
+144 silly packumentCache full:https://registry.npmjs.org/fast-deep-equal set size:undefined disposed:false
+145 silly fetch manifest fast-querystring@^1.0.0
+146 silly packumentCache full:https://registry.npmjs.org/fast-querystring cache-miss
+147 http fetch GET 200 https://registry.npmjs.org/ajv-formats 47ms (cache miss)
+148 silly packumentCache full:https://registry.npmjs.org/ajv-formats set size:undefined disposed:false
+149 silly fetch manifest set-cookie-parser@^2.4.1
+150 silly packumentCache full:https://registry.npmjs.org/set-cookie-parser cache-miss
+151 http fetch GET 200 https://registry.npmjs.org/fast-uri 48ms (cache miss)
+152 silly packumentCache full:https://registry.npmjs.org/fast-uri set size:undefined disposed:false
+153 silly fetch manifest sonic-boom@^4.0.1
+154 silly packumentCache full:https://registry.npmjs.org/sonic-boom cache-miss
+155 http fetch GET 200 https://registry.npmjs.org/fast-uri 49ms (cache miss)
+156 silly packumentCache full:https://registry.npmjs.org/fast-uri set size:undefined disposed:false
+157 silly fetch manifest atomic-sleep@^1.0.0
+158 silly packumentCache full:https://registry.npmjs.org/atomic-sleep cache-miss
+159 http fetch GET 200 https://registry.npmjs.org/ajv-formats 50ms (cache miss)
+160 silly packumentCache full:https://registry.npmjs.org/ajv-formats set size:undefined disposed:false
+161 silly fetch manifest real-require@^0.2.0
+162 silly packumentCache full:https://registry.npmjs.org/real-require cache-miss
+163 http fetch GET 200 https://registry.npmjs.org/ajv 56ms (cache miss)
+164 silly packumentCache full:https://registry.npmjs.org/ajv set size:undefined disposed:false
+165 silly fetch manifest thread-stream@^3.0.0
+166 silly packumentCache full:https://registry.npmjs.org/thread-stream cache-miss
+167 http fetch GET 200 https://registry.npmjs.org/ajv 59ms (cache miss)
+168 silly packumentCache full:https://registry.npmjs.org/ajv set size:undefined disposed:false
+169 silly fetch manifest @pinojs/redact@^0.4.0
+170 silly packumentCache full:https://registry.npmjs.org/@pinojs%2fredact cache-miss
+171 http fetch GET 200 https://registry.npmjs.org/fast-deep-equal 29ms (cache miss)
+172 silly packumentCache full:https://registry.npmjs.org/fast-deep-equal set size:undefined disposed:false
+173 silly fetch manifest process-warning@^5.0.0
+174 silly packumentCache full:https://registry.npmjs.org/process-warning cache-miss
+175 http cache https://registry.npmjs.org/process-warning 3ms (cache hit)
+176 silly packumentCache full:https://registry.npmjs.org/process-warning set size:32480 disposed:false
+177 silly fetch manifest on-exit-leak-free@^2.1.0
+178 silly packumentCache full:https://registry.npmjs.org/on-exit-leak-free cache-miss
+179 http fetch GET 200 https://registry.npmjs.org/set-cookie-parser 32ms (cache miss)
+180 silly packumentCache full:https://registry.npmjs.org/set-cookie-parser set size:undefined disposed:false
+181 silly fetch manifest pino-std-serializers@^7.0.0
+182 silly packumentCache full:https://registry.npmjs.org/pino-std-serializers cache-miss
+183 http fetch GET 200 https://registry.npmjs.org/json-schema-ref-resolver 93ms (cache miss)
+184 silly packumentCache full:https://registry.npmjs.org/json-schema-ref-resolver set size:undefined disposed:false
+185 silly fetch manifest safe-stable-stringify@^2.3.1
+186 silly packumentCache full:https://registry.npmjs.org/safe-stable-stringify cache-miss
+187 http fetch GET 200 https://registry.npmjs.org/safe-regex2 82ms (cache miss)
+188 silly packumentCache full:https://registry.npmjs.org/safe-regex2 set size:undefined disposed:false
+189 silly fetch manifest quick-format-unescaped@^4.0.3
+190 silly packumentCache full:https://registry.npmjs.org/quick-format-unescaped cache-miss
+191 http fetch GET 200 https://registry.npmjs.org/safe-stable-stringify 28ms (cache miss)
+192 silly packumentCache full:https://registry.npmjs.org/safe-stable-stringify set size:undefined disposed:false
+193 silly fetch manifest pino-abstract-transport@^2.0.0
+194 silly packumentCache full:https://registry.npmjs.org/pino-abstract-transport cache-miss
+195 http fetch GET 200 https://registry.npmjs.org/real-require 79ms (cache miss)
+196 silly packumentCache full:https://registry.npmjs.org/real-require set size:undefined disposed:false
+197 http fetch GET 200 https://registry.npmjs.org/atomic-sleep 90ms (cache miss)
+198 silly packumentCache full:https://registry.npmjs.org/atomic-sleep set size:undefined disposed:false
+199 http fetch GET 200 https://registry.npmjs.org/thread-stream 85ms (cache miss)
+200 silly packumentCache full:https://registry.npmjs.org/thread-stream set size:undefined disposed:false
+201 http fetch GET 200 https://registry.npmjs.org/sonic-boom 98ms (cache miss)
+202 silly packumentCache full:https://registry.npmjs.org/sonic-boom set size:undefined disposed:false
+203 http fetch GET 200 https://registry.npmjs.org/on-exit-leak-free 87ms (cache miss)
+204 silly packumentCache full:https://registry.npmjs.org/on-exit-leak-free set size:undefined disposed:false
+205 http fetch GET 200 https://registry.npmjs.org/pino-std-serializers 77ms (cache miss)
+206 silly packumentCache full:https://registry.npmjs.org/pino-std-serializers set size:undefined disposed:false
+207 http fetch GET 200 https://registry.npmjs.org/quick-format-unescaped 69ms (cache miss)
+208 silly packumentCache full:https://registry.npmjs.org/quick-format-unescaped set size:undefined disposed:false
+209 http fetch GET 200 https://registry.npmjs.org/fast-querystring 150ms (cache miss)
+210 silly packumentCache full:https://registry.npmjs.org/fast-querystring set size:undefined disposed:false
+211 http fetch GET 200 https://registry.npmjs.org/@fastify%2fmerge-json-schemas 203ms (cache miss)
+212 silly packumentCache full:https://registry.npmjs.org/@fastify%2fmerge-json-schemas set size:undefined disposed:false
+213 http fetch GET 200 https://registry.npmjs.org/pino-abstract-transport 90ms (cache miss)
+214 silly packumentCache full:https://registry.npmjs.org/pino-abstract-transport set size:undefined disposed:false
+215 http fetch GET 200 https://registry.npmjs.org/@pinojs%2fredact 194ms (cache miss)
+216 silly packumentCache full:https://registry.npmjs.org/@pinojs%2fredact set size:undefined disposed:false
+217 silly placeDep ROOT ajv@8.17.1 OK for: @fastify/ajv-compiler@3.6.0 want: ^8.11.0
+218 silly placeDep ROOT ajv-formats@2.1.1 OK for: @fastify/ajv-compiler@3.6.0 want: ^2.1.1
+219 silly placeDep ROOT fast-uri@2.4.0 OK for: @fastify/ajv-compiler@3.6.0 want: ^2.0.0
+220 silly fetch manifest fast-uri@^3.0.1
+221 silly packumentCache full:https://registry.npmjs.org/fast-uri cache-miss
+222 silly fetch manifest require-from-string@^2.0.2
+223 silly packumentCache full:https://registry.npmjs.org/require-from-string cache-miss
+224 silly fetch manifest json-schema-traverse@^1.0.0
+225 silly packumentCache full:https://registry.npmjs.org/json-schema-traverse cache-miss
+226 http cache https://registry.npmjs.org/fast-uri 3ms (cache hit)
+227 silly packumentCache full:https://registry.npmjs.org/fast-uri set size:61472 disposed:false
+228 http fetch GET 200 https://registry.npmjs.org/require-from-string 39ms (cache miss)
+229 silly packumentCache full:https://registry.npmjs.org/require-from-string set size:undefined disposed:false
+230 http fetch GET 200 https://registry.npmjs.org/json-schema-traverse 40ms (cache miss)
+231 silly packumentCache full:https://registry.npmjs.org/json-schema-traverse set size:undefined disposed:false
+232 silly placeDep ROOT fast-deep-equal@3.1.3 OK for: ajv@8.17.1 want: ^3.1.3
+233 silly placeDep node_modules/ajv fast-uri@3.1.0 OK for: ajv@8.17.1 want: ^3.0.1
+234 silly placeDep ROOT json-schema-traverse@1.0.0 OK for: ajv@8.17.1 want: ^1.0.0
+235 silly placeDep ROOT require-from-string@2.0.2 OK for: ajv@8.17.1 want: ^2.0.2
+236 silly placeDep ROOT fastq@1.19.1 OK for: avvio@8.4.0 want: ^1.17.1
+237 silly fetch manifest reusify@^1.0.4
+238 silly packumentCache full:https://registry.npmjs.org/reusify cache-miss
+239 http fetch GET 200 https://registry.npmjs.org/reusify 35ms (cache miss)
+240 silly packumentCache full:https://registry.npmjs.org/reusify set size:undefined disposed:false
+241 silly placeDep ROOT @fastify/merge-json-schemas@0.1.1 OK for: fast-json-stringify@5.16.1 want: ^0.1.0
+242 silly placeDep node_modules/fast-json-stringify ajv-formats@3.0.1 OK for: fast-json-stringify@5.16.1 want: ^3.0.1
+243 silly placeDep ROOT json-schema-ref-resolver@1.0.1 OK for: fast-json-stringify@5.16.1 want: ^1.0.1
+244 silly placeDep ROOT reusify@1.1.0 OK for: fastq@1.19.1 want: ^1.0.4
+245 silly placeDep ROOT fast-querystring@1.1.2 OK for: find-my-way@8.2.2 want: ^1.0.0
+246 silly placeDep ROOT safe-regex2@3.1.0 OK for: find-my-way@8.2.2 want: ^3.1.0
+247 silly fetch manifest fast-decode-uri-component@^1.0.1
+248 silly packumentCache full:https://registry.npmjs.org/fast-decode-uri-component cache-miss
+249 silly fetch manifest ret@~0.4.0
+250 silly packumentCache full:https://registry.npmjs.org/ret cache-miss
+251 http fetch GET 200 https://registry.npmjs.org/ret 68ms (cache miss)
+252 silly packumentCache full:https://registry.npmjs.org/ret set size:undefined disposed:false
+253 http fetch GET 200 https://registry.npmjs.org/fast-decode-uri-component 79ms (cache miss)
+254 silly packumentCache full:https://registry.npmjs.org/fast-decode-uri-component set size:undefined disposed:false
+255 silly placeDep ROOT fast-decode-uri-component@1.0.1 OK for: fast-querystring@1.1.2 want: ^1.0.1
+256 silly placeDep ROOT set-cookie-parser@2.7.2 OK for: light-my-request@5.14.0 want: ^2.4.1
+257 silly placeDep ROOT obliterator@2.0.5 OK for: mnemonist@0.39.6 want: ^2.0.1
+258 silly placeDep ROOT @pinojs/redact@0.4.0 OK for: pino@9.14.0 want: ^0.4.0
+259 silly placeDep ROOT atomic-sleep@1.0.0 OK for: pino@9.14.0 want: ^1.0.0
+260 silly placeDep ROOT on-exit-leak-free@2.1.2 OK for: pino@9.14.0 want: ^2.1.0
+261 silly placeDep ROOT pino-abstract-transport@2.0.0 OK for: pino@9.14.0 want: ^2.0.0
+262 silly placeDep ROOT pino-std-serializers@7.0.0 OK for: pino@9.14.0 want: ^7.0.0
+263 silly placeDep node_modules/pino process-warning@5.0.0 OK for: pino@9.14.0 want: ^5.0.0
+264 silly placeDep ROOT quick-format-unescaped@4.0.4 OK for: pino@9.14.0 want: ^4.0.3
+265 silly placeDep ROOT real-require@0.2.0 OK for: pino@9.14.0 want: ^0.2.0
+266 silly placeDep ROOT safe-stable-stringify@2.5.0 OK for: pino@9.14.0 want: ^2.3.1
+267 silly placeDep ROOT sonic-boom@4.2.0 OK for: pino@9.14.0 want: ^4.0.1
+268 silly placeDep ROOT thread-stream@3.1.0 OK for: pino@9.14.0 want: ^3.0.0
+269 silly fetch manifest split2@^4.0.0
+270 silly packumentCache full:https://registry.npmjs.org/split2 cache-miss
+271 http fetch GET 200 https://registry.npmjs.org/split2 31ms (cache miss)
+272 silly packumentCache full:https://registry.npmjs.org/split2 set size:undefined disposed:false
+273 silly placeDep ROOT split2@4.2.0 OK for: pino-abstract-transport@2.0.0 want: ^4.0.0
+274 silly placeDep ROOT ret@0.4.3 OK for: safe-regex2@3.1.0 want: ~0.4.0
+275 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/@types/body-parser' ]
+276 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/@types/connect' ]
+277 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/@types/cors' ]
+278 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/@types/express' ]
+279 silly reify mark retired [
+279 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@types/express-serve-static-core'
+279 silly reify ]
+280 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/@types/http-errors' ]
+281 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/@types/mime' ]
+282 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/@types/qs' ]
+283 silly reify mark retired [
+283 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@types/range-parser'
+283 silly reify ]
+284 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/@types/send' ]
+285 silly reify mark retired [
+285 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@types/serve-static'
+285 silly reify ]
+286 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/accepts' ]
+287 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/array-flatten' ]
+288 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/body-parser' ]
+289 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/bytes' ]
+290 silly reify mark retired [
+290 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/call-bind-apply-helpers'
+290 silly reify ]
+291 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/call-bound' ]
+292 silly reify mark retired [
+292 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/content-disposition'
+292 silly reify ]
+293 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/content-type' ]
+294 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/cookie-signature' ]
+295 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/cors' ]
+296 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/debug' ]
+297 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/depd' ]
+298 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/destroy' ]
+299 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/dunder-proto' ]
+300 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/ee-first' ]
+301 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/encodeurl' ]
+302 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/es-define-property' ]
+303 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/es-errors' ]
+304 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/es-object-atoms' ]
+305 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/escape-html' ]
+306 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/etag' ]
+307 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/express' ]
+308 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/finalhandler' ]
+309 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/fresh' ]
+310 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/function-bind' ]
+311 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/get-intrinsic' ]
+312 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/get-proto' ]
+313 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/gopd' ]
+314 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/has-symbols' ]
+315 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/hasown' ]
+316 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/http-errors' ]
+317 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/iconv-lite' ]
+318 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/inherits' ]
+319 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/math-intrinsics' ]
+320 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/media-typer' ]
+321 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/merge-descriptors' ]
+322 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/methods' ]
+323 silly reify mark retired [
+323 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/mime',
+323 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/.bin/mime'
+323 silly reify ]
+324 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/mime-db' ]
+325 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/mime-types' ]
+326 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/negotiator' ]
+327 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/object-assign' ]
+328 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/object-inspect' ]
+329 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/on-finished' ]
+330 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/parseurl' ]
+331 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/path-to-regexp' ]
+332 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/qs' ]
+333 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/range-parser' ]
+334 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/raw-body' ]
+335 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/safer-buffer' ]
+336 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/send' ]
+337 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/serve-static' ]
+338 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/setprototypeof' ]
+339 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/side-channel' ]
+340 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/side-channel-list' ]
+341 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/side-channel-map' ]
+342 silly reify mark retired [
+342 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/side-channel-weakmap'
+342 silly reify ]
+343 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/statuses' ]
+344 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/toidentifier' ]
+345 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/type-is' ]
+346 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/unpipe' ]
+347 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/utils-merge' ]
+348 silly reify mark retired [ '/Users/alisyed/chili-piper-scarpe/node_modules/vary' ]
+349 silly reify moves {
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@types/body-parser': '/Users/alisyed/chili-piper-scarpe/node_modules/@types/.body-parser-6fjnQ9e5',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@types/connect': '/Users/alisyed/chili-piper-scarpe/node_modules/@types/.connect-kjl8lmrj',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@types/cors': '/Users/alisyed/chili-piper-scarpe/node_modules/@types/.cors-XslWt3M5',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@types/express': '/Users/alisyed/chili-piper-scarpe/node_modules/@types/.express-7jyguRAS',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@types/express-serve-static-core': '/Users/alisyed/chili-piper-scarpe/node_modules/@types/.express-serve-static-core-bi7qpwJz',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@types/http-errors': '/Users/alisyed/chili-piper-scarpe/node_modules/@types/.http-errors-aibqRCnM',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@types/mime': '/Users/alisyed/chili-piper-scarpe/node_modules/@types/.mime-BltPqgpj',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@types/qs': '/Users/alisyed/chili-piper-scarpe/node_modules/@types/.qs-1GSpUwqd',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@types/range-parser': '/Users/alisyed/chili-piper-scarpe/node_modules/@types/.range-parser-amhxIsVT',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@types/send': '/Users/alisyed/chili-piper-scarpe/node_modules/@types/.send-pLCPOpMU',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@types/serve-static': '/Users/alisyed/chili-piper-scarpe/node_modules/@types/.serve-static-nMs5BTgj',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/accepts': '/Users/alisyed/chili-piper-scarpe/node_modules/.accepts-MBkAF4XN',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/array-flatten': '/Users/alisyed/chili-piper-scarpe/node_modules/.array-flatten-XtFAjus8',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/body-parser': '/Users/alisyed/chili-piper-scarpe/node_modules/.body-parser-xcmTQWVL',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/bytes': '/Users/alisyed/chili-piper-scarpe/node_modules/.bytes-cnZHTKJY',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/call-bind-apply-helpers': '/Users/alisyed/chili-piper-scarpe/node_modules/.call-bind-apply-helpers-kgUxTMBi',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/call-bound': '/Users/alisyed/chili-piper-scarpe/node_modules/.call-bound-Y1Dw5vY3',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/content-disposition': '/Users/alisyed/chili-piper-scarpe/node_modules/.content-disposition-9a77r9Qr',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/content-type': '/Users/alisyed/chili-piper-scarpe/node_modules/.content-type-SW8JLEvk',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/cookie-signature': '/Users/alisyed/chili-piper-scarpe/node_modules/.cookie-signature-Wh2wg4Qj',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/cors': '/Users/alisyed/chili-piper-scarpe/node_modules/.cors-G5o7k7Dv',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/debug': '/Users/alisyed/chili-piper-scarpe/node_modules/.debug-Y61NAVoQ',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/depd': '/Users/alisyed/chili-piper-scarpe/node_modules/.depd-zURn0xCa',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/destroy': '/Users/alisyed/chili-piper-scarpe/node_modules/.destroy-xgprIMvj',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/dunder-proto': '/Users/alisyed/chili-piper-scarpe/node_modules/.dunder-proto-xeDlJRwt',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/ee-first': '/Users/alisyed/chili-piper-scarpe/node_modules/.ee-first-k3OkdV2N',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/encodeurl': '/Users/alisyed/chili-piper-scarpe/node_modules/.encodeurl-7NnDQ185',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/es-define-property': '/Users/alisyed/chili-piper-scarpe/node_modules/.es-define-property-UNLidiDR',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/es-errors': '/Users/alisyed/chili-piper-scarpe/node_modules/.es-errors-yM2MYpY3',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/es-object-atoms': '/Users/alisyed/chili-piper-scarpe/node_modules/.es-object-atoms-Fdbiknc0',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/escape-html': '/Users/alisyed/chili-piper-scarpe/node_modules/.escape-html-sJCQW2YH',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/etag': '/Users/alisyed/chili-piper-scarpe/node_modules/.etag-ONX9EO0D',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/express': '/Users/alisyed/chili-piper-scarpe/node_modules/.express-WkUiq26A',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/finalhandler': '/Users/alisyed/chili-piper-scarpe/node_modules/.finalhandler-PqT1hi2S',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/fresh': '/Users/alisyed/chili-piper-scarpe/node_modules/.fresh-XTQ871So',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/function-bind': '/Users/alisyed/chili-piper-scarpe/node_modules/.function-bind-QF8a0r8c',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/get-intrinsic': '/Users/alisyed/chili-piper-scarpe/node_modules/.get-intrinsic-XhpM7R50',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/get-proto': '/Users/alisyed/chili-piper-scarpe/node_modules/.get-proto-FVFxhcAv',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/gopd': '/Users/alisyed/chili-piper-scarpe/node_modules/.gopd-6Lzz33Jk',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/has-symbols': '/Users/alisyed/chili-piper-scarpe/node_modules/.has-symbols-mYKKanNq',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/hasown': '/Users/alisyed/chili-piper-scarpe/node_modules/.hasown-nkBRBddy',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/http-errors': '/Users/alisyed/chili-piper-scarpe/node_modules/.http-errors-rQqkqFLi',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/iconv-lite': '/Users/alisyed/chili-piper-scarpe/node_modules/.iconv-lite-75BUXZk3',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/inherits': '/Users/alisyed/chili-piper-scarpe/node_modules/.inherits-l88neWND',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/math-intrinsics': '/Users/alisyed/chili-piper-scarpe/node_modules/.math-intrinsics-CEbZwimZ',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/media-typer': '/Users/alisyed/chili-piper-scarpe/node_modules/.media-typer-W2PcYzvH',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/merge-descriptors': '/Users/alisyed/chili-piper-scarpe/node_modules/.merge-descriptors-lG0jli1l',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/methods': '/Users/alisyed/chili-piper-scarpe/node_modules/.methods-4zxmEIFw',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/mime': '/Users/alisyed/chili-piper-scarpe/node_modules/.mime-gbBGvBy8',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/.bin/mime': '/Users/alisyed/chili-piper-scarpe/node_modules/.bin/.mime-Y6jnM2Q1',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/mime-db': '/Users/alisyed/chili-piper-scarpe/node_modules/.mime-db-jxWf4mnI',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/mime-types': '/Users/alisyed/chili-piper-scarpe/node_modules/.mime-types-NtFZSodk',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/negotiator': '/Users/alisyed/chili-piper-scarpe/node_modules/.negotiator-R7X4UBCt',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/object-assign': '/Users/alisyed/chili-piper-scarpe/node_modules/.object-assign-4YYtMEhe',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/object-inspect': '/Users/alisyed/chili-piper-scarpe/node_modules/.object-inspect-4ktu61q0',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/on-finished': '/Users/alisyed/chili-piper-scarpe/node_modules/.on-finished-4HffRedp',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/parseurl': '/Users/alisyed/chili-piper-scarpe/node_modules/.parseurl-OAOpEBZi',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/path-to-regexp': '/Users/alisyed/chili-piper-scarpe/node_modules/.path-to-regexp-cYIWcOuF',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/qs': '/Users/alisyed/chili-piper-scarpe/node_modules/.qs-lI1Zkt2p',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/range-parser': '/Users/alisyed/chili-piper-scarpe/node_modules/.range-parser-xg0Z6bBJ',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/raw-body': '/Users/alisyed/chili-piper-scarpe/node_modules/.raw-body-JmzLRbnq',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/safer-buffer': '/Users/alisyed/chili-piper-scarpe/node_modules/.safer-buffer-4Qjt6w1F',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/send': '/Users/alisyed/chili-piper-scarpe/node_modules/.send-87Qrux2n',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/serve-static': '/Users/alisyed/chili-piper-scarpe/node_modules/.serve-static-xwAlup2g',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/setprototypeof': '/Users/alisyed/chili-piper-scarpe/node_modules/.setprototypeof-7Q8V1gES',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/side-channel': '/Users/alisyed/chili-piper-scarpe/node_modules/.side-channel-HTGG1ypK',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/side-channel-list': '/Users/alisyed/chili-piper-scarpe/node_modules/.side-channel-list-79cZPQsC',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/side-channel-map': '/Users/alisyed/chili-piper-scarpe/node_modules/.side-channel-map-uMndDJDT',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/side-channel-weakmap': '/Users/alisyed/chili-piper-scarpe/node_modules/.side-channel-weakmap-F1oziqgW',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/statuses': '/Users/alisyed/chili-piper-scarpe/node_modules/.statuses-48VVBHXL',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/toidentifier': '/Users/alisyed/chili-piper-scarpe/node_modules/.toidentifier-YSlES5fS',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/type-is': '/Users/alisyed/chili-piper-scarpe/node_modules/.type-is-ojWrUeGY',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/unpipe': '/Users/alisyed/chili-piper-scarpe/node_modules/.unpipe-VyzMCu9x',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/utils-merge': '/Users/alisyed/chili-piper-scarpe/node_modules/.utils-merge-bSxtrshi',
+349 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/vary': '/Users/alisyed/chili-piper-scarpe/node_modules/.vary-pSUxee0X'
+349 silly reify }
+350 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/win32-x64
+351 silly reify mark deleted [ '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/win32-x64' ]
+352 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/win32-ia32
+353 silly reify mark deleted [
+353 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/win32-ia32'
+353 silly reify ]
+354 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/win32-arm64
+355 silly reify mark deleted [
+355 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/win32-arm64'
+355 silly reify ]
+356 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/sunos-x64
+357 silly reify mark deleted [ '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/sunos-x64' ]
+358 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/openharmony-arm64
+359 silly reify mark deleted [
+359 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/openharmony-arm64'
+359 silly reify ]
+360 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/openbsd-x64
+361 silly reify mark deleted [
+361 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/openbsd-x64'
+361 silly reify ]
+362 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/openbsd-arm64
+363 silly reify mark deleted [
+363 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/openbsd-arm64'
+363 silly reify ]
+364 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/netbsd-x64
+365 silly reify mark deleted [
+365 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/netbsd-x64'
+365 silly reify ]
+366 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/netbsd-arm64
+367 silly reify mark deleted [
+367 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/netbsd-arm64'
+367 silly reify ]
+368 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/linux-x64
+369 silly reify mark deleted [ '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/linux-x64' ]
+370 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/linux-s390x
+371 silly reify mark deleted [
+371 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/linux-s390x'
+371 silly reify ]
+372 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/linux-riscv64
+373 silly reify mark deleted [
+373 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/linux-riscv64'
+373 silly reify ]
+374 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/linux-ppc64
+375 silly reify mark deleted [
+375 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/linux-ppc64'
+375 silly reify ]
+376 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/linux-mips64el
+377 silly reify mark deleted [
+377 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/linux-mips64el'
+377 silly reify ]
+378 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/linux-loong64
+379 silly reify mark deleted [
+379 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/linux-loong64'
+379 silly reify ]
+380 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/linux-ia32
+381 silly reify mark deleted [
+381 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/linux-ia32'
+381 silly reify ]
+382 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/linux-arm64
+383 silly reify mark deleted [
+383 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/linux-arm64'
+383 silly reify ]
+384 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/linux-arm
+385 silly reify mark deleted [ '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/linux-arm' ]
+386 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/freebsd-x64
+387 silly reify mark deleted [
+387 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/freebsd-x64'
+387 silly reify ]
+388 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/freebsd-arm64
+389 silly reify mark deleted [
+389 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/freebsd-arm64'
+389 silly reify ]
+390 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/darwin-x64
+391 silly reify mark deleted [
+391 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/darwin-x64'
+391 silly reify ]
+392 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/android-x64
+393 silly reify mark deleted [
+393 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/android-x64'
+393 silly reify ]
+394 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/android-arm64
+395 silly reify mark deleted [
+395 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/android-arm64'
+395 silly reify ]
+396 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/android-arm
+397 silly reify mark deleted [
+397 silly reify   '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/android-arm'
+397 silly reify ]
+398 verbose reify failed optional dependency /Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/aix-ppc64
+399 silly reify mark deleted [ '/Users/alisyed/chili-piper-scarpe/node_modules/@esbuild/aix-ppc64' ]
+400 http cache ret@https://registry.npmjs.org/ret/-/ret-0.4.3.tgz 0ms (cache hit)
+401 http cache split2@https://registry.npmjs.org/split2/-/split2-4.2.0.tgz 0ms (cache hit)
+402 http cache thread-stream@https://registry.npmjs.org/thread-stream/-/thread-stream-3.1.0.tgz 0ms (cache hit)
+403 http cache sonic-boom@https://registry.npmjs.org/sonic-boom/-/sonic-boom-4.2.0.tgz 0ms (cache hit)
+404 http cache safe-stable-stringify@https://registry.npmjs.org/safe-stable-stringify/-/safe-stable-stringify-2.5.0.tgz 0ms (cache hit)
+405 http cache pino-std-serializers@https://registry.npmjs.org/pino-std-serializers/-/pino-std-serializers-7.0.0.tgz 0ms (cache hit)
+406 http cache real-require@https://registry.npmjs.org/real-require/-/real-require-0.2.0.tgz 0ms (cache hit)
+407 http cache pino-abstract-transport@https://registry.npmjs.org/pino-abstract-transport/-/pino-abstract-transport-2.0.0.tgz 0ms (cache hit)
+408 http cache quick-format-unescaped@https://registry.npmjs.org/quick-format-unescaped/-/quick-format-unescaped-4.0.4.tgz 0ms (cache hit)
+409 http cache on-exit-leak-free@https://registry.npmjs.org/on-exit-leak-free/-/on-exit-leak-free-2.1.2.tgz 0ms (cache hit)
+410 http cache @pinojs/redact@https://registry.npmjs.org/@pinojs/redact/-/redact-0.4.0.tgz 0ms (cache hit)
+411 http cache atomic-sleep@https://registry.npmjs.org/atomic-sleep/-/atomic-sleep-1.0.0.tgz 0ms (cache hit)
+412 http cache obliterator@https://registry.npmjs.org/obliterator/-/obliterator-2.0.5.tgz 0ms (cache hit)
+413 http cache set-cookie-parser@https://registry.npmjs.org/set-cookie-parser/-/set-cookie-parser-2.7.2.tgz 0ms (cache hit)
+414 http cache safe-regex2@https://registry.npmjs.org/safe-regex2/-/safe-regex2-3.1.0.tgz 0ms (cache hit)
+415 http cache fast-decode-uri-component@https://registry.npmjs.org/fast-decode-uri-component/-/fast-decode-uri-component-1.0.1.tgz 0ms (cache hit)
+416 http cache fast-querystring@https://registry.npmjs.org/fast-querystring/-/fast-querystring-1.1.2.tgz 0ms (cache hit)
+417 http cache json-schema-ref-resolver@https://registry.npmjs.org/json-schema-ref-resolver/-/json-schema-ref-resolver-1.0.1.tgz 0ms (cache hit)
+418 http cache @fastify/merge-json-schemas@https://registry.npmjs.org/@fastify/merge-json-schemas/-/merge-json-schemas-0.1.1.tgz 0ms (cache hit)
+419 http cache fastq@https://registry.npmjs.org/fastq/-/fastq-1.19.1.tgz 0ms (cache hit)
+420 http cache require-from-string@https://registry.npmjs.org/require-from-string/-/require-from-string-2.0.2.tgz 0ms (cache hit)
+421 http cache json-schema-traverse@https://registry.npmjs.org/json-schema-traverse/-/json-schema-traverse-1.0.0.tgz 0ms (cache hit)
+422 http cache reusify@https://registry.npmjs.org/reusify/-/reusify-1.1.0.tgz 0ms (cache hit)
+423 http cache fast-deep-equal@https://registry.npmjs.org/fast-deep-equal/-/fast-deep-equal-3.1.3.tgz 0ms (cache hit)
+424 http cache ajv@https://registry.npmjs.org/ajv/-/ajv-8.17.1.tgz 0ms (cache hit)
+425 http cache fast-uri@https://registry.npmjs.org/fast-uri/-/fast-uri-2.4.0.tgz 0ms (cache hit)
+426 http cache ajv-formats@https://registry.npmjs.org/ajv-formats/-/ajv-formats-2.1.1.tgz 0ms (cache hit)
+427 http cache secure-json-parse@https://registry.npmjs.org/secure-json-parse/-/secure-json-parse-2.7.0.tgz 0ms (cache hit)
+428 http cache rfdc@https://registry.npmjs.org/rfdc/-/rfdc-1.4.1.tgz 0ms (cache hit)
+429 http cache toad-cache@https://registry.npmjs.org/toad-cache/-/toad-cache-3.7.0.tgz 0ms (cache hit)
+430 http cache process-warning@https://registry.npmjs.org/process-warning/-/process-warning-3.0.0.tgz 0ms (cache hit)
+431 http cache light-my-request@https://registry.npmjs.org/light-my-request/-/light-my-request-5.14.0.tgz 0ms (cache hit)
+432 http cache pino@https://registry.npmjs.org/pino/-/pino-9.14.0.tgz 0ms (cache hit)
+433 http cache fast-json-stringify@https://registry.npmjs.org/fast-json-stringify/-/fast-json-stringify-5.16.1.tgz 0ms (cache hit)
+434 http cache find-my-way@https://registry.npmjs.org/find-my-way/-/find-my-way-8.2.2.tgz 0ms (cache hit)
+435 http cache fast-content-type-parse@https://registry.npmjs.org/fast-content-type-parse/-/fast-content-type-parse-1.1.0.tgz 0ms (cache hit)
+436 http cache abstract-logging@https://registry.npmjs.org/abstract-logging/-/abstract-logging-2.0.1.tgz 0ms (cache hit)
+437 http cache @fastify/fast-json-stringify-compiler@https://registry.npmjs.org/@fastify/fast-json-stringify-compiler/-/fast-json-stringify-compiler-4.3.0.tgz 0ms (cache hit)
+438 http cache @fastify/error@https://registry.npmjs.org/@fastify/error/-/error-3.4.1.tgz 0ms (cache hit)
+439 http cache avvio@https://registry.npmjs.org/avvio/-/avvio-8.4.0.tgz 0ms (cache hit)
+440 http cache @fastify/ajv-compiler@https://registry.npmjs.org/@fastify/ajv-compiler/-/ajv-compiler-3.6.0.tgz 0ms (cache hit)
+441 http cache mnemonist@https://registry.npmjs.org/mnemonist/-/mnemonist-0.39.6.tgz 0ms (cache hit)
+442 http cache @fastify/cors@https://registry.npmjs.org/@fastify/cors/-/cors-9.0.1.tgz 0ms (cache hit)
+443 http cache fastify@https://registry.npmjs.org/fastify/-/fastify-4.29.1.tgz 0ms (cache hit)
+444 http cache fast-uri@https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.0.tgz 0ms (cache hit)
+445 http cache process-warning@https://registry.npmjs.org/process-warning/-/process-warning-5.0.0.tgz 0ms (cache hit)
+446 http cache ajv-formats@https://registry.npmjs.org/ajv-formats/-/ajv-formats-3.0.1.tgz 0ms (cache hit)
+447 http cache fastify-plugin@https://registry.npmjs.org/fastify-plugin/-/fastify-plugin-4.5.1.tgz 0ms (cache hit)
+448 http cache fsevents@https://registry.npmjs.org/fsevents/-/fsevents-2.3.3.tgz 0ms (cache hit)
+449 silly tarball no local data for ret@https://registry.npmjs.org/ret/-/ret-0.4.3.tgz. Extracting by manifest.
+450 silly tarball no local data for split2@https://registry.npmjs.org/split2/-/split2-4.2.0.tgz. Extracting by manifest.
+451 silly tarball no local data for thread-stream@https://registry.npmjs.org/thread-stream/-/thread-stream-3.1.0.tgz. Extracting by manifest.
+452 silly tarball no local data for sonic-boom@https://registry.npmjs.org/sonic-boom/-/sonic-boom-4.2.0.tgz. Extracting by manifest.
+453 silly tarball no local data for safe-stable-stringify@https://registry.npmjs.org/safe-stable-stringify/-/safe-stable-stringify-2.5.0.tgz. Extracting by manifest.
+454 silly tarball no local data for pino-std-serializers@https://registry.npmjs.org/pino-std-serializers/-/pino-std-serializers-7.0.0.tgz. Extracting by manifest.
+455 silly tarball no local data for real-require@https://registry.npmjs.org/real-require/-/real-require-0.2.0.tgz. Extracting by manifest.
+456 silly tarball no local data for pino-abstract-transport@https://registry.npmjs.org/pino-abstract-transport/-/pino-abstract-transport-2.0.0.tgz. Extracting by manifest.
+457 silly tarball no local data for quick-format-unescaped@https://registry.npmjs.org/quick-format-unescaped/-/quick-format-unescaped-4.0.4.tgz. Extracting by manifest.
+458 silly tarball no local data for on-exit-leak-free@https://registry.npmjs.org/on-exit-leak-free/-/on-exit-leak-free-2.1.2.tgz. Extracting by manifest.
+459 silly tarball no local data for @pinojs/redact@https://registry.npmjs.org/@pinojs/redact/-/redact-0.4.0.tgz. Extracting by manifest.
+460 silly tarball no local data for atomic-sleep@https://registry.npmjs.org/atomic-sleep/-/atomic-sleep-1.0.0.tgz. Extracting by manifest.
+461 silly tarball no local data for obliterator@https://registry.npmjs.org/obliterator/-/obliterator-2.0.5.tgz. Extracting by manifest.
+462 silly tarball no local data for set-cookie-parser@https://registry.npmjs.org/set-cookie-parser/-/set-cookie-parser-2.7.2.tgz. Extracting by manifest.
+463 silly tarball no local data for safe-regex2@https://registry.npmjs.org/safe-regex2/-/safe-regex2-3.1.0.tgz. Extracting by manifest.
+464 silly tarball no local data for fast-decode-uri-component@https://registry.npmjs.org/fast-decode-uri-component/-/fast-decode-uri-component-1.0.1.tgz. Extracting by manifest.
+465 silly tarball no local data for fast-querystring@https://registry.npmjs.org/fast-querystring/-/fast-querystring-1.1.2.tgz. Extracting by manifest.
+466 silly tarball no local data for json-schema-ref-resolver@https://registry.npmjs.org/json-schema-ref-resolver/-/json-schema-ref-resolver-1.0.1.tgz. Extracting by manifest.
+467 silly tarball no local data for @fastify/merge-json-schemas@https://registry.npmjs.org/@fastify/merge-json-schemas/-/merge-json-schemas-0.1.1.tgz. Extracting by manifest.
+468 silly tarball no local data for fastq@https://registry.npmjs.org/fastq/-/fastq-1.19.1.tgz. Extracting by manifest.
+469 silly tarball no local data for require-from-string@https://registry.npmjs.org/require-from-string/-/require-from-string-2.0.2.tgz. Extracting by manifest.
+470 silly tarball no local data for json-schema-traverse@https://registry.npmjs.org/json-schema-traverse/-/json-schema-traverse-1.0.0.tgz. Extracting by manifest.
+471 silly tarball no local data for reusify@https://registry.npmjs.org/reusify/-/reusify-1.1.0.tgz. Extracting by manifest.
+472 silly tarball no local data for fast-deep-equal@https://registry.npmjs.org/fast-deep-equal/-/fast-deep-equal-3.1.3.tgz. Extracting by manifest.
+473 silly tarball no local data for ajv@https://registry.npmjs.org/ajv/-/ajv-8.17.1.tgz. Extracting by manifest.
+474 silly tarball no local data for fast-uri@https://registry.npmjs.org/fast-uri/-/fast-uri-2.4.0.tgz. Extracting by manifest.
+475 silly tarball no local data for ajv-formats@https://registry.npmjs.org/ajv-formats/-/ajv-formats-2.1.1.tgz. Extracting by manifest.
+476 silly tarball no local data for secure-json-parse@https://registry.npmjs.org/secure-json-parse/-/secure-json-parse-2.7.0.tgz. Extracting by manifest.
+477 silly tarball no local data for rfdc@https://registry.npmjs.org/rfdc/-/rfdc-1.4.1.tgz. Extracting by manifest.
+478 silly tarball no local data for toad-cache@https://registry.npmjs.org/toad-cache/-/toad-cache-3.7.0.tgz. Extracting by manifest.
+479 silly tarball no local data for process-warning@https://registry.npmjs.org/process-warning/-/process-warning-3.0.0.tgz. Extracting by manifest.
+480 silly tarball no local data for light-my-request@https://registry.npmjs.org/light-my-request/-/light-my-request-5.14.0.tgz. Extracting by manifest.
+481 silly tarball no local data for pino@https://registry.npmjs.org/pino/-/pino-9.14.0.tgz. Extracting by manifest.
+482 silly tarball no local data for fast-json-stringify@https://registry.npmjs.org/fast-json-stringify/-/fast-json-stringify-5.16.1.tgz. Extracting by manifest.
+483 silly tarball no local data for find-my-way@https://registry.npmjs.org/find-my-way/-/find-my-way-8.2.2.tgz. Extracting by manifest.
+484 silly tarball no local data for fast-content-type-parse@https://registry.npmjs.org/fast-content-type-parse/-/fast-content-type-parse-1.1.0.tgz. Extracting by manifest.
+485 silly tarball no local data for abstract-logging@https://registry.npmjs.org/abstract-logging/-/abstract-logging-2.0.1.tgz. Extracting by manifest.
+486 silly tarball no local data for @fastify/fast-json-stringify-compiler@https://registry.npmjs.org/@fastify/fast-json-stringify-compiler/-/fast-json-stringify-compiler-4.3.0.tgz. Extracting by manifest.
+487 silly tarball no local data for @fastify/error@https://registry.npmjs.org/@fastify/error/-/error-3.4.1.tgz. Extracting by manifest.
+488 silly tarball no local data for avvio@https://registry.npmjs.org/avvio/-/avvio-8.4.0.tgz. Extracting by manifest.
+489 silly tarball no local data for @fastify/ajv-compiler@https://registry.npmjs.org/@fastify/ajv-compiler/-/ajv-compiler-3.6.0.tgz. Extracting by manifest.
+490 silly tarball no local data for mnemonist@https://registry.npmjs.org/mnemonist/-/mnemonist-0.39.6.tgz. Extracting by manifest.
+491 silly tarball no local data for @fastify/cors@https://registry.npmjs.org/@fastify/cors/-/cors-9.0.1.tgz. Extracting by manifest.
+492 silly tarball no local data for fastify@https://registry.npmjs.org/fastify/-/fastify-4.29.1.tgz. Extracting by manifest.
+493 silly tarball no local data for fast-uri@https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.0.tgz. Extracting by manifest.
+494 silly tarball no local data for process-warning@https://registry.npmjs.org/process-warning/-/process-warning-5.0.0.tgz. Extracting by manifest.
+495 silly tarball no local data for ajv-formats@https://registry.npmjs.org/ajv-formats/-/ajv-formats-3.0.1.tgz. Extracting by manifest.
+496 silly tarball no local data for fastify-plugin@https://registry.npmjs.org/fastify-plugin/-/fastify-plugin-4.5.1.tgz. Extracting by manifest.
+497 silly tarball no local data for fsevents@https://registry.npmjs.org/fsevents/-/fsevents-2.3.3.tgz. Extracting by manifest.
+498 http fetch GET 200 https://registry.npmjs.org/pino-abstract-transport/-/pino-abstract-transport-2.0.0.tgz 48ms (cache miss)
+499 http fetch GET 200 https://registry.npmjs.org/quick-format-unescaped/-/quick-format-unescaped-4.0.4.tgz 49ms (cache miss)
+500 http fetch GET 200 https://registry.npmjs.org/safe-stable-stringify/-/safe-stable-stringify-2.5.0.tgz 50ms (cache miss)
+501 http fetch GET 200 https://registry.npmjs.org/split2/-/split2-4.2.0.tgz 50ms (cache miss)
+502 http fetch GET 200 https://registry.npmjs.org/real-require/-/real-require-0.2.0.tgz 50ms (cache miss)
+503 http fetch GET 200 https://registry.npmjs.org/sonic-boom/-/sonic-boom-4.2.0.tgz 53ms (cache miss)
+504 http fetch GET 200 https://registry.npmjs.org/pino-std-serializers/-/pino-std-serializers-7.0.0.tgz 54ms (cache miss)
+505 http fetch GET 200 https://registry.npmjs.org/ret/-/ret-0.4.3.tgz 59ms (cache miss)
+506 http fetch GET 200 https://registry.npmjs.org/thread-stream/-/thread-stream-3.1.0.tgz 59ms (cache miss)
+507 http fetch GET 200 https://registry.npmjs.org/on-exit-leak-free/-/on-exit-leak-free-2.1.2.tgz 62ms (cache miss)
+508 http fetch GET 200 https://registry.npmjs.org/fast-querystring/-/fast-querystring-1.1.2.tgz 88ms (cache miss)
+509 http fetch GET 200 https://registry.npmjs.org/json-schema-ref-resolver/-/json-schema-ref-resolver-1.0.1.tgz 88ms (cache miss)
+510 http fetch GET 200 https://registry.npmjs.org/fast-decode-uri-component/-/fast-decode-uri-component-1.0.1.tgz 95ms (cache miss)
+511 http fetch GET 200 https://registry.npmjs.org/reusify/-/reusify-1.1.0.tgz 95ms (cache miss)
+512 http fetch GET 200 https://registry.npmjs.org/fast-deep-equal/-/fast-deep-equal-3.1.3.tgz 96ms (cache miss)
+513 http fetch GET 200 https://registry.npmjs.org/require-from-string/-/require-from-string-2.0.2.tgz 96ms (cache miss)
+514 http fetch GET 200 https://registry.npmjs.org/json-schema-traverse/-/json-schema-traverse-1.0.0.tgz 97ms (cache miss)
+515 http fetch GET 200 https://registry.npmjs.org/fastq/-/fastq-1.19.1.tgz 97ms (cache miss)
+516 http fetch GET 200 https://registry.npmjs.org/@pinojs/redact/-/redact-0.4.0.tgz 114ms (cache miss)
+517 http fetch GET 200 https://registry.npmjs.org/toad-cache/-/toad-cache-3.7.0.tgz 119ms (cache miss)
+518 http fetch GET 200 https://registry.npmjs.org/rfdc/-/rfdc-1.4.1.tgz 120ms (cache miss)
+519 http fetch GET 200 https://registry.npmjs.org/fast-uri/-/fast-uri-2.4.0.tgz 124ms (cache miss)
+520 http fetch GET 200 https://registry.npmjs.org/ajv-formats/-/ajv-formats-2.1.1.tgz 124ms (cache miss)
+521 http fetch GET 200 https://registry.npmjs.org/secure-json-parse/-/secure-json-parse-2.7.0.tgz 125ms (cache miss)
+522 http fetch GET 200 https://registry.npmjs.org/process-warning/-/process-warning-3.0.0.tgz 132ms (cache miss)
+523 http fetch GET 200 https://registry.npmjs.org/light-my-request/-/light-my-request-5.14.0.tgz 134ms (cache miss)
+524 http fetch GET 200 https://registry.npmjs.org/ajv/-/ajv-8.17.1.tgz 142ms (cache miss)
+525 http fetch GET 200 https://registry.npmjs.org/fast-content-type-parse/-/fast-content-type-parse-1.1.0.tgz 150ms (cache miss)
+526 http fetch GET 200 https://registry.npmjs.org/abstract-logging/-/abstract-logging-2.0.1.tgz 151ms (cache miss)
+527 http fetch GET 200 https://registry.npmjs.org/fast-json-stringify/-/fast-json-stringify-5.16.1.tgz 152ms (cache miss)
+528 http fetch GET 200 https://registry.npmjs.org/@fastify/merge-json-schemas/-/merge-json-schemas-0.1.1.tgz 164ms (cache miss)
+529 http fetch GET 200 https://registry.npmjs.org/find-my-way/-/find-my-way-8.2.2.tgz 163ms (cache miss)
+530 http fetch GET 200 https://registry.npmjs.org/avvio/-/avvio-8.4.0.tgz 165ms (cache miss)
+531 http fetch GET 200 https://registry.npmjs.org/pino/-/pino-9.14.0.tgz 166ms (cache miss)
+532 http fetch GET 200 https://registry.npmjs.org/process-warning/-/process-warning-5.0.0.tgz 183ms (cache miss)
+533 http fetch GET 200 https://registry.npmjs.org/fastify-plugin/-/fastify-plugin-4.5.1.tgz 184ms (cache miss)
+534 http fetch GET 200 https://registry.npmjs.org/mnemonist/-/mnemonist-0.39.6.tgz 186ms (cache miss)
+535 http fetch GET 200 https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.0.tgz 187ms (cache miss)
+536 http fetch GET 200 https://registry.npmjs.org/fsevents/-/fsevents-2.3.3.tgz 190ms (cache miss)
+537 http fetch GET 200 https://registry.npmjs.org/@fastify/error/-/error-3.4.1.tgz 197ms (cache miss)
+538 http fetch GET 200 https://registry.npmjs.org/ajv-formats/-/ajv-formats-3.0.1.tgz 197ms (cache miss)
+539 http fetch GET 200 https://registry.npmjs.org/@fastify/fast-json-stringify-compiler/-/fast-json-stringify-compiler-4.3.0.tgz 201ms (cache miss)
+540 http fetch GET 200 https://registry.npmjs.org/fastify/-/fastify-4.29.1.tgz 218ms (cache miss)
+541 http fetch GET 200 https://registry.npmjs.org/@fastify/ajv-compiler/-/ajv-compiler-3.6.0.tgz 220ms (cache miss)
+542 http fetch GET 200 https://registry.npmjs.org/@fastify/cors/-/cors-9.0.1.tgz 244ms (cache miss)
+543 http fetch GET 200 https://registry.npmjs.org/safe-regex2/-/safe-regex2-3.1.0.tgz 289ms (cache miss)
+544 http fetch GET 200 https://registry.npmjs.org/set-cookie-parser/-/set-cookie-parser-2.7.2.tgz 297ms (cache miss)
+545 http fetch GET 200 https://registry.npmjs.org/atomic-sleep/-/atomic-sleep-1.0.0.tgz 309ms (cache miss)
+546 http fetch GET 200 https://registry.npmjs.org/obliterator/-/obliterator-2.0.5.tgz 339ms (cache miss)
+547 silly ADD node_modules/ret
+548 silly ADD node_modules/split2
+549 silly ADD node_modules/thread-stream
+550 silly ADD node_modules/sonic-boom
+551 silly ADD node_modules/safe-stable-stringify
+552 silly ADD node_modules/real-require
+553 silly ADD node_modules/quick-format-unescaped
+554 silly ADD node_modules/pino-std-serializers
+555 silly ADD node_modules/pino-abstract-transport
+556 silly ADD node_modules/on-exit-leak-free
+557 silly ADD node_modules/atomic-sleep
+558 silly ADD node_modules/@pinojs/redact
+559 silly ADD node_modules/obliterator
+560 silly ADD node_modules/set-cookie-parser
+561 silly ADD node_modules/fast-decode-uri-component
+562 silly ADD node_modules/safe-regex2
+563 silly ADD node_modules/fast-querystring
+564 silly ADD node_modules/reusify
+565 silly ADD node_modules/json-schema-ref-resolver
+566 silly ADD node_modules/@fastify/merge-json-schemas
+567 silly ADD node_modules/fastq
+568 silly ADD node_modules/require-from-string
+569 silly ADD node_modules/json-schema-traverse
+570 silly ADD node_modules/fast-deep-equal
+571 silly ADD node_modules/fast-uri
+572 silly ADD node_modules/ajv-formats
+573 silly ADD node_modules/ajv
+574 silly ADD node_modules/ajv/node_modules/fast-uri
+575 silly ADD node_modules/toad-cache
+576 silly ADD node_modules/secure-json-parse
+577 silly ADD node_modules/rfdc
+578 silly ADD node_modules/process-warning
+579 silly ADD node_modules/pino
+580 silly ADD node_modules/pino/node_modules/process-warning
+581 silly ADD node_modules/light-my-request
+582 silly ADD node_modules/find-my-way
+583 silly ADD node_modules/fast-json-stringify
+584 silly ADD node_modules/fast-json-stringify/node_modules/ajv-formats
+585 silly ADD node_modules/fast-content-type-parse
+586 silly ADD node_modules/avvio
+587 silly ADD node_modules/abstract-logging
+588 silly ADD node_modules/@fastify/fast-json-stringify-compiler
+589 silly ADD node_modules/@fastify/error
+590 silly ADD node_modules/@fastify/ajv-compiler
+591 silly ADD node_modules/mnemonist
+592 silly ADD node_modules/fastify-plugin
+593 silly ADD node_modules/fastify
+594 silly ADD node_modules/@fastify/cors
+595 silly ADD
+596 silly ADD
+597 silly ADD
+598 silly ADD
+599 silly ADD
+600 silly ADD
+601 silly ADD
+602 silly ADD
+603 silly ADD
+604 silly ADD
+605 silly ADD
+606 silly ADD
+607 silly ADD
+608 silly ADD
+609 silly ADD
+610 silly ADD
+611 silly ADD
+612 silly ADD
+613 silly ADD
+614 silly ADD
+615 silly ADD
+616 silly ADD
+617 silly ADD
+618 silly ADD
+619 silly ADD
+620 silly REMOVE node_modules/vary
+621 silly REMOVE node_modules/utils-merge
+622 silly REMOVE node_modules/unpipe
+623 silly REMOVE node_modules/type-is
+624 silly ADD node_modules/tsx/node_modules/fsevents
+625 silly REMOVE node_modules/toidentifier
+626 silly REMOVE node_modules/statuses
+627 silly REMOVE node_modules/side-channel-weakmap
+628 silly REMOVE node_modules/side-channel-map
+629 silly REMOVE node_modules/side-channel-list
+630 silly REMOVE node_modules/side-channel
+631 silly REMOVE node_modules/setprototypeof
+632 silly REMOVE node_modules/serve-static
+633 silly REMOVE node_modules/send
+634 silly REMOVE node_modules/send/node_modules/encodeurl
+635 silly REMOVE node_modules/safer-buffer
+636 silly REMOVE node_modules/raw-body
+637 silly REMOVE node_modules/range-parser
+638 silly REMOVE node_modules/qs
+639 silly REMOVE node_modules/path-to-regexp
+640 silly REMOVE node_modules/parseurl
+641 silly REMOVE node_modules/on-finished
+642 silly REMOVE node_modules/object-inspect
+643 silly REMOVE node_modules/object-assign
+644 silly REMOVE node_modules/negotiator
+645 silly REMOVE node_modules/mime-types
+646 silly REMOVE node_modules/mime-db
+647 silly REMOVE node_modules/mime
+648 silly REMOVE node_modules/methods
+649 silly REMOVE node_modules/merge-descriptors
+650 silly REMOVE node_modules/media-typer
+651 silly REMOVE node_modules/math-intrinsics
+652 silly REMOVE node_modules/inherits
+653 silly REMOVE node_modules/iconv-lite
+654 silly REMOVE node_modules/http-errors
+655 silly REMOVE node_modules/hasown
+656 silly REMOVE node_modules/has-symbols
+657 silly REMOVE node_modules/gopd
+658 silly REMOVE node_modules/get-proto
+659 silly REMOVE node_modules/get-intrinsic
+660 silly REMOVE node_modules/function-bind
+661 silly REMOVE node_modules/fresh
+662 silly REMOVE node_modules/finalhandler
+663 silly REMOVE node_modules/express
+664 silly REMOVE node_modules/etag
+665 silly REMOVE node_modules/escape-html
+666 silly REMOVE node_modules/es-object-atoms
+667 silly REMOVE node_modules/es-errors
+668 silly REMOVE node_modules/es-define-property
+669 silly REMOVE node_modules/encodeurl
+670 silly REMOVE node_modules/ee-first
+671 silly REMOVE node_modules/dunder-proto
+672 silly REMOVE node_modules/destroy
+673 silly REMOVE node_modules/depd
+674 silly REMOVE node_modules/debug
+675 silly REMOVE node_modules/debug/node_modules/ms
+676 silly REMOVE node_modules/cors
+677 silly REMOVE node_modules/cookie-signature
+678 silly REMOVE node_modules/content-type
+679 silly REMOVE node_modules/content-disposition
+680 silly REMOVE node_modules/call-bound
+681 silly REMOVE node_modules/call-bind-apply-helpers
+682 silly REMOVE node_modules/bytes
+683 silly REMOVE node_modules/body-parser
+684 silly REMOVE node_modules/array-flatten
+685 silly REMOVE node_modules/accepts
+686 silly REMOVE node_modules/@types/serve-static
+687 silly REMOVE node_modules/@types/serve-static/node_modules/@types/send
+688 silly REMOVE node_modules/@types/send
+689 silly REMOVE node_modules/@types/range-parser
+690 silly REMOVE node_modules/@types/qs
+691 silly REMOVE node_modules/@types/mime
+692 silly REMOVE node_modules/@types/http-errors
+693 silly REMOVE node_modules/@types/express-serve-static-core
+694 silly REMOVE node_modules/@types/express
+695 silly REMOVE node_modules/@types/cors
+696 silly REMOVE node_modules/@types/connect
+697 silly REMOVE node_modules/@types/body-parser
+698 verbose cwd /Users/alisyed/chili-piper-scarpe
+699 verbose os Darwin 24.5.0
+700 verbose node v22.16.0
+701 verbose npm  v10.9.2
+702 notice
+702 notice New major version of npm available! 10.9.2 -> 11.6.2
+702 notice Changelog: https://github.com/npm/cli/releases/tag/v11.6.2
+702 notice To update run: npm install -g npm@11.6.2
+702 notice  { force: true, [Symbol(proc-log.meta)]: true }
+703 verbose exit 0
+704 info ok

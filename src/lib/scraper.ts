@@ -873,58 +873,92 @@ export class ChiliPiperScraper {
         break;
       }
 
-      // Process all days sequentially for stability and speed
-      let newDaysAdded = 0;
       // Filter out days that have already been collected
       const remainingDays = dayButtons.filter(db => !allSlots[db.dateKey]);
       
       if (remainingDays.length > 0 && Object.keys(allSlots).length < MAX_DAYS) {
-        console.log(`🖱️ Processing ${remainingDays.length} days sequentially...`);
+        // Try fast parallel DOM extraction first (MUCH faster than clicking!)
+        const parallelExtracted = await this.extractAllVisibleDaySlots(page, remainingDays);
         
-        // Process days one at a time for maximum stability
-        for (const buttonInfo of remainingDays) {
-          // Check if we've reached our target before processing next day
-          if (Object.keys(allSlots).length >= MAX_DAYS) {
-            console.log(`🎯 Target reached! Collected ${Object.keys(allSlots).length} days.`);
-            break;
+        // Add any slots found via parallel extraction
+        let parallelDaysAdded = 0;
+        for (const [dateKey, dayData] of Object.entries(parallelExtracted)) {
+          if (!allSlots[dateKey] && dayData.slots.length > 0) {
+            allSlots[dateKey] = dayData;
+            parallelDaysAdded++;
+            console.log(`✅ Parallel extraction: Added ${dateKey} with ${dayData.slots.length} slots`);
+            
+            if (onDayComplete) {
+              const totalSlots = Object.values(allSlots).reduce((sum, day) => sum + day.slots.length, 0);
+              const formattedDate = this.formatDate(dateKey);
+              onDayComplete({
+                date: formattedDate,
+                slots: dayData.slots,
+                totalDays: Object.keys(allSlots).length,
+                totalSlots: totalSlots
+              });
+            }
           }
+        }
+        
+        // If parallel extraction got us enough days, we're done!
+        if (Object.keys(allSlots).length >= MAX_DAYS) {
+          console.log(`🎯 Target reached via parallel extraction! Collected ${Object.keys(allSlots).length} days.`);
+          break;
+        }
+        
+        // Filter out days we already got from parallel extraction
+        const daysStillNeeded = remainingDays.filter(db => !allSlots[db.dateKey]);
+        
+        // Fall back to sequential clicking only for remaining days
+        if (daysStillNeeded.length > 0 && Object.keys(allSlots).length < MAX_DAYS) {
+          console.log(`🖱️ Parallel extraction got ${parallelDaysAdded} days, clicking ${daysStillNeeded.length} remaining days...`);
           
-          try {
-            const dateKey = buttonInfo.dateKey;
-            
-            if (allSlots[dateKey]) {
-              continue;
+          let newDaysAdded = 0;
+          // Process days one at a time for maximum stability
+          for (const buttonInfo of daysStillNeeded) {
+            // Check if we've reached our target before processing next day
+            if (Object.keys(allSlots).length >= MAX_DAYS) {
+              console.log(`🎯 Target reached! Collected ${Object.keys(allSlots).length} days.`);
+              break;
             }
             
-            console.log(`🖱️ Clicking day: ${dateKey}`);
-            // Click the day button
-            await buttonInfo.button.click();
-            
-            // Wait for slot buttons to appear after clicking day button
-            try { 
-              await page.waitForSelector('button[data-test-id^="slot-"], [data-id="calendar-slot"]', { timeout: 1000 }); 
-            } catch {
-              // Slots might already be visible or this day has no slots
-            }
-            
-            // Get time slots for this day
-            const slots = await this.getTimeSlotsForCurrentDay(page);
-            
-            if (slots.length > 0) {
-              allSlots[dateKey] = { slots };
-              newDaysAdded++;
-              console.log(`✅ Added ${dateKey}: ${slots.length} slots (total days: ${Object.keys(allSlots).length})`);
+            try {
+              const dateKey = buttonInfo.dateKey;
               
-              if (onDayComplete) {
-                const totalSlots = Object.values(allSlots).reduce((sum, day) => sum + day.slots.length, 0);
-                const formattedDate = this.formatDate(dateKey);
-                onDayComplete({
-                  date: formattedDate,
-                  slots: slots,
-                  totalDays: Object.keys(allSlots).length,
-                  totalSlots: totalSlots
-                });
+              if (allSlots[dateKey]) {
+                continue;
               }
+              
+              console.log(`🖱️ Clicking day: ${dateKey}`);
+              // Click the day button
+              await buttonInfo.button.click();
+              
+              // Wait for slot buttons to appear after clicking day button
+              try { 
+                await page.waitForSelector('button[data-test-id^="slot-"], [data-id="calendar-slot"]', { timeout: 1000 }); 
+              } catch {
+                // Slots might already be visible or this day has no slots
+              }
+              
+              // Get time slots for this day
+              const slots = await this.getTimeSlotsForCurrentDay(page);
+              
+              if (slots.length > 0) {
+                allSlots[dateKey] = { slots };
+                newDaysAdded++;
+                console.log(`✅ Added ${dateKey}: ${slots.length} slots (total days: ${Object.keys(allSlots).length})`);
+                
+                if (onDayComplete) {
+                  const totalSlots = Object.values(allSlots).reduce((sum, day) => sum + day.slots.length, 0);
+                  const formattedDate = this.formatDate(dateKey);
+                  onDayComplete({
+                    date: formattedDate,
+                    slots: slots,
+                    totalDays: Object.keys(allSlots).length,
+                    totalSlots: totalSlots
+                  });
+                }
 
               // Early-exit if total slots threshold reached
               const grandTotalSlots = Object.values(allSlots).reduce((sum, d) => sum + d.slots.length, 0);
@@ -935,7 +969,6 @@ export class ChiliPiperScraper {
             } else {
               console.log(`⚠️ No slots found for ${dateKey}`);
             }
-            
           } catch (error) {
             console.log(`❌ Error processing day button ${buttonInfo.dateKey}: ${error}`);
             continue;
@@ -943,7 +976,7 @@ export class ChiliPiperScraper {
         }
       }
       
-      console.log(`📊 Progress: ${Object.keys(allSlots).length} total days collected (${newDaysAdded} new from this attempt)`);
+      console.log(`📊 Progress: ${Object.keys(allSlots).length} total days collected`);
       
       // If we have enough days, stop
       if (Object.keys(allSlots).length >= MAX_DAYS) {

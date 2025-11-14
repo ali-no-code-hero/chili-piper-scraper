@@ -6,6 +6,14 @@ const security = new SecurityMiddleware();
 
 export async function POST(request: NextRequest) {
   try {
+    // Log all headers for debugging
+    const allHeaders: Record<string, string> = {};
+    request.headers.forEach((value, key) => {
+      allHeaders[key] = value;
+    });
+    console.error('📋 Get-Slots API - All headers:', JSON.stringify(allHeaders));
+    console.error('📋 Get-Slots API - X-API-Key header:', request.headers.get('x-api-key') || request.headers.get('X-API-Key') || 'NOT FOUND');
+    
     console.log('🔍 Get-Slots API Debug - Request received');
     
     // Apply security middleware
@@ -17,6 +25,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!securityResult.allowed) {
+      console.error('❌ Security check failed:', securityResult.response);
       return security.addSecurityHeaders(securityResult.response!);
     }
 

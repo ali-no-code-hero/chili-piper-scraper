@@ -934,8 +934,8 @@ export class ChiliPiperScraper {
               // Click the day button
               await buttonInfo.button.click();
               
-              // Minimal delay for DOM update (50ms is usually enough for React/Vue updates)
-              await page.waitForTimeout(50);
+              // No delay - slots should be immediately available after click
+              // React/Vue updates are usually synchronous for button clicks
               
               // Get time slots immediately after minimal delay
               const slots = await this.getTimeSlotsForCurrentDay(page);

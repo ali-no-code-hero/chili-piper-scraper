@@ -344,14 +344,16 @@ export class SecurityMiddleware {
                      request.headers.get('x-api-key') || '';
       
       // Debug logging
+      const allHeaders = Array.from(request.headers.entries());
+      const relevantHeaders = allHeaders.filter(([k, v]) => 
+        k.toLowerCase().includes('api') || k.toLowerCase().includes('auth')
+      );
       console.log('🔐 Auth check:', {
         hasAuthHeader: !!authHeader,
         authHeaderPrefix: authHeader.substring(0, 20),
         hasXApiKey: !!xApiKey,
         xApiKeyPrefix: xApiKey.substring(0, 20),
-        allHeaders: Array.from(request.headers.entries()).filter(([k]) => 
-          k.toLowerCase().includes('api') || k.toLowerCase().includes('auth')
-        )
+        relevantHeaders
       });
       
       const authResult = this.validateApiKey(authHeader, xApiKey);

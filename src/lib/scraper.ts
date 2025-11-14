@@ -1015,19 +1015,20 @@ export class ChiliPiperScraper {
           }
         }
       }
-      
-      console.log(`🏁 Final result: Successfully collected ${Object.keys(allSlots).length} days`);
-      console.log(`📋 Collected dates: ${Object.keys(allSlots).join(', ')}`);
-      
-      if (Object.keys(allSlots).length === 0) {
-        console.warn("⚠️ No available booking slots found in any week");
-        console.info("💡 This could mean the calendar has no available slots or the page structure changed");
-      } else {
-        console.info(`✅ Found ${Object.keys(allSlots).length} days with available booking slots`);
-      }
-
-      return allSlots;
     }
+    
+    console.log(`🏁 Final result: Successfully collected ${Object.keys(allSlots).length} days`);
+    console.log(`📋 Collected dates: ${Object.keys(allSlots).join(', ')}`);
+    
+    if (Object.keys(allSlots).length === 0) {
+      console.warn("⚠️ No available booking slots found in any week");
+      console.info("💡 This could mean the calendar has no available slots or the page structure changed");
+    } else {
+      console.info(`✅ Found ${Object.keys(allSlots).length} days with available booking slots`);
+    }
+
+    return allSlots;
+  }
 
   private async getAllEnabledDayButtons(pageOrFrame: any): Promise<Array<{ button: any; dateKey: string }>> {
     const enabledButtons: Array<{ button: any; dateKey: string }> = [];

@@ -793,12 +793,11 @@ export class ChiliPiperScraper {
           console.log(`✅ Extracted slots from DOM for ${Object.keys(extracted).length} date groups`);
           
           // If we have a 'current' group, it's likely for the selected day
-          // Try to match with the first day button or distribute across visible days
-          if (extracted['current'] && extracted['current'].length > 0) {
-            // This might be slots for the currently selected day
-            // We'll need to click to get slots for other days, but this gives us a head start
-            console.log(`📊 Found ${extracted['current'].length} slots for current selection`);
-            // Don't add to result yet - we'll handle this in the main loop
+          // Match it with the first visible day button (usually the selected one)
+          if (extracted['current'] && extracted['current'].length > 0 && dayButtons.length > 0) {
+            const firstDayKey = dayButtons[0].dateKey;
+            result[firstDayKey] = { slots: extracted['current'] as string[] };
+            console.log(`📊 Found ${extracted['current'].length} slots for ${firstDayKey} (current selection)`);
           }
           
           // Add any date-matched slots
@@ -808,8 +807,9 @@ export class ChiliPiperScraper {
             }
           }
           
-          // If we found date-matched slots, return early (success!)
+          // If we found any slots (including 'current'), return them
           if (Object.keys(result).length > 0) {
+            console.log(`✅ Parallel extraction successful! Found slots for ${Object.keys(result).length} day(s)`);
             return result;
           }
         }

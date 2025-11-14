@@ -229,7 +229,8 @@ export class SecurityMiddleware {
       // Authentication check
       if (config.requireAuth) {
         const authHeader = req.headers.authorization || '';
-        const authResult = this.validateApiKey(authHeader);
+        const xApiKey = req.headers['x-api-key'] || '';
+        const authResult = this.validateApiKey(authHeader, xApiKey);
         
         if (!authResult.valid) {
           this.logSecurityEvent('AUTH_FAILED', { 
@@ -240,7 +241,7 @@ export class SecurityMiddleware {
           res.status(401).json({
             success: false,
             error: 'Unauthorized',
-            message: 'Invalid or missing API key'
+            message: 'Invalid or missing API key. Use Authorization: Bearer <key> or X-API-Key: <key> header'
           });
           return;
         }

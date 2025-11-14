@@ -23,8 +23,6 @@ export class ChiliPiperScraper {
   private baseUrl: string;
   private routingId: string | null = null;
   private phoneFieldId: string;
-  private static resultCache: Map<string, { timestamp: number; result: ScrapingResult } > = new Map();
-  private static readonly CACHE_TTL_MS: number = parseInt(process.env.SCRAPE_CACHE_TTL_MS || '60000', 10);
 
   constructor(formUrl?: string) {
     this.baseUrl = formUrl || process.env.CHILI_PIPER_FORM_URL || "https://cincpro.chilipiper.com/concierge-router/link/lp-request-a-demo-agent-advice";
@@ -221,14 +219,6 @@ export class ChiliPiperScraper {
       // Always use prefill URL format - just adds query params to base URL
       const targetUrl = this.buildParameterizedUrl(firstName, lastName, email, phone);
       const useParameterizedUrl = true; // Always use prefill URLs for faster scraping
-      
-      // Short-lived cache check (use parameterized URL for cache key if available)
-      const cacheKey = useParameterizedUrl ? targetUrl : `${this.baseUrl}`;
-      const cached = ChiliPiperScraper.resultCache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < ChiliPiperScraper.CACHE_TTL_MS) {
-        console.log('🗃️ Returning cached result');
-        return cached.result;
-      }
 
       // Try warm post-form calendar context first (only if not using parameterized URL)
       const calendarPool = getCalendarContextPool(this.baseUrl);
@@ -530,10 +520,7 @@ export class ChiliPiperScraper {
         }
       };
 
-      // Cache result briefly for repeated identical requests
-      try {
-        ChiliPiperScraper.resultCache.set(cacheKey, { timestamp: Date.now(), result });
-      } catch {}
+      // Caching disabled - always return fresh results
 
       console.log(`✅ Scraping completed successfully: ${flattenedSlots.length} slots across ${Object.keys(slots).length} days`);
       // Restore logger before returning

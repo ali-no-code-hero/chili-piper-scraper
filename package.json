@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "description": "Production-ready Chili Piper slot scraper with API key management and streaming support",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "build": "tsc",
-    "start": "node dist/server.js",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
     "lint": "eslint src --ext .ts",
     "postinstall": "playwright install chromium --with-deps || true"
   },

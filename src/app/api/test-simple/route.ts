@@ -10,12 +10,20 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const headers: Record<string, string> = {};
+    request.headers.forEach((value, key) => {
+      headers[key] = value;
+    });
+    
+    const body = await request.json().catch(() => ({}));
     return NextResponse.json({
       message: 'Simple test endpoint working!',
       timestamp: new Date().toISOString(),
       method: 'POST',
-      receivedData: body
+      receivedData: body,
+      headers,
+      xApiKey: request.headers.get('x-api-key') || request.headers.get('X-API-Key') || 'NOT FOUND',
+      authorization: request.headers.get('authorization') || 'NOT FOUND'
     });
   } catch (error) {
     return NextResponse.json({

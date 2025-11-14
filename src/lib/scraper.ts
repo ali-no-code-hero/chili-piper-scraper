@@ -1494,4 +1494,5 @@ export class ChiliPiperScraper {
     return false;
   }
 }
+}
 

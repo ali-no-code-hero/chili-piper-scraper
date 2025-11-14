@@ -242,7 +242,7 @@ export class ChiliPiperScraper {
       if (!page) {
         page = await browser.newPage();
       }
-      page.setDefaultNavigationTimeout(20000);
+      page.setDefaultNavigationTimeout(10000); // Reduced from 20s to 10s for speed
       // Aggressive resource blocking
       await page.route("**/*", (route: any) => {
         const url = route.request().url();
@@ -259,15 +259,15 @@ export class ChiliPiperScraper {
       
       // Navigate to parameterized URL or base URL
       if (!useParameterizedUrl && !calendarPool.isReady()) {
-        await page.goto(this.baseUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+        await page.goto(this.baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
       } else if (useParameterizedUrl) {
         console.log(`🚀 Navigating directly to parameterized URL (skipping form)`);
-        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
       }
       
       // Wait for page to be ready - check for any form elements or submit button
       try {
-        await page.waitForSelector('input, button[type="submit"], [data-test-id*="Field"], form', { timeout: 3000 });
+        await page.waitForSelector('input, button[type="submit"], [data-test-id*="Field"], form', { timeout: 1000 });
       } catch {
         // Page may already be on calendar, continue
       }
@@ -279,7 +279,7 @@ export class ChiliPiperScraper {
       console.log("⚡ Using prefill URL - form fields are already filled!");
       // Wait for form to be visible (indicates prefill has loaded)
       try {
-        await page.waitForSelector('input, form, [data-test-id*="Field"]', { timeout: 2000 });
+        await page.waitForSelector('input, form, [data-test-id*="Field"]', { timeout: 500 });
       } catch {
         // Form might not be visible if page went directly to calendar
       }
@@ -301,7 +301,7 @@ export class ChiliPiperScraper {
       for (const selector of submitSelectors) {
         try {
           console.log(`🔍 Looking for submit button: ${selector}`);
-          await page.waitForSelector(selector, { timeout: 2000 });
+          await page.waitForSelector(selector, { timeout: 500 });
           await page.click(selector);
           console.log(`✅ Successfully clicked submit button using selector: ${selector}`);
           submitClicked = true;
@@ -318,7 +318,7 @@ export class ChiliPiperScraper {
         console.log("✅ Form submitted (fields were pre-filled via URL)");
         // Wait for page to transition after submit
         try {
-          await page.waitForSelector('[data-test-id="ConciergeLiveBox-book"], [data-id="concierge-live-book"], button[data-test-id*="schedule"], [data-id="calendar-day-button"]', { timeout: 3000 });
+          await page.waitForSelector('[data-test-id="ConciergeLiveBox-book"], [data-id="concierge-live-book"], button[data-test-id*="schedule"], [data-id="calendar-day-button"]', { timeout: 1000 });
         } catch {
           // Page may have already transitioned
         }
@@ -329,7 +329,7 @@ export class ChiliPiperScraper {
       console.log("⏳ Waiting for call/schedule choice page...");
       // Wait for schedule button or calendar to appear
       try {
-        await page.waitForSelector('[data-test-id="ConciergeLiveBox-book"], [data-id="concierge-live-book"], [data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 2000 });
+        await page.waitForSelector('[data-test-id="ConciergeLiveBox-book"], [data-id="concierge-live-book"], [data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 500 });
       } catch {
         // Page may have already loaded calendar
       }
@@ -369,7 +369,7 @@ export class ChiliPiperScraper {
         console.log("✅ Proceeding to schedule a meeting");
         // Wait for calendar elements to appear
         try {
-          await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 3000 });
+          await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 500 });
         } catch {
           // Calendar might already be visible
         }
@@ -377,7 +377,7 @@ export class ChiliPiperScraper {
         console.log("ℹ️ No schedule button found - page may have gone directly to calendar");
         // Wait for calendar elements to appear
         try {
-          await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 3000 });
+          await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 500 });
         } catch {
           // Calendar might already be visible
         }
@@ -407,7 +407,7 @@ export class ChiliPiperScraper {
       let calendarContext: any = page;
       for (const selector of calendarSelectors) {
         try {
-          await page.waitForSelector(selector, { timeout: 4000 }); // Increased to 4s to tolerate slow renders
+          await page.waitForSelector(selector, { timeout: 1000 }); // Reduced for speed
           console.log(`✅ Calendar loaded successfully using selector: ${selector}`);
           calendarFound = true;
           break;
@@ -421,7 +421,7 @@ export class ChiliPiperScraper {
         // Retry once - wait for calendar to stabilize
         console.log('🔁 Calendar not found, retrying detection once...');
         try {
-          await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 2000 });
+          await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 500 });
         } catch {
           // Continue even if not found
         }
@@ -456,7 +456,7 @@ export class ChiliPiperScraper {
       if (!calendarFound) {
         // Final fallback: wait for day buttons broadly (5s)
         try {
-          await page.waitForSelector('button[data-test-id*="days:"], [data-id="calendar-day-button"], [data-test-id*="day"]', { timeout: 5000 });
+          await page.waitForSelector('button[data-test-id*="days:"], [data-id="calendar-day-button"], [data-test-id*="day"]', { timeout: 1000 });
           console.log('✅ Fallback: detected day buttons without calendar container');
           calendarFound = true;
           calendarContext = page;
@@ -468,7 +468,7 @@ export class ChiliPiperScraper {
         console.log('⏳ Calendar not found initially, waiting a bit longer and retrying...');
         // Wait for calendar to render
         try {
-          await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 3000 });
+          await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 500 });
         } catch {
           // Continue even if wait fails
         }
@@ -575,7 +575,7 @@ export class ChiliPiperScraper {
     for (const selector of selectors) {
       try {
         console.log(`🔍 Trying selector for ${fieldName}: ${selector}`);
-        await page.waitForSelector(selector, { timeout: 1000 }); // Reduced from 2000ms for faster execution
+          await page.waitForSelector(selector, { timeout: 300 }); // Aggressively reduced for speed
         
         // Try multiple methods to fill the field
         try {
@@ -855,7 +855,7 @@ export class ChiliPiperScraper {
       
       // Wait for day buttons to be rendered before collecting them
       try {
-        await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 2000 });
+        await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 500 });
       } catch {
         // Continue even if wait fails - buttons might already be present
       }
@@ -934,14 +934,10 @@ export class ChiliPiperScraper {
               // Click the day button
               await buttonInfo.button.click();
               
-              // Wait for slot buttons to appear after clicking day button
-              try { 
-                await page.waitForSelector('button[data-test-id^="slot-"], [data-id="calendar-slot"]', { timeout: 1000 }); 
-              } catch {
-                // Slots might already be visible or this day has no slots
-              }
+              // Minimal delay for DOM update (50ms is usually enough for React/Vue updates)
+              await page.waitForTimeout(50);
               
-              // Get time slots for this day
+              // Get time slots immediately after minimal delay
               const slots = await this.getTimeSlotsForCurrentDay(page);
               
               if (slots.length > 0) {
@@ -993,14 +989,14 @@ export class ChiliPiperScraper {
         if (navSuccess) {
           // Wait for calendar to update after navigation - look for day buttons
           try { 
-            await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 2000 }); 
+            await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 500 }); 
           } catch {}
           // If calendar didn't change, try one more next-week click
           if (lastDateKeysSig === dateSig) {
             await this.navigateToNextWeek(page);
             // Wait for calendar to update
             try {
-              await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 2000 });
+              await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 500 });
             } catch {}
           }
           lastDateKeysSig = dateSig;
@@ -1200,33 +1196,9 @@ export class ChiliPiperScraper {
       }
     }
     
-    console.log('⚠️ Fast path failed, trying fallback');
-
-    // Fallback path (rare) - try all contexts
-    const fallbackSelectors = [
-      'button[data-test-id^="slot-"]',
-      '[data-id="calendar-slot"]',
-      'button:has-text("AM")',
-      'button:has-text("PM")',
-      'button:has-text(":")'
-    ];
-    for (const ctx of contexts) {
-      for (const selector of fallbackSelectors) {
-        try {
-          const elements = await ctx.$$(selector);
-        if (elements.length > 0) {
-          const texts = await Promise.all(elements.map((el: any) => el.textContent()));
-          const filtered = texts
-            .filter((t: any) => t && t.trim().length > 0 && this.isValidTimeSlot(t))
-            .map((t: any) => t!.trim());
-          if (filtered.length > 0) {
-            console.log(`✅ Returning ${filtered.length} time slots (fallback via ${selector})`);
-            return filtered;
-          }
-        }
-      } catch {}
-      }
-    }
+    // Skip fallback path for speed - if fast path didn't work, return empty
+    // This saves ~500-1000ms per day
+    console.log('⚠️ Fast path found no slots - skipping fallback for speed');
     return [];
   }
 
@@ -1250,7 +1222,7 @@ export class ChiliPiperScraper {
     let dayButtonsFound = false;
     for (const selector of dayButtonSelectors) {
       try {
-        await page.waitForSelector(selector, { timeout: 5000 }); // Increased from 1000ms to 5000ms
+        await page.waitForSelector(selector, { timeout: 500 }); // Aggressively reduced for speed
         dayButtonsFound = true;
         break;
       } catch (error) {
@@ -1449,7 +1421,7 @@ export class ChiliPiperScraper {
                 // Wait for calendar to update after navigation
                 for (const v of verifySelectors) {
                   try { 
-                    await ctx.waitForSelector(v, { timeout: 2000 }); 
+                    await ctx.waitForSelector(v, { timeout: 300 }); 
                     break; 
                   } catch {}
                 }
@@ -1463,7 +1435,7 @@ export class ChiliPiperScraper {
                 // Wait for calendar to update after navigation
                 for (const v of verifySelectors) {
                   try { 
-                    await ctx.waitForSelector(v, { timeout: 2000 }); 
+                    await ctx.waitForSelector(v, { timeout: 300 }); 
                     break; 
                   } catch {}
                 }

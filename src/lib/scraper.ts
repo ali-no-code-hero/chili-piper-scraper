@@ -265,24 +265,8 @@ export class ChiliPiperScraper {
         await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
       }
       
-      // Wait for page to be ready - check for any form elements or submit button
-      try {
-        await page.waitForSelector('input, button[type="submit"], [data-test-id*="Field"], form', { timeout: 1000 });
-      } catch {
-        // Page may already be on calendar, continue
-      }
-      
-      // Note: We always use prefill URLs now, so warm calendar context is not used
-
-      // Skip form filling entirely - form is pre-filled via URL params
-      // Only need to click Submit button
+      // Skip all waits - form is pre-filled via URL params, just click Submit
       console.log("⚡ Using prefill URL - form fields are already filled!");
-      // Wait for form to be visible (indicates prefill has loaded)
-      try {
-        await page.waitForSelector('input, form, [data-test-id*="Field"]', { timeout: 500 });
-      } catch {
-        // Form might not be visible if page went directly to calendar
-      }
       
       // Now just click Submit button (form fields are pre-filled via URL)
       const submitSelectors = [
@@ -300,15 +284,22 @@ export class ChiliPiperScraper {
       let submitClicked = false;
       for (const selector of submitSelectors) {
         try {
-          console.log(`🔍 Looking for submit button: ${selector}`);
-          await page.waitForSelector(selector, { timeout: 500 });
-          await page.click(selector);
+          // Try clicking immediately without wait (button should be ready)
+          await page.click(selector, { timeout: 200 });
           console.log(`✅ Successfully clicked submit button using selector: ${selector}`);
           submitClicked = true;
           break;
         } catch (error) {
-          console.log(`❌ Submit selector failed: ${selector}`);
-          continue;
+          // If immediate click fails, try with short wait
+          try {
+            await page.waitForSelector(selector, { timeout: 200 });
+            await page.click(selector);
+            console.log(`✅ Successfully clicked submit button using selector: ${selector}`);
+            submitClicked = true;
+            break;
+          } catch {
+            continue;
+          }
         }
       }
       
@@ -316,23 +307,11 @@ export class ChiliPiperScraper {
         console.log("⚠️ Submit button not found - page may have auto-submitted or gone directly to calendar");
       } else {
         console.log("✅ Form submitted (fields were pre-filled via URL)");
-        // Wait for page to transition after submit
-        try {
-          await page.waitForSelector('[data-test-id="ConciergeLiveBox-book"], [data-id="concierge-live-book"], button[data-test-id*="schedule"], [data-id="calendar-day-button"]', { timeout: 1000 });
-        } catch {
-          // Page may have already transitioned
-        }
+        // Skip wait - page should transition immediately
       }
       
-      // Wait for the intermediate step (call now vs schedule meeting) - optimized
-      // This step happens whether using parameterized URL or form filling
-      console.log("⏳ Waiting for call/schedule choice page...");
-      // Wait for schedule button or calendar to appear
-      try {
-        await page.waitForSelector('[data-test-id="ConciergeLiveBox-book"], [data-id="concierge-live-book"], [data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 500 });
-      } catch {
-        // Page may have already loaded calendar
-      }
+      // Skip wait - page should already be on calendar or schedule choice
+      console.log("⏳ Checking for calendar/schedule page...");
       
       // Look for "Schedule a meeting" or similar options (optional - sometimes page goes directly to calendar)
       // Based on HTML: data-test-id="ConciergeLiveBox-book" or data-id="concierge-live-book"
@@ -352,35 +331,30 @@ export class ChiliPiperScraper {
       let scheduleClicked = false;
       for (const selector of scheduleSelectors) {
         try {
-          console.log(`🔍 Looking for schedule button: ${selector}`);
-          await page.waitForSelector(selector, { timeout: 1000 });
-          await page.click(selector);
+          // Try clicking immediately without wait
+          await page.click(selector, { timeout: 200 });
           console.log(`✅ Successfully clicked schedule button using selector: ${selector}`);
           scheduleClicked = true;
           break;
         } catch (error) {
-          console.log(`❌ Schedule selector failed: ${selector}`);
-          continue;
+          // If immediate click fails, try with short wait
+          try {
+            await page.waitForSelector(selector, { timeout: 200 });
+            await page.click(selector);
+            console.log(`✅ Successfully clicked schedule button using selector: ${selector}`);
+            scheduleClicked = true;
+            break;
+          } catch {
+            continue;
+          }
         }
       }
       
-      // Wait for calendar page to load (whether we clicked schedule or went directly to calendar)
+      // Skip calendar wait - it should be ready immediately after schedule click or already visible
       if (scheduleClicked) {
         console.log("✅ Proceeding to schedule a meeting");
-        // Wait for calendar elements to appear
-        try {
-          await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 500 });
-        } catch {
-          // Calendar might already be visible
-        }
       } else {
         console.log("ℹ️ No schedule button found - page may have gone directly to calendar");
-        // Wait for calendar elements to appear
-        try {
-          await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 500 });
-        } catch {
-          // Calendar might already be visible
-        }
       }
       
       // Wait for calendar elements - prioritize selectors based on actual HTML structure
@@ -405,26 +379,39 @@ export class ChiliPiperScraper {
       
       let calendarFound = false;
       let calendarContext: any = page;
+      // Try immediate detection first (no wait)
       for (const selector of calendarSelectors) {
         try {
-          await page.waitForSelector(selector, { timeout: 1000 }); // Reduced for speed
-          console.log(`✅ Calendar loaded successfully using selector: ${selector}`);
-          calendarFound = true;
-          break;
-        } catch (error) {
-          console.log(`❌ Calendar selector failed: ${selector}`);
-          continue;
+          const element = await page.$(selector);
+          if (element) {
+            console.log(`✅ Calendar found immediately using selector: ${selector}`);
+            calendarFound = true;
+            break;
+          }
+        } catch {}
+      }
+      
+      // If not found immediately, try with short wait
+      if (!calendarFound) {
+        for (const selector of calendarSelectors) {
+          try {
+            await page.waitForSelector(selector, { timeout: 300 });
+            console.log(`✅ Calendar loaded using selector: ${selector}`);
+            calendarFound = true;
+            break;
+          } catch (error) {
+            continue;
+          }
         }
       }
       
       if (!calendarFound) {
-        // Retry once - wait for calendar to stabilize
-        console.log('🔁 Calendar not found, retrying detection once...');
+        // Final retry with minimal wait
+        console.log('🔁 Calendar not found, final retry...');
         try {
-          await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 500 });
-        } catch {
-          // Continue even if not found
-        }
+          await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 300 });
+          calendarFound = true;
+        } catch {}
         for (const selector of calendarSelectors) {
           try {
             await page.waitForSelector(selector, { timeout: 4000 });

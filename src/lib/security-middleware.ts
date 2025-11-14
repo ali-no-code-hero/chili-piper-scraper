@@ -119,18 +119,31 @@ export class SecurityMiddleware {
     
     // Try Authorization header first (Bearer token)
     if (authHeader && authHeader.startsWith('Bearer ')) {
-      token = authHeader.substring(7);
+      token = authHeader.substring(7).trim();
     }
     // Fallback to X-API-Key header
     else if (xApiKey) {
-      token = xApiKey;
+      token = xApiKey.trim();
     }
     
+    console.log('🔑 validateApiKey called:', {
+      hasAuthHeader: !!authHeader,
+      authHeaderPrefix: authHeader?.substring(0, 30),
+      hasXApiKey: !!xApiKey,
+      xApiKeyPrefix: xApiKey?.substring(0, 30),
+      token: token?.substring(0, 30),
+      tokenLength: token?.length,
+      defaultKeysSize: DEFAULT_KEYS.size,
+      defaultKeysSample: Array.from(DEFAULT_KEYS).slice(0, 3)
+    });
+    
     if (!token) {
+      console.log('❌ No token found');
       return { valid: false };
     }
     
     const ok = DEFAULT_KEYS.has(token);
+    console.log('🔑 Token validation result:', { token: token.substring(0, 20) + '...', ok });
     return { valid: ok, apiKey: ok ? { key: token } : undefined };
   }
 

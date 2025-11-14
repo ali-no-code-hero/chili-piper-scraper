@@ -1,16 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ApiKeyManager } from '@/lib/api-key-manager';
-const apiKeyManager = new ApiKeyManager(process.env.DATABASE_URL);
+import { SecurityMiddleware } from '@/lib/security-middleware';
 
-function validateApiKey(authHeader: string): boolean {
-  if (!authHeader.startsWith('Bearer ')) {
-    return false;
-  }
-  
-  const token = authHeader.substring(7);
-  const ok = !!apiKeyManager.validateApiKey(token);
-  console.log('[MOCK] validateApiKey token prefix:', token.substring(0, 12), 'ok:', ok);
-  return ok;
+const security = new SecurityMiddleware();
+
+function validateApiKey(authHeader: string, xApiKey?: string): boolean {
+  const result = security.validateApiKey(authHeader || '', xApiKey);
+  console.log('[MOCK] validateApiKey result:', result.valid);
+  return result.valid;
 }
 
 export async function POST(request: NextRequest) {
@@ -19,9 +15,10 @@ export async function POST(request: NextRequest) {
     
     // Check authentication
     const authHeader = request.headers.get('Authorization') || '';
+    const xApiKey = request.headers.get('X-API-Key') || undefined;
     console.log(`🔍 Auth header: ${authHeader.substring(0, 20)}...`);
     
-    if (!validateApiKey(authHeader)) {
+    if (!validateApiKey(authHeader, xApiKey)) {
       console.log('❌ Authentication failed');
       return NextResponse.json(
         {

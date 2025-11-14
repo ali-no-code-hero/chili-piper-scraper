@@ -1,15 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import { ApiKeyManager } from '@/lib/api-key-manager';
 
 // Load environment variables
 if (typeof window === 'undefined') {
   require('dotenv').config();
 }
 
-// Use persistent API Key Manager (better-sqlite3 in prod, in-memory fallback in dev)
-const apiKeyManager = new ApiKeyManager(process.env.DATABASE_URL);
+// Simple in-memory API key storage (replacement for ApiKeyManager)
+const apiKeys = new Map<string, { id: string; name: string; createdAt: number; lastUsed?: number }>();
+let keyCounter = 1;
+
+// Simple API key manager stub
+const apiKeyManager = {
+  createApiKey: (name: string, customKey?: string) => {
+    const id = String(keyCounter++);
+    const key = customKey || `cp_live_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    apiKeys.set(key, { id, name, createdAt: Date.now() });
+    return { id, key, name, createdAt: new Date().toISOString() };
+  },
+  getAllApiKeys: () => Array.from(apiKeys.entries()).map(([key, data]) => ({ ...data, key })),
+  updateApiKey: (id: string, updates: any) => {
+    const entry = Array.from(apiKeys.entries()).find(([_, data]) => data.id === id);
+    if (entry) {
+      Object.assign(entry[1], updates);
+      return { ...entry[1], key: entry[0] };
+    }
+    return null;
+  },
+  deleteApiKey: (id: string) => {
+    const entry = Array.from(apiKeys.entries()).find(([_, data]) => data.id === id);
+    if (entry) {
+      apiKeys.delete(entry[0]);
+      return true;
+    }
+    return false;
+  },
+  getUsageStats: () => ({ total: apiKeys.size, active: apiKeys.size }),
+  getApiKeyById: (id: string) => {
+    const entry = Array.from(apiKeys.entries()).find(([_, data]) => data.id === id);
+    return entry ? { ...entry[1], key: entry[0] } : null;
+  },
+  validateApiKey: (key: string) => {
+    const entry = apiKeys.get(key);
+    if (entry) {
+      entry.lastUsed = Date.now();
+      return true;
+    }
+    return false;
+  }
+};
 
 // Admin credentials (for local testing)
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';

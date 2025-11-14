@@ -1,8 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { ApiKeyManager } from '@/lib/api-key-manager';
+// Lightweight, framework-agnostic helpers for security
 
-// Use persistent manager (SQLite in prod, in-memory fallback in dev)
-const apiKeyManager = new ApiKeyManager(process.env.DATABASE_URL);
+// Simple in-memory API key list (for local/dev). Replace with your own store if needed.
+const DEFAULT_KEYS = new Set<string>([
+  process.env.DEFAULT_API_KEY || 'default-key-12345',
+  'cp_live_s24p7wp7vqao1b3r', // Add your API key here
+  ...(process.env.API_KEYS ? process.env.API_KEYS.split(',') : [])
+]);
 
 export interface SecurityConfig {
   maxRequests?: number;
@@ -117,37 +120,54 @@ export class SecurityMiddleware {
     }
     
     const token = authHeader.substring(7);
-    const ok = apiKeyManager.validateApiKey(token);
-    return { valid: !!ok, apiKey: ok ? { key: token } : undefined };
+    const ok = DEFAULT_KEYS.has(token);
+    return { valid: ok, apiKey: ok ? { key: token } : undefined };
   }
 
-  // Security headers middleware
-  addSecurityHeaders(response: NextResponse): NextResponse {
-    // Prevent XSS attacks
-    response.headers.set('X-Content-Type-Options', 'nosniff');
-    response.headers.set('X-Frame-Options', 'DENY');
-    response.headers.set('X-XSS-Protection', '1; mode=block');
+  // Security headers helper (works with Node/HTTP response-like objects and Next.js Response)
+  addSecurityHeaders(res: any): any {
+    // Check if it's a Next.js Response object
+    if (res instanceof Response || res.headers) {
+      const headers = new Headers(res.headers);
+      headers.set('X-Content-Type-Options', 'nosniff');
+      headers.set('X-Frame-Options', 'DENY');
+      headers.set('X-XSS-Protection', '1; mode=block');
+      headers.set('Content-Security-Policy', "default-src 'self'");
+      
+      // Return new Response with headers if it's a Response object
+      if (res instanceof Response) {
+        return new Response(res.body, {
+          status: res.status,
+          statusText: res.statusText,
+          headers: headers
+        });
+      }
+      
+      // For NextResponse, update headers
+      res.headers = headers;
+      return res;
+    }
     
-    // Prevent MIME type sniffing
-    response.headers.set('Content-Security-Policy', "default-src 'self'");
+    // For Node.js HTTP response objects
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Content-Security-Policy', "default-src 'self'");
     
     // Remove server information
-    response.headers.delete('X-Powered-By');
-    
-    return response;
+    try { res.removeHeader && res.removeHeader('X-Powered-By'); } catch {}
+    return res;
   }
 
-  // CORS configuration
-  configureCORS(response: NextResponse, allowedOrigins: string[] = ['*']): NextResponse {
+  // CORS configuration helper
+  configureCORS(res: any, allowedOrigins: string[] = ['*']): void {
     const origin = process.env.NODE_ENV === 'production' ? 
       allowedOrigins.join(', ') : '*';
     
-    response.headers.set('Access-Control-Allow-Origin', origin);
-    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    response.headers.set('Access-Control-Max-Age', '86400');
-    
-    return response;
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Max-Age', '86400');
   }
 
   // Log security events
@@ -161,21 +181,113 @@ export class SecurityMiddleware {
     });
   }
 
-  // Main security middleware
+  // Framework-agnostic middleware factory (kept for compatibility; not used in Fastify path)
+  secureRequestMiddleware(config: {
+    requireAuth?: boolean;
+    rateLimit?: SecurityConfig;
+    inputSchema?: any;
+    allowedMethods?: string[];
+  } = {}) {
+    return async (req: any, res: any, next: () => void) => {
+      const clientIP = req.headers['x-forwarded-for']?.toString().split(',')[0] || 
+                      req.headers['x-real-ip']?.toString() || 
+                      req.ip ||
+                      'unknown';
+      const userAgent = req.headers['user-agent'] || 'unknown';
+      const method = req.method;
+
+      // Check allowed methods
+      if (config.allowedMethods && !config.allowedMethods.includes(method)) {
+        this.logSecurityEvent('METHOD_NOT_ALLOWED', { method, endpoint: req.url }, clientIP);
+        res.status(405).json({ success: false, error: 'Method Not Allowed' });
+        return;
+      }
+
+      // Rate limiting
+      if (config.rateLimit && !this.checkRateLimit(clientIP, config.rateLimit)) {
+        this.logSecurityEvent('RATE_LIMIT_EXCEEDED', { 
+          endpoint: req.url,
+          userAgent 
+        }, clientIP);
+        
+        res.status(429)
+          .setHeader('Retry-After', '900')
+          .json({ success: false, error: 'Too Many Requests' });
+        return;
+      }
+
+      // Authentication check
+      if (config.requireAuth) {
+        const authHeader = req.headers.authorization || '';
+        const authResult = this.validateApiKey(authHeader);
+        
+        if (!authResult.valid) {
+          this.logSecurityEvent('AUTH_FAILED', { 
+            endpoint: req.url,
+            userAgent 
+          }, clientIP);
+          
+          res.status(401).json({
+            success: false,
+            error: 'Unauthorized',
+            message: 'Invalid or missing API key'
+          });
+          return;
+        }
+        
+        // Attach API key to request for later use
+        (req as any).apiKey = authResult.apiKey;
+      }
+
+      // Input validation for POST requests
+      if (method === 'POST' && config.inputSchema) {
+        const sanitized = this.sanitizeInput(req.body);
+        const validation = this.validateInput(sanitized, config.inputSchema);
+        
+        if (!validation.valid) {
+          this.logSecurityEvent('VALIDATION_FAILED', { 
+            endpoint: req.url,
+            errors: validation.errors,
+            userAgent 
+          }, clientIP);
+          
+          res.status(400).json({
+            success: false,
+            error: 'Validation Error',
+            message: validation.errors.join(', ')
+          });
+          return;
+        }
+        
+        // Replace body with sanitized data
+        req.body = sanitized;
+      }
+
+      // Add security headers
+      this.addSecurityHeaders(res);
+      this.configureCORS(res);
+
+      next();
+    };
+  }
+
+  // Next.js-specific secureRequest method
   async secureRequest(
-    request: NextRequest,
+    request: any,
     config: {
       requireAuth?: boolean;
       rateLimit?: SecurityConfig;
       inputSchema?: any;
       allowedMethods?: string[];
     } = {}
-  ): Promise<{ 
-    allowed: boolean; 
-    response?: NextResponse; 
+  ): Promise<{
+    allowed: boolean;
+    response?: any;
     sanitizedData?: any;
-    apiKey?: any;
   }> {
+    // Import NextResponse dynamically to avoid issues if not available
+    const { NextResponse } = await import('next/server');
+    
     const clientIP = request.headers.get('x-forwarded-for') || 
                     request.headers.get('x-real-ip') || 
                     'unknown';
@@ -185,10 +297,12 @@ export class SecurityMiddleware {
     // Check allowed methods
     if (config.allowedMethods && !config.allowedMethods.includes(method)) {
       this.logSecurityEvent('METHOD_NOT_ALLOWED', { method, endpoint: request.url }, clientIP);
-      return {
-        allowed: false,
-        response: new NextResponse('Method Not Allowed', { status: 405 })
-      };
+      const response = NextResponse.json(
+        { success: false, error: 'Method Not Allowed' },
+        { status: 405 }
+      );
+      this.addSecurityHeaders(response);
+      return { allowed: false, response };
     }
 
     // Rate limiting
@@ -198,18 +312,20 @@ export class SecurityMiddleware {
         userAgent 
       }, clientIP);
       
-      return {
-        allowed: false,
-        response: new NextResponse('Too Many Requests', { 
+      const response = NextResponse.json(
+        { success: false, error: 'Too Many Requests' },
+        { 
           status: 429,
-          headers: { 'Retry-After': '900' } // 15 minutes
-        })
-      };
+          headers: { 'Retry-After': '900' }
+        }
+      );
+      this.addSecurityHeaders(response);
+      return { allowed: false, response };
     }
 
     // Authentication check
     if (config.requireAuth) {
-      const authHeader = request.headers.get('Authorization') || '';
+      const authHeader = request.headers.get('authorization') || '';
       const authResult = this.validateApiKey(authHeader);
       
       if (!authResult.valid) {
@@ -218,27 +334,26 @@ export class SecurityMiddleware {
           userAgent 
         }, clientIP);
         
-        return {
-          allowed: false,
-          response: new NextResponse(JSON.stringify({
+        const response = NextResponse.json(
+          {
             success: false,
             error: 'Unauthorized',
             message: 'Invalid or missing API key'
-          }), { 
-            status: 401,
-            headers: { 'Content-Type': 'application/json' }
-          })
-        };
+          },
+          { status: 401 }
+        );
+        this.addSecurityHeaders(response);
+        return { allowed: false, response };
       }
     }
 
-    // Input validation for POST requests
-    let sanitizedData = null;
+    // Parse and validate input for POST requests
+    let sanitizedData: any = null;
     if (method === 'POST' && config.inputSchema) {
       try {
         const body = await request.json();
-        const sanitized = this.sanitizeInput(body);
-        const validation = this.validateInput(sanitized, config.inputSchema);
+        sanitizedData = this.sanitizeInput(body);
+        const validation = this.validateInput(sanitizedData, config.inputSchema);
         
         if (!validation.valid) {
           this.logSecurityEvent('VALIDATION_FAILED', { 
@@ -247,37 +362,28 @@ export class SecurityMiddleware {
             userAgent 
           }, clientIP);
           
-          return {
-            allowed: false,
-            response: new NextResponse(JSON.stringify({
+          const response = NextResponse.json(
+            {
               success: false,
               error: 'Validation Error',
               message: validation.errors.join(', ')
-            }), { 
-              status: 400,
-              headers: { 'Content-Type': 'application/json' }
-            })
-          };
+            },
+            { status: 400 }
+          );
+          this.addSecurityHeaders(response);
+          return { allowed: false, response };
         }
-        
-        sanitizedData = sanitized;
       } catch (error) {
-        this.logSecurityEvent('INVALID_JSON', { 
-          endpoint: request.url,
-          userAgent 
-        }, clientIP);
-        
-        return {
-          allowed: false,
-          response: new NextResponse(JSON.stringify({
+        const response = NextResponse.json(
+          {
             success: false,
             error: 'Invalid JSON',
             message: 'Request body must be valid JSON'
-          }), { 
-            status: 400,
-            headers: { 'Content-Type': 'application/json' }
-          })
-        };
+          },
+          { status: 400 }
+        );
+        this.addSecurityHeaders(response);
+        return { allowed: false, response };
       }
     }
 

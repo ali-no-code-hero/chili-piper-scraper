@@ -1016,6 +1016,7 @@ export class ChiliPiperScraper {
         }
       }
     }
+    }
     
     console.log(`🏁 Final result: Successfully collected ${Object.keys(allSlots).length} days`);
     console.log(`📋 Collected dates: ${Object.keys(allSlots).join(', ')}`);

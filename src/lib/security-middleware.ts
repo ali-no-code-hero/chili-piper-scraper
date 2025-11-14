@@ -113,13 +113,23 @@ export class SecurityMiddleware {
     return sanitized;
   }
 
-  // API key validation
-  validateApiKey(authHeader: string): { valid: boolean; apiKey?: any } {
-    if (!authHeader.startsWith('Bearer ')) {
+  // API key validation (supports both Authorization: Bearer and X-API-Key headers)
+  validateApiKey(authHeader: string, xApiKey?: string): { valid: boolean; apiKey?: any } {
+    let token: string | null = null;
+    
+    // Try Authorization header first (Bearer token)
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+    }
+    // Fallback to X-API-Key header
+    else if (xApiKey) {
+      token = xApiKey;
+    }
+    
+    if (!token) {
       return { valid: false };
     }
     
-    const token = authHeader.substring(7);
     const ok = DEFAULT_KEYS.has(token);
     return { valid: ok, apiKey: ok ? { key: token } : undefined };
   }
@@ -326,7 +336,8 @@ export class SecurityMiddleware {
     // Authentication check
     if (config.requireAuth) {
       const authHeader = request.headers.get('authorization') || '';
-      const authResult = this.validateApiKey(authHeader);
+      const xApiKey = request.headers.get('x-api-key') || '';
+      const authResult = this.validateApiKey(authHeader, xApiKey);
       
       if (!authResult.valid) {
         this.logSecurityEvent('AUTH_FAILED', { 
@@ -338,7 +349,7 @@ export class SecurityMiddleware {
           {
             success: false,
             error: 'Unauthorized',
-            message: 'Invalid or missing API key'
+            message: 'Invalid or missing API key. Use Authorization: Bearer <key> or X-API-Key: <key> header'
           },
           { status: 401 }
         );

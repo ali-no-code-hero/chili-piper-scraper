@@ -344,8 +344,8 @@ export class SecurityMiddleware {
                      request.headers.get('x-api-key') || '';
       
       // Debug logging
-      const allHeaders = Array.from(request.headers.entries());
-      const relevantHeaders = allHeaders.filter(([k, v]) => 
+      const allHeaders: [string, string][] = Array.from(request.headers.entries()) as [string, string][];
+      const relevantHeaders = allHeaders.filter(([k]) => 
         k.toLowerCase().includes('api') || k.toLowerCase().includes('auth')
       );
       console.log('🔐 Auth check:', {

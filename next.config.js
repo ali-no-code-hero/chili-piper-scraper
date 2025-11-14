@@ -3,6 +3,10 @@ require('dotenv').config();
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   serverExternalPackages: ['better-sqlite3'],
+  // Disable Turbopack - use standard Webpack build
+  experimental: {
+    turbo: false
+  },
   env: {
     ADMIN_USERNAME: process.env.ADMIN_USERNAME,
     ADMIN_PASSWORD_HASH: process.env.ADMIN_PASSWORD_HASH,

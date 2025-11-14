@@ -842,6 +842,7 @@ export class ChiliPiperScraper {
     
     let lastDateKeysSig = '';
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      let newDaysAdded = 0; // Track new days added in this attempt
       console.log(`\n=====================================`);
       console.log(`=== COLLECTION ATTEMPT ${attempt}/${maxAttempts} ===`);
       console.log(`📊 Current total: ${Object.keys(allSlots).length} days`);
@@ -886,6 +887,7 @@ export class ChiliPiperScraper {
           if (!allSlots[dateKey] && dayData.slots.length > 0) {
             allSlots[dateKey] = dayData;
             parallelDaysAdded++;
+            newDaysAdded++;
             console.log(`✅ Parallel extraction: Added ${dateKey} with ${dayData.slots.length} slots`);
             
             if (onDayComplete) {
@@ -913,8 +915,6 @@ export class ChiliPiperScraper {
         // Fall back to sequential clicking only for remaining days
         if (daysStillNeeded.length > 0 && Object.keys(allSlots).length < MAX_DAYS) {
           console.log(`🖱️ Parallel extraction got ${parallelDaysAdded} days, clicking ${daysStillNeeded.length} remaining days...`);
-          
-          let newDaysAdded = 0;
           // Process days one at a time for maximum stability
           for (const buttonInfo of daysStillNeeded) {
             // Check if we've reached our target before processing next day

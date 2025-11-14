@@ -975,44 +975,44 @@ export class ChiliPiperScraper {
           }
         }
       }
+    }
       
-      console.log(`📊 Progress: ${Object.keys(allSlots).length} total days collected`);
+    console.log(`📊 Progress: ${Object.keys(allSlots).length} total days collected`);
+    
+    // If we have enough days, stop
+    if (Object.keys(allSlots).length >= MAX_DAYS) {
+      console.log(`✅ Collection complete. Total days: ${Object.keys(allSlots).length}`);
+      break;
+    }
+    
+    // If we still don't have enough days, navigate to next week
+    if (Object.keys(allSlots).length < MAX_DAYS) {
+      console.log(`🔄 Only have ${Object.keys(allSlots).length} days (target: ${MAX_DAYS}). Navigating to next week...`);
       
-      // If we have enough days, stop
-      if (Object.keys(allSlots).length >= MAX_DAYS) {
-        console.log(`✅ Collection complete. Total days: ${Object.keys(allSlots).length}`);
-        break;
-      }
+      const navSuccess = await this.navigateToNextWeek(page);
       
-      // If we still don't have enough days, navigate to next week
-      if (Object.keys(allSlots).length < MAX_DAYS) {
-        console.log(`🔄 Only have ${Object.keys(allSlots).length} days (target: ${MAX_DAYS}). Navigating to next week...`);
-        
-        const navSuccess = await this.navigateToNextWeek(page);
-        
-        if (navSuccess) {
-          // Wait for calendar to update after navigation - look for day buttons
-          try { 
-            await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 2000 }); 
+      if (navSuccess) {
+        // Wait for calendar to update after navigation - look for day buttons
+        try { 
+          await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 2000 }); 
+        } catch {}
+        // If calendar didn't change, try one more next-week click
+        if (lastDateKeysSig === dateSig) {
+          await this.navigateToNextWeek(page);
+          // Wait for calendar to update
+          try {
+            await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 2000 });
           } catch {}
-          // If calendar didn't change, try one more next-week click
-          if (lastDateKeysSig === dateSig) {
-            await this.navigateToNextWeek(page);
-            // Wait for calendar to update
-            try {
-              await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 2000 });
-            } catch {}
-          }
-          lastDateKeysSig = dateSig;
+        }
+        lastDateKeysSig = dateSig;
+      } else {
+        // Only stop if navigation failed AND we didn't find any new days this attempt
+        if (newDaysAdded === 0) {
+          console.log(`❌ Navigation failed and no new days found. Collected ${Object.keys(allSlots).length} days total.`);
+          break;
         } else {
-          // Only stop if navigation failed AND we didn't find any new days this attempt
-          if (newDaysAdded === 0) {
-            console.log(`❌ Navigation failed and no new days found. Collected ${Object.keys(allSlots).length} days total.`);
-            break;
-          } else {
-            console.log(`⚠️ Navigation failed but found ${newDaysAdded} new days. Will retry navigation on next attempt.`);
-            // Continue to next iteration to retry
-          }
+          console.log(`⚠️ Navigation failed but found ${newDaysAdded} new days. Will retry navigation on next attempt.`);
+          // Continue to next iteration to retry
         }
       }
     }

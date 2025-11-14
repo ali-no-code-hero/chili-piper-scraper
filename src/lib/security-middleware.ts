@@ -336,9 +336,27 @@ export class SecurityMiddleware {
 
     // Authentication check
     if (config.requireAuth) {
-      const authHeader = request.headers.get('authorization') || '';
-      const xApiKey = request.headers.get('x-api-key') || '';
+      // Try multiple header name variations (case-insensitive)
+      const authHeader = request.headers.get('authorization') || 
+                        request.headers.get('Authorization') || '';
+      const xApiKey = request.headers.get('x-api-key') || 
+                     request.headers.get('X-API-Key') || 
+                     request.headers.get('x-api-key') || '';
+      
+      // Debug logging
+      console.log('🔐 Auth check:', {
+        hasAuthHeader: !!authHeader,
+        authHeaderPrefix: authHeader.substring(0, 20),
+        hasXApiKey: !!xApiKey,
+        xApiKeyPrefix: xApiKey.substring(0, 20),
+        allHeaders: Array.from(request.headers.entries()).filter(([k]) => 
+          k.toLowerCase().includes('api') || k.toLowerCase().includes('auth')
+        )
+      });
+      
       const authResult = this.validateApiKey(authHeader, xApiKey);
+      
+      console.log('🔐 Auth result:', { valid: authResult.valid });
       
       if (!authResult.valid) {
         this.logSecurityEvent('AUTH_FAILED', { 

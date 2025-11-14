@@ -71,7 +71,7 @@ export class ChiliPiperScraper {
 
     // Append params to existing URL params (if any)
     const existingParams = new URLSearchParams(urlParts.search);
-    for (const [key, value] of params.entries()) {
+    for (const [key, value] of Array.from(params.entries())) {
       existingParams.set(key, value);
     }
 

@@ -349,29 +349,30 @@ export class SecurityMiddleware {
 
     // Authentication check
     if (config.requireAuth) {
-      // Try multiple header name variations (case-insensitive)
-      const authHeader = request.headers.get('authorization') || 
-                        request.headers.get('Authorization') || '';
+      // Next.js headers.get() is case-insensitive, but let's be explicit
+      const authHeader = request.headers.get('authorization') || '';
+      // Try both lowercase and the exact case
       const xApiKey = request.headers.get('x-api-key') || 
-                     request.headers.get('X-API-Key') || 
-                     request.headers.get('x-api-key') || '';
+                     request.headers.get('X-API-Key') || '';
       
-      // Debug logging
+      // Debug logging - log to stderr so it shows up in PM2 logs
       const allHeaders: [string, string][] = Array.from(request.headers.entries()) as [string, string][];
       const relevantHeaders = allHeaders.filter(([k]) => 
         k.toLowerCase().includes('api') || k.toLowerCase().includes('auth')
       );
-      console.log('🔐 Auth check:', {
+      console.error('🔐 Auth check:', JSON.stringify({
         hasAuthHeader: !!authHeader,
         authHeaderPrefix: authHeader.substring(0, 20),
         hasXApiKey: !!xApiKey,
         xApiKeyPrefix: xApiKey.substring(0, 20),
-        relevantHeaders
-      });
+        xApiKeyFull: xApiKey,
+        relevantHeaders,
+        allHeaderKeys: allHeaders.map(([k]) => k)
+      }));
       
       const authResult = this.validateApiKey(authHeader, xApiKey);
       
-      console.log('🔐 Auth result:', { valid: authResult.valid });
+      console.error('🔐 Auth result:', JSON.stringify({ valid: authResult.valid }));
       
       if (!authResult.valid) {
         this.logSecurityEvent('AUTH_FAILED', { 

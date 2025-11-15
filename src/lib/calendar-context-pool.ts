@@ -19,6 +19,7 @@ class CalendarContextPool {
       const browser = await browserPool.getBrowser();
       this.context = await browser.newContext({
         javaScriptEnabled: true,
+        timezoneId: 'America/Chicago', // US Central Time (handles DST automatically)
       });
       const page = await this.context.newPage();
       // Block heavy resources

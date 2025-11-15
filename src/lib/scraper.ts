@@ -230,7 +230,11 @@ export class ChiliPiperScraper {
       // Use browser pool directly if no warm context
       const browser = await browserPool.getBrowser();
       if (!page) {
-        page = await browser.newPage();
+        // Create a context with US Central Time timezone
+        const context = await browser.newContext({
+          timezoneId: 'America/Chicago', // US Central Time (handles DST automatically)
+        });
+        page = await context.newPage();
       }
       page.setDefaultNavigationTimeout(10000); // Reduced from 20s to 10s for speed
       // Aggressive resource blocking

@@ -76,7 +76,12 @@ class PagePreloader {
       ]
     });
 
-    const page = await this.browser.newPage();
+    // Create a context with US Central Time timezone
+    const context = await this.browser.newContext({
+      timezoneId: 'America/Chicago', // US Central Time (handles DST automatically)
+    });
+    
+    const page = await context.newPage();
     page.setDefaultNavigationTimeout(20000);
 
     // Set up resource blocking for faster loads
@@ -136,7 +141,12 @@ class PagePreloader {
       throw new Error('Browser not available');
     }
 
-    const page = await this.browser.newPage();
+    // Create a context with US Central Time timezone
+    const context = await this.browser.newContext({
+      timezoneId: 'America/Chicago', // US Central Time (handles DST automatically)
+    });
+    
+    const page = await context.newPage();
     page.setDefaultNavigationTimeout(20000);
 
     // Set up resource blocking

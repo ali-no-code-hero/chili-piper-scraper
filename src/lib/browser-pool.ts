@@ -91,7 +91,8 @@ class BrowserPool {
   private maxBrowsers: number;
   private launchingBrowsers: Set<Promise<any>> = new Set();
   private browserIndex: number = 0;
-  private maxContextsPerBrowser: number = 5; // Limit contexts per browser to prevent overloading
+  private maxContextsPerBrowser: number = 1; // Limit to 1 context per browser for complete isolation
+  private browserLocks: Map<any, Promise<void>> = new Map(); // Lock per browser for context creation
 
   constructor(maxBrowsers: number = 2) {
     this.maxBrowsers = maxBrowsers;
@@ -193,9 +194,10 @@ class BrowserPool {
     // Clean up disconnected browsers and reset their context counts
     this.browsers = this.browsers.filter(b => {
       if (!b.browser || !b.browser.isConnected()) {
+        // Clean up lock for disconnected browser
+        this.browserLocks.delete(b.browser);
         return false;
       }
-      // Reset context count if browser was disconnected and reconnected
       return true;
     });
 
@@ -208,6 +210,18 @@ class BrowserPool {
         const browserInfo = this.browsers[index];
         if (browserInfo && browserInfo.browser.isConnected() && 
             browserInfo.activeContexts < browserInfo.maxContexts) {
+          // Check if browser is locked (context being created)
+          const lock = this.browserLocks.get(browserInfo.browser);
+          if (lock) {
+            // Wait for lock to release before using this browser
+            await lock;
+            // Re-check availability after lock releases
+            if (browserInfo.activeContexts >= browserInfo.maxContexts) {
+              continue; // Browser is now full, try next
+            }
+          }
+          
+          // Reserve the browser by incrementing context count
           browserInfo.activeContexts++;
           this.browserIndex = (index + 1) % this.browsers.length;
           console.log(`✅ Browser pool: Using browser ${index + 1} (${browserInfo.activeContexts}/${browserInfo.maxContexts} contexts)`);
@@ -262,6 +276,30 @@ class BrowserPool {
 
     // If we've exhausted all attempts, throw an error
     throw new Error('No browsers available in pool after waiting');
+  }
+
+  /**
+   * Acquire a lock for context creation on a browser
+   * This prevents multiple requests from creating contexts simultaneously on the same browser
+   */
+  async acquireContextLock(browser: any): Promise<() => void> {
+    // Wait for any existing lock to release
+    const existingLock = this.browserLocks.get(browser);
+    if (existingLock) {
+      await existingLock;
+    }
+    
+    // Create a new lock
+    let releaseLock: () => void;
+    const lockPromise = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    this.browserLocks.set(browser, lockPromise);
+    
+    return () => {
+      releaseLock();
+      this.browserLocks.delete(browser);
+    };
   }
 
   /**

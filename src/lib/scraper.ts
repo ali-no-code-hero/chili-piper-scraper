@@ -206,6 +206,7 @@ export class ChiliPiperScraper {
     let browser: any = null;
     let context: any = null;
     let page: any | null = null;
+    let releaseLock: (() => void) | null = null;
     
     try {
       // Trim logs in production: only emit debug logs when SCRAPER_DEBUG=true
@@ -233,8 +234,11 @@ export class ChiliPiperScraper {
 
       // Use browser pool directly if no warm context
       browser = await browserPool.getBrowser();
-      let context: any = null;
+      
       if (!page) {
+        // Acquire lock for context creation to prevent race conditions
+        releaseLock = await browserPool.acquireContextLock(browser);
+        
         // Retry logic for browser context creation (handles race conditions)
         let retries = 3;
         while (retries > 0) {
@@ -242,7 +246,11 @@ export class ChiliPiperScraper {
             // Check browser connection before creating context
             if (!browser.isConnected()) {
               console.log('⚠️ Browser disconnected, getting new browser instance...');
+              // Release lock and browser before getting new one
+              if (releaseLock) releaseLock();
+              browserPool.releaseBrowser(browser);
               browser = await browserPool.getBrowser();
+              releaseLock = await browserPool.acquireContextLock(browser);
             }
             // Create a context with US Central Time timezone
             context = await browser.newContext({
@@ -254,18 +262,28 @@ export class ChiliPiperScraper {
             retries--;
             if (error.message && error.message.includes('has been closed') && retries > 0) {
               console.log(`⚠️ Browser/context closed, retrying... (${retries} attempts left)`);
-              // Release the failed browser and get a fresh one
+              // Release lock and browser before getting new one
+              if (releaseLock) releaseLock();
               browserPool.releaseBrowser(browser);
               browser = await browserPool.getBrowser();
+              releaseLock = await browserPool.acquireContextLock(browser);
               // Small delay before retry
               await new Promise(resolve => setTimeout(resolve, 100));
             } else {
-              // Release browser on error
+              // Release lock and browser on error
+              if (releaseLock) releaseLock();
               browserPool.releaseBrowser(browser);
               throw error; // Re-throw if not a "closed" error or no retries left
             }
           }
         }
+        
+        // Release lock after context is created
+        if (releaseLock) {
+          releaseLock();
+          releaseLock = null;
+        }
+        
         if (!page) {
           browserPool.releaseBrowser(browser);
           throw new Error('Failed to create browser context after retries');
@@ -581,10 +599,21 @@ export class ChiliPiperScraper {
     } catch (error) {
       console.error('Scraping error:', error);
       
+      // Release lock if it exists
+      if (releaseLock) {
+        try {
+          releaseLock();
+        } catch (e) {
+          // Ignore lock release errors
+        }
+      }
+      
       // Release browser and close context on error
       try {
         if (context) {
           await context.close().catch(() => {});
+        }
+        if (browser) {
           browserPool.releaseBrowser(browser);
         }
       } catch (e) {

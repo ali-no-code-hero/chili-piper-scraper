@@ -1,5 +1,5 @@
-# Use Microsoft's official Playwright image
-FROM mcr.microsoft.com/playwright:v1.56.1-jammy
+# Use Microsoft's official Playwright image (Ubuntu 22.04)
+FROM mcr.microsoft.com/playwright:jammy
 
 # Set working directory
 WORKDIR /app

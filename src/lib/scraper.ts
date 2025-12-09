@@ -228,13 +228,40 @@ export class ChiliPiperScraper {
       }
 
       // Use browser pool directly if no warm context
-      const browser = await browserPool.getBrowser();
+      let browser = await browserPool.getBrowser();
       if (!page) {
-        // Create a context with US Central Time timezone
-        const context = await browser.newContext({
-          timezoneId: 'America/Chicago', // US Central Time (handles DST automatically)
-        });
-        page = await context.newPage();
+        // Retry logic for browser context creation (handles race conditions)
+        let retries = 3;
+        let context: any = null;
+        while (retries > 0) {
+          try {
+            // Check browser connection before creating context
+            if (!browser.isConnected()) {
+              console.log('⚠️ Browser disconnected, getting new browser instance...');
+              browser = await browserPool.getBrowser();
+            }
+            // Create a context with US Central Time timezone
+            context = await browser.newContext({
+              timezoneId: 'America/Chicago', // US Central Time (handles DST automatically)
+            });
+            page = await context.newPage();
+            break; // Success, exit retry loop
+          } catch (error: any) {
+            retries--;
+            if (error.message && error.message.includes('has been closed') && retries > 0) {
+              console.log(`⚠️ Browser/context closed, retrying... (${retries} attempts left)`);
+              // Get a fresh browser instance
+              browser = await browserPool.getBrowser();
+              // Small delay before retry
+              await new Promise(resolve => setTimeout(resolve, 100));
+            } else {
+              throw error; // Re-throw if not a "closed" error or no retries left
+            }
+          }
+        }
+        if (!page) {
+          throw new Error('Failed to create browser context after retries');
+        }
       }
       page.setDefaultNavigationTimeout(10000); // Reduced from 20s to 10s for speed
       // Aggressive resource blocking

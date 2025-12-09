@@ -91,6 +91,12 @@ class BrowserPool {
       return this.browser;
     }
 
+    // If browser exists but is not connected, clear it
+    if (this.browser && !this.browser.isConnected()) {
+      console.log('⚠️ Browser disconnected, clearing and relaunching...');
+      this.browser = null;
+    }
+
     // If already launching, wait for that promise
     if (this.isLaunching && this.launchPromise) {
       return this.launchPromise;
@@ -102,7 +108,7 @@ class BrowserPool {
       const playwright = await getPlaywright();
       const { chromium } = playwright;
       try {
-        return await chromium.launch({
+        const browser = await chromium.launch({
           headless: true,
           args: [
             '--no-sandbox',
@@ -126,6 +132,11 @@ class BrowserPool {
           ],
           ignoreDefaultArgs: ['--disable-extensions']
         });
+        // Verify browser is connected before returning
+        if (!browser.isConnected()) {
+          throw new Error('Browser launched but not connected');
+        }
+        return browser;
       } catch (error: any) {
         // If browser is not installed, try to install it automatically
         if (error.message && (error.message.includes('Executable doesn\'t exist') || error.message.includes('Browser not found'))) {

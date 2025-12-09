@@ -2,7 +2,6 @@
   "version": 1,
   "config": {
     "env": {},
-    "webpack": null,
     "typescript": {
       "ignoreBuildErrors": false
     },
@@ -291,8 +290,7 @@
     "configFileName": "next.config.js",
     "serverExternalPackages": [
       "jsonwebtoken",
-      "bcryptjs",
-      "semver"
+      "bcryptjs"
     ],
     "turbopack": {
       "root": "/Users/alisyed/Documents/chili-piper-scraper"

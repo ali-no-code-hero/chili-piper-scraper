@@ -5,7 +5,19 @@ const nextConfig = {
   // Optimized for App Platform
   output: 'standalone',
   // Exclude problematic packages from server-side bundling
-  serverExternalPackages: ['jsonwebtoken', 'bcryptjs', 'semver'],
+  serverExternalPackages: ['jsonwebtoken', 'bcryptjs'],
+  // Webpack configuration to properly externalize packages
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      // Externalize jsonwebtoken and its dependencies
+      config.externals = config.externals || [];
+      config.externals.push({
+        'jsonwebtoken': 'commonjs jsonwebtoken',
+        'bcryptjs': 'commonjs bcryptjs',
+      });
+    }
+    return config;
+  },
   // Security headers
   async headers() {
     return [

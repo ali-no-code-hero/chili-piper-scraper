@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
+// jsonwebtoken and bcryptjs are loaded dynamically to avoid bundling issues
 
 // Load environment variables
 if (typeof window === 'undefined') {
@@ -84,7 +83,7 @@ function checkRateLimit(ip: string): boolean {
   return true;
 }
 
-function validateAdminToken(request: NextRequest): boolean {
+async function validateAdminToken(request: NextRequest): Promise<boolean> {
   const authHeader = request.headers.get('Authorization') || '';
   if (!authHeader.startsWith('Bearer ')) {
     return false;
@@ -92,6 +91,7 @@ function validateAdminToken(request: NextRequest): boolean {
   
   const token = authHeader.substring(7);
   try {
+    const jwt = await import('jsonwebtoken');
     const decoded = jwt.verify(token, JWT_SECRET) as any;
     return decoded.role === 'admin' && decoded.exp > Date.now() / 1000;
   } catch {
@@ -141,8 +141,9 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Generate admin token
-      const adminToken = jwt.sign(
+      // Generate admin token (dynamic import to avoid bundling issues)
+      const jwt = await import('jsonwebtoken');
+      const adminToken = jwt.default.sign(
         { 
           role: 'admin', 
           username: ADMIN_USERNAME,
@@ -165,7 +166,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate admin token for other actions
-    if (!validateAdminToken(request)) {
+    if (!(await validateAdminToken(request))) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
@@ -270,7 +271,7 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    if (!validateAdminToken(request)) {
+    if (!(await validateAdminToken(request))) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }

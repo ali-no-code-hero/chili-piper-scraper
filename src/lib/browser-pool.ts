@@ -18,24 +18,57 @@ async function getPlaywright(): Promise<PlaywrightType> {
         console.log('🔧 Playwright installation appears corrupted. Attempting to fix...');
         try {
           const { execSync } = require('child_process');
-          console.log('📦 Reinstalling Playwright...');
-          execSync('npm install playwright@^1.56.1 --force', { 
+          const fs = require('fs');
+          const path = require('path');
+          
+          // Delete corrupted Playwright installations
+          console.log('🗑️ Removing corrupted Playwright installation...');
+          const nodeModulesPath = path.join(process.cwd(), 'node_modules');
+          const playwrightPath = path.join(nodeModulesPath, 'playwright');
+          const playwrightCorePath = path.join(nodeModulesPath, 'playwright-core');
+          
+          try {
+            if (fs.existsSync(playwrightPath)) {
+              fs.rmSync(playwrightPath, { recursive: true, force: true });
+            }
+            if (fs.existsSync(playwrightCorePath)) {
+              fs.rmSync(playwrightCorePath, { recursive: true, force: true });
+            }
+          } catch (rmError) {
+            console.log('⚠️ Could not remove old installation, continuing...');
+          }
+          
+          console.log('📦 Reinstalling Playwright from scratch...');
+          execSync('npm install playwright@^1.56.1 --force --no-save', { 
             stdio: 'inherit', 
             cwd: process.cwd(),
             timeout: 120000 // 2 minutes
           });
-          console.log('📦 Installing browser...');
-          execSync('npx playwright install chromium --with-deps', { 
-            stdio: 'inherit', 
-            cwd: process.cwd(),
-            timeout: 300000 // 5 minutes
-          });
+          
+          console.log('📦 Installing browser (this may take a few minutes)...');
+          // Use the direct path to avoid npx issues
+          const playwrightCliPath = path.join(playwrightPath, 'cli.js');
+          if (fs.existsSync(playwrightCliPath)) {
+            execSync(`node ${playwrightCliPath} install chromium --with-deps`, { 
+              stdio: 'inherit', 
+              cwd: process.cwd(),
+              timeout: 300000 // 5 minutes
+            });
+          } else {
+            // Fallback to npx
+            execSync('npx --yes playwright@^1.56.1 install chromium --with-deps', { 
+              stdio: 'inherit', 
+              cwd: process.cwd(),
+              timeout: 300000 // 5 minutes
+            });
+          }
+          
           console.log('✅ Reinstall complete. Retrying import...');
           playwrightModule = await import('playwright');
           return playwrightModule;
         } catch (installError: any) {
           console.error('❌ Failed to fix Playwright installation:', installError.message);
-          playwrightLoadError = new Error(`Playwright installation is corrupted. Please ensure Playwright is properly installed. Original error: ${error.message}`);
+          playwrightLoadError = new Error(`Playwright installation is corrupted and could not be fixed automatically. Please ensure Playwright is properly installed during build. Original error: ${error.message}`);
           throw playwrightLoadError;
         }
       } else {

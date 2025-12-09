@@ -1,0 +1,24 @@
+name: chili-piper-scraper
+region: sfo
+services:
+  - name: web
+    github:
+      repo: ali-no-code-hero/chili-piper-scraper
+      branch: main
+      deploy_on_push: true
+    build_command: npm install && npm run build
+    run_command: npm start
+    environment_slug: node-js
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    http_port: 3000
+    routes:
+      - path: /
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      # Add your environment variables in Digital Ocean dashboard
+      # Do not commit secrets here
+

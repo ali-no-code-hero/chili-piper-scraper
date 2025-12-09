@@ -1,6 +1,6 @@
 {
   "name": "chili-piper-scraper",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Production-ready Chili Piper slot scraper with API key management and streaming support",
   "scripts": {
     "dev": "next dev",
@@ -10,17 +10,26 @@
     "postinstall": "playwright install chromium --with-deps || true"
   },
   "dependencies": {
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "bcryptjs": "^2.4.3",
     "dotenv": "^16.4.5",
-    "fastify": "^4.26.2",
-    "@fastify/cors": "^9.0.1",
-    "playwright": "^1.56.1"
+    "jsonwebtoken": "^9.0.2",
+    "next": "^16.0.8",
+    "playwright": "^1.56.1",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.5",
     "@types/node": "^24.9.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.17",
     "tsx": "^4.7.0",
     "typescript": "^5.9.3"
   },
-  "main": "dist/server.js",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ali-no-code-hero/chili-piper-scraper.git"
@@ -29,7 +38,7 @@
     "node": ">=20.9.0"
   },
   "keywords": [
-    "express",
+    "nextjs",
     "playwright",
     "scraping",
     "chili-piper",

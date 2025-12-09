@@ -91,6 +91,7 @@
     "compiler": {},
     "expireTime": 31536000,
     "staticPageGenerationTimeout": 60,
+    "output": "standalone",
     "modularizeImports": {
       "@mui/icons-material": {
         "transform": "@mui/icons-material/{{member}}"
@@ -99,7 +100,7 @@
         "transform": "lodash/{{member}}"
       }
     },
-    "outputFileTracingRoot": "/Users/alisyed/chili-piper-scarpe",
+    "outputFileTracingRoot": "/Users/alisyed/Documents/chili-piper-scraper",
     "cacheComponents": false,
     "cacheLife": {
       "default": {
@@ -149,7 +150,6 @@
       "serverSourceMaps": false,
       "linkNoTouchStart": false,
       "caseSensitiveRoutes": false,
-      "clientSegmentCache": true,
       "dynamicOnHover": false,
       "preloadEntriesOnStart": true,
       "clientRouterFilter": true,
@@ -158,7 +158,7 @@
       "proxyPrefetch": "flexible",
       "optimisticClientCache": true,
       "manualClientBasePath": false,
-      "cpus": 11,
+      "cpus": 13,
       "memoryBasedWorkersCount": false,
       "imgOptConcurrency": null,
       "imgOptTimeoutInSeconds": 7,
@@ -290,15 +290,16 @@
     "bundlePagesRouterDependencies": false,
     "configFileName": "next.config.js",
     "serverExternalPackages": [
-      "playwright-core",
-      "@sparticuz/chromium"
+      "jsonwebtoken",
+      "bcryptjs",
+      "semver"
     ],
     "turbopack": {
-      "root": "/Users/alisyed/chili-piper-scarpe"
+      "root": "/Users/alisyed/Documents/chili-piper-scraper"
     },
     "distDirRoot": ".next"
   },
-  "appDir": "/Users/alisyed/chili-piper-scarpe",
+  "appDir": "/Users/alisyed/Documents/chili-piper-scraper",
   "relativeAppDir": "",
   "files": [
     ".next/routes-manifest.json",
@@ -308,6 +309,8 @@
     ".next/server/functions-config-manifest.json",
     ".next/server/middleware-manifest.json",
     ".next/server/middleware-build-manifest.js",
+    ".next/server/middleware-react-loadable-manifest.js",
+    ".next/react-loadable-manifest.json",
     ".next/server/app-paths-manifest.json",
     ".next/app-path-routes-manifest.json",
     ".next/server/server-reference-manifest.js",

@@ -2,22 +2,36 @@ require('dotenv').config();
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  serverExternalPackages: ['better-sqlite3'],
-  // Disable Turbopack - use standard Webpack build
-  experimental: {
-    turbo: false
+  // Optimized for App Platform
+  output: 'standalone',
+  // Exclude problematic packages from server-side bundling
+  serverExternalPackages: ['jsonwebtoken', 'bcryptjs', 'semver'],
+  // Security headers
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          {
+            key: 'X-Content-Type-Options',
+            value: 'nosniff',
+          },
+          {
+            key: 'X-Frame-Options',
+            value: 'DENY',
+          },
+          {
+            key: 'X-XSS-Protection',
+            value: '1; mode=block',
+          },
+          {
+            key: 'Referrer-Policy',
+            value: 'strict-origin-when-cross-origin',
+          },
+        ],
+      },
+    ];
   },
-  env: {
-    ADMIN_USERNAME: process.env.ADMIN_USERNAME,
-    ADMIN_PASSWORD_HASH: process.env.ADMIN_PASSWORD_HASH,
-    JWT_SECRET: process.env.JWT_SECRET,
-    CHILI_PIPER_FORM_URL: process.env.CHILI_PIPER_FORM_URL,
-    RATE_LIMIT_WINDOW_MS: process.env.RATE_LIMIT_WINDOW_MS,
-    RATE_LIMIT_MAX_REQUESTS: process.env.RATE_LIMIT_MAX_REQUESTS,
-    MAX_REQUEST_SIZE_MB: process.env.MAX_REQUEST_SIZE_MB,
-    LOG_LEVEL: process.env.LOG_LEVEL,
-    ENABLE_AUDIT_LOGS: process.env.ENABLE_AUDIT_LOGS
-  }
 }
 
 module.exports = nextConfig

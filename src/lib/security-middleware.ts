@@ -1,11 +1,24 @@
 // Lightweight, framework-agnostic helpers for security
 
-// Simple in-memory API key list (for local/dev). Replace with your own store if needed.
-const DEFAULT_KEYS = new Set<string>([
-  process.env.DEFAULT_API_KEY || 'default-key-12345',
-  'cp_live_s24p7wp7vqao1b3r', // Add your API key here
-  ...(process.env.API_KEYS ? process.env.API_KEYS.split(',') : [])
-]);
+// API key validation - all keys must come from environment variables
+// Never hardcode API keys in source code
+const getApiKeys = (): Set<string> => {
+  const keys = new Set<string>();
+  
+  // Only use environment variables - no hardcoded keys
+  if (process.env.DEFAULT_API_KEY) {
+    keys.add(process.env.DEFAULT_API_KEY);
+  }
+  
+  if (process.env.API_KEYS) {
+    process.env.API_KEYS.split(',').forEach(key => {
+      const trimmed = key.trim();
+      if (trimmed) keys.add(trimmed);
+    });
+  }
+  
+  return keys;
+};
 
 export interface SecurityConfig {
   maxRequests?: number;
@@ -126,37 +139,20 @@ export class SecurityMiddleware {
       token = xApiKey.trim();
     }
     
-    console.log('🔑 validateApiKey called:', {
-      hasAuthHeader: !!authHeader,
-      authHeaderPrefix: authHeader?.substring(0, 30),
-      hasXApiKey: !!xApiKey,
-      xApiKeyPrefix: xApiKey?.substring(0, 30),
-      token: token?.substring(0, 30),
-      tokenLength: token?.length,
-      defaultKeysSize: DEFAULT_KEYS.size,
-      defaultKeysSample: Array.from(DEFAULT_KEYS).slice(0, 3)
-    });
-    
     if (!token) {
-      console.log('❌ No token found');
       return { valid: false };
     }
     
-    // Direct check for the known API key
-    const directMatch = token === 'cp_live_s24p7wp7vqao1b3r';
-    const setMatch = DEFAULT_KEYS.has(token);
-    const ok = directMatch || setMatch;
+    // Get API keys from environment variables only (no hardcoded keys)
+    const validKeys = getApiKeys();
+    const isValid = validKeys.has(token);
     
-    console.log('🔑 Token validation result:', { 
-      token: token.substring(0, 20) + '...', 
-      tokenFull: token,
-      directMatch,
-      setMatch,
-      ok,
-      defaultKeysSize: DEFAULT_KEYS.size,
-      defaultKeysList: Array.from(DEFAULT_KEYS)
-    });
-    return { valid: ok, apiKey: ok ? { key: token } : undefined };
+    // Log validation attempt (without exposing the token)
+    if (!isValid) {
+      console.log('❌ Invalid API key attempt');
+    }
+    
+    return { valid: isValid, apiKey: isValid ? { key: token } : undefined };
   }
 
   // Security headers helper (works with Node/HTTP response-like objects and Next.js Response)

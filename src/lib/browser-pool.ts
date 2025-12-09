@@ -43,12 +43,16 @@ class BrowserPool {
         });
       } catch (error: any) {
         // If browser is not installed, try to install it automatically
-        if (error.message && (error.message.includes('Executable doesn\'t exist') || error.message.includes('Browser not found'))) {
-          console.log('📦 Playwright browser not found. Installing chromium...');
+        if (error.message && (error.message.includes('Executable doesn\'t exist') || error.message.includes('Browser not found') || error.message.includes('imageUtils'))) {
+          console.log('📦 Playwright browser or dependencies not found. Installing chromium...');
           try {
             const { execSync } = require('child_process');
+            // Reinstall Playwright to fix missing modules
+            console.log('🔄 Reinstalling Playwright...');
+            execSync('npm install playwright@^1.56.1 --force', { stdio: 'inherit' });
+            console.log('📦 Installing Playwright browser...');
             execSync('npx playwright install chromium --with-deps', { stdio: 'inherit' });
-            console.log('✅ Playwright browser installed. Retrying launch...');
+            console.log('✅ Playwright installed. Retrying launch...');
             // Retry launch after installation
             return await chromium.launch({
               headless: true,
@@ -72,8 +76,8 @@ class BrowserPool {
               ]
             });
           } catch (installError: any) {
-            console.error('❌ Failed to install Playwright browser:', installError.message);
-            throw new Error(`Playwright browser not installed. Please run: npx playwright install chromium --with-deps. Original error: ${error.message}`);
+            console.error('❌ Failed to install Playwright:', installError.message);
+            throw new Error(`Playwright installation failed. Please ensure Playwright is properly installed. Original error: ${error.message}`);
           }
         }
         throw error;

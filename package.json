@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint src --ext .ts",
     "postinstall": "echo 'Skipping Playwright install in build environment' || true",
-    "install-playwright": "playwright install chromium --with-deps"
+    "install-playwright": "npx playwright install chromium --with-deps || true"
   },
   "dependencies": {
     "@types/react": "^19.2.7",

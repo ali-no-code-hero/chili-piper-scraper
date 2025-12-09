@@ -120,8 +120,11 @@ class BrowserPool {
             '--mute-audio',
             '--no-first-run',
             '--disable-infobars',
-            '--disable-notifications'
-          ]
+            '--disable-notifications',
+            '--disable-setuid-sandbox',
+            '--single-process'
+          ],
+          ignoreDefaultArgs: ['--disable-extensions']
         });
       } catch (error: any) {
         // If browser is not installed, try to install it automatically

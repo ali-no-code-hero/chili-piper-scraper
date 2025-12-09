@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SecurityMiddleware, ValidationSchemas } from '@/lib/security-middleware';
+import { concurrencyManager } from '@/lib/concurrency-manager';
 // Dynamic import to avoid bundling Playwright during build
 
 const security = new SecurityMiddleware();
@@ -54,18 +55,24 @@ export async function POST(request: NextRequest) {
     if (requestedDays) {
       console.log(`📅 Requested ${requestedDays} days`);
     }
+
+    // Get concurrency status for logging
+    const concurrencyStatus = concurrencyManager.getStatus();
+    console.log(`🚦 Concurrency status: ${concurrencyStatus.active}/${concurrencyStatus.capacity} active, ${concurrencyStatus.queued} queued`);
     
-    // Run the scraping (dynamic import to avoid bundling Playwright)
-    const { ChiliPiperScraper } = await import('@/lib/scraper');
-    const scraper = new ChiliPiperScraper();
-    const result = await scraper.scrapeSlots(
-      body.first_name,
-      body.last_name,
-      body.email,
-      body.phone,
-      undefined, // onDayComplete callback
-      requestedDays // maxDays parameter
-    );
+    // Run the scraping through concurrency manager (dynamic import to avoid bundling Playwright)
+    const result = await concurrencyManager.execute(async () => {
+      const { ChiliPiperScraper } = await import('@/lib/scraper');
+      const scraper = new ChiliPiperScraper();
+      return await scraper.scrapeSlots(
+        body.first_name,
+        body.last_name,
+        body.email,
+        body.phone,
+        undefined, // onDayComplete callback
+        requestedDays // maxDays parameter
+      );
+    }, 60000); // 60 second timeout for scraping operation
     
     if (!result.success) {
       console.log(`❌ Scraping failed: ${result.error}`);
@@ -107,14 +114,42 @@ export async function POST(request: NextRequest) {
     const response = NextResponse.json(result);
     return security.addSecurityHeaders(response);
     
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ API error:', error);
+    
+    // Handle queue timeout errors
+    if (error.message && error.message.includes('timeout')) {
+      const response = NextResponse.json(
+        {
+          success: false,
+          error: 'Request Timeout',
+          message: 'Request timed out while waiting in queue or during execution. Please try again.',
+          queueStatus: concurrencyManager.getStatus()
+        },
+        { status: 504 }
+      );
+      return security.addSecurityHeaders(response);
+    }
+
+    // Handle queue full errors
+    if (error.message && error.message.includes('queue is full')) {
+      const response = NextResponse.json(
+        {
+          success: false,
+          error: 'Service Unavailable',
+          message: 'Request queue is full. Please try again later.',
+          queueStatus: concurrencyManager.getStatus()
+        },
+        { status: 503 }
+      );
+      return security.addSecurityHeaders(response);
+    }
     
     const response = NextResponse.json(
       {
         success: false,
         error: 'Internal Server Error',
-        message: 'An unexpected error occurred'
+        message: error.message || 'An unexpected error occurred'
       },
       { status: 500 }
     );

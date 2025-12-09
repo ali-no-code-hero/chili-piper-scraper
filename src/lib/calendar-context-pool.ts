@@ -21,6 +21,9 @@ class CalendarContextPool {
         javaScriptEnabled: true,
         timezoneId: 'America/Chicago', // US Central Time (handles DST automatically)
       });
+      if (!this.context) {
+        throw new Error('Failed to create browser context');
+      }
       const page = await this.context.newPage();
       // Block heavy resources
       await page.route('**/*', (route) => {

@@ -126,15 +126,31 @@ class BrowserPool {
       } catch (error: any) {
         // If browser is not installed, try to install it automatically
         if (error.message && (error.message.includes('Executable doesn\'t exist') || error.message.includes('Browser not found'))) {
-          console.log('📦 Playwright browser not found. Installing chromium...');
+          console.log('📦 Playwright browser not found. Attempting to install chromium...');
           try {
             const { execSync } = require('child_process');
-            execSync('npx playwright install chromium --with-deps', { 
-              stdio: 'inherit',
-              cwd: process.cwd(),
-              timeout: 300000 // 5 minutes
-            });
-            console.log('✅ Playwright browser installed. Retrying launch...');
+            // Set browser path to workspace cache to avoid permission issues
+            const env = { ...process.env, PLAYWRIGHT_BROWSERS_PATH: '/workspace/.cache/ms-playwright' };
+            // Try installing without --with-deps first (doesn't require root)
+            try {
+              execSync('npx playwright install chromium', { 
+                stdio: 'inherit',
+                cwd: process.cwd(),
+                env: env,
+                timeout: 300000 // 5 minutes
+              });
+              console.log('✅ Playwright browser installed. Retrying launch...');
+            } catch (installError: any) {
+              // If that fails, try with --with-deps (might need root, but worth trying)
+              console.log('⚠️ Standard install failed, trying with dependencies...');
+              execSync('npx playwright install chromium --with-deps', { 
+                stdio: 'inherit',
+                cwd: process.cwd(),
+                env: env,
+                timeout: 300000 // 5 minutes
+              });
+              console.log('✅ Playwright browser installed with dependencies. Retrying launch...');
+            }
             // Retry launch after installation
             return await chromium.launch({
               headless: true,

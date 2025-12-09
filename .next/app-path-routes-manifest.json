@@ -5,9 +5,9 @@
   "/_not-found/page": "/_not-found",
   "/api/test-simple/route": "/api/test-simple",
   "/api/get-slots/route": "/api/get-slots",
-  "/api/health/route": "/api/health",
   "/api/get-slots-per-day-stream/route": "/api/get-slots-per-day-stream",
   "/api/get-slots-mock/route": "/api/get-slots-mock",
+  "/api/health/route": "/api/health",
   "/admin/secure/page": "/admin/secure",
   "/page": "/"
 }

@@ -21,6 +21,7 @@ export async function GET(request: NextRequest) {
       browsers: {
         active: browserStatus.active,
         max: browserStatus.max,
+        totalContexts: browserStatus.totalContexts,
         utilization: `${((browserStatus.active / browserStatus.max) * 100).toFixed(1)}%`,
       },
       timestamp: new Date().toISOString(),

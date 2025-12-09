@@ -18,6 +18,7 @@ export class ConcurrencyManager {
   private queue: QueuedRequest<any>[] = [];
   private maxQueueSize: number;
   private defaultTimeout: number;
+  private isProcessing: boolean = false; // Prevent concurrent queue processing
 
   constructor(
     maxConcurrent: number = 3,
@@ -68,42 +69,57 @@ export class ConcurrencyManager {
 
   /**
    * Process the queue, executing requests up to the concurrency limit
+   * Made atomic to prevent race conditions
    */
   private async processQueue(): Promise<void> {
+    // Prevent concurrent processing
+    if (this.isProcessing) {
+      return;
+    }
+
     // Don't process if we're at capacity or queue is empty
     if (this.activeCount >= this.semaphore || this.queue.length === 0) {
       return;
     }
 
-    // Get the next request from queue
-    const request = this.queue.shift();
-    if (!request) {
-      return;
+    this.isProcessing = true;
+
+    try {
+      // Process as many requests as we can (up to semaphore limit)
+      while (this.activeCount < this.semaphore && this.queue.length > 0) {
+        // Get the next request from queue
+        const request = this.queue.shift();
+        if (!request) {
+          break;
+        }
+
+        // Clear timeout since we're processing it
+        if (request.timeout) {
+          clearTimeout(request.timeout);
+        }
+
+        this.activeCount++;
+        console.log(`🚦 Concurrency: ${this.activeCount}/${this.semaphore} active, ${this.queue.length} queued`);
+
+        // Execute the request (don't await - let it run asynchronously)
+        request
+          .execute()
+          .then(result => {
+            this.activeCount--;
+            request.resolve(result);
+            // Process next item in queue
+            this.processQueue();
+          })
+          .catch(error => {
+            this.activeCount--;
+            request.reject(error);
+            // Process next item in queue
+            this.processQueue();
+          });
+      }
+    } finally {
+      this.isProcessing = false;
     }
-
-    // Clear timeout since we're processing it
-    if (request.timeout) {
-      clearTimeout(request.timeout);
-    }
-
-    this.activeCount++;
-    console.log(`🚦 Concurrency: ${this.activeCount}/${this.semaphore} active, ${this.queue.length} queued`);
-
-    // Execute the request
-    request
-      .execute()
-      .then(result => {
-        this.activeCount--;
-        request.resolve(result);
-        // Process next item in queue
-        this.processQueue();
-      })
-      .catch(error => {
-        this.activeCount--;
-        request.reject(error);
-        // Process next item in queue
-        this.processQueue();
-      });
   }
 
   /**

@@ -202,6 +202,11 @@ export class ChiliPiperScraper {
     onDayComplete?: (dayData: { date: string; slots: string[]; totalDays: number; totalSlots: number }) => void,
     maxDays?: number
   ): Promise<ScrapingResult> {
+    // Declare variables in outer scope for error handling
+    let browser: any = null;
+    let context: any = null;
+    let page: any | null = null;
+    
     try {
       // Trim logs in production: only emit debug logs when SCRAPER_DEBUG=true
       const debug = (process.env.SCRAPER_DEBUG || '').toLowerCase() === 'true';
@@ -222,17 +227,16 @@ export class ChiliPiperScraper {
 
       // Try warm post-form calendar context first (only if not using parameterized URL)
       const calendarPool = getCalendarContextPool(this.baseUrl);
-      let page: any | null = null;
       if (!useParameterizedUrl && calendarPool.isReady()) {
         page = await calendarPool.getCalendarPage();
       }
 
       // Use browser pool directly if no warm context
-      let browser = await browserPool.getBrowser();
+      browser = await browserPool.getBrowser();
+      let context: any = null;
       if (!page) {
         // Retry logic for browser context creation (handles race conditions)
         let retries = 3;
-        let context: any = null;
         while (retries > 0) {
           try {
             // Check browser connection before creating context
@@ -250,16 +254,20 @@ export class ChiliPiperScraper {
             retries--;
             if (error.message && error.message.includes('has been closed') && retries > 0) {
               console.log(`⚠️ Browser/context closed, retrying... (${retries} attempts left)`);
-              // Get a fresh browser instance
+              // Release the failed browser and get a fresh one
+              browserPool.releaseBrowser(browser);
               browser = await browserPool.getBrowser();
               // Small delay before retry
               await new Promise(resolve => setTimeout(resolve, 100));
             } else {
+              // Release browser on error
+              browserPool.releaseBrowser(browser);
               throw error; // Re-throw if not a "closed" error or no retries left
             }
           }
         }
         if (!page) {
+          browserPool.releaseBrowser(browser);
           throw new Error('Failed to create browser context after retries');
         }
       }
@@ -516,11 +524,23 @@ export class ChiliPiperScraper {
 
       const slots = collectedSlots;
 
-      // Close page to free resources
+      // Close page and context to free resources
       try {
-        await page.close();
+        if (page) {
+          await page.close();
+        }
+        if (context) {
+          await context.close();
+          // Release browser back to pool
+          browserPool.releaseBrowser(browser);
+        }
       } catch (e) {
-        // Ignore if already closed
+        // Ignore if already closed, but still try to release browser
+        if (context) {
+          try {
+            browserPool.releaseBrowser(browser);
+          } catch {}
+        }
       }
 
       // Flatten the slots into the requested format
@@ -560,6 +580,17 @@ export class ChiliPiperScraper {
 
     } catch (error) {
       console.error('Scraping error:', error);
+      
+      // Release browser and close context on error
+      try {
+        if (context) {
+          await context.close().catch(() => {});
+          browserPool.releaseBrowser(browser);
+        }
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+      
       // Ensure logger is restored on error
       try { /* restore if was replaced */ } finally {
         // best-effort restore; if not set, ignore

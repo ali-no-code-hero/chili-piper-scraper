@@ -80,11 +80,18 @@ async function getPlaywright(): Promise<PlaywrightType> {
   return playwrightModule;
 }
 
+interface BrowserInfo {
+  browser: any;
+  activeContexts: number;
+  maxContexts: number;
+}
+
 class BrowserPool {
-  private browsers: any[] = [];
+  private browsers: BrowserInfo[] = [];
   private maxBrowsers: number;
   private launchingBrowsers: Set<Promise<any>> = new Set();
   private browserIndex: number = 0;
+  private maxContextsPerBrowser: number = 5; // Limit contexts per browser to prevent overloading
 
   constructor(maxBrowsers: number = 2) {
     this.maxBrowsers = maxBrowsers;
@@ -183,71 +190,104 @@ class BrowserPool {
   }
 
   async getBrowser(): Promise<any> {
-    // Clean up disconnected browsers
-    this.browsers = this.browsers.filter(b => b && b.isConnected());
-
-    // Find an available browser (round-robin)
-    for (let i = 0; i < this.browsers.length; i++) {
-      const index = (this.browserIndex + i) % this.browsers.length;
-      const browser = this.browsers[index];
-      if (browser && browser.isConnected()) {
-        this.browserIndex = (index + 1) % this.browsers.length;
-        return browser;
+    // Clean up disconnected browsers and reset their context counts
+    this.browsers = this.browsers.filter(b => {
+      if (!b.browser || !b.browser.isConnected()) {
+        return false;
       }
-    }
+      // Reset context count if browser was disconnected and reconnected
+      return true;
+    });
 
-    // If we have room for more browsers, launch one
-    if (this.browsers.length < this.maxBrowsers) {
-      const launchPromise = this.launchBrowser();
-      this.launchingBrowsers.add(launchPromise);
-      
-      try {
-        const browser = await launchPromise;
-        this.browsers.push(browser);
-        this.browserIndex = (this.browserIndex + 1) % this.browsers.length;
-        console.log(`✅ Browser pool: ${this.browsers.length}/${this.maxBrowsers} browsers active`);
-        return browser;
-      } catch (error) {
-        throw error;
-      } finally {
-        this.launchingBrowsers.delete(launchPromise);
+    // Try to find an available browser (one with capacity for more contexts)
+    const maxAttempts = 50; // Maximum wait attempts (5 seconds total)
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      // Find an available browser (round-robin)
+      for (let i = 0; i < this.browsers.length; i++) {
+        const index = (this.browserIndex + i) % this.browsers.length;
+        const browserInfo = this.browsers[index];
+        if (browserInfo && browserInfo.browser.isConnected() && 
+            browserInfo.activeContexts < browserInfo.maxContexts) {
+          browserInfo.activeContexts++;
+          this.browserIndex = (index + 1) % this.browsers.length;
+          console.log(`✅ Browser pool: Using browser ${index + 1} (${browserInfo.activeContexts}/${browserInfo.maxContexts} contexts)`);
+          return browserInfo.browser;
+        }
       }
-    }
 
-    // All browsers are in use or launching, wait for one to become available
-    // Wait for any launching browser to finish
-    if (this.launchingBrowsers.size > 0) {
-      const browser = await Promise.race(Array.from(this.launchingBrowsers));
-      if (browser && browser.isConnected()) {
-        return browser;
+      // If we have room for more browsers, launch one
+      if (this.browsers.length < this.maxBrowsers) {
+        const launchPromise = this.launchBrowser();
+        this.launchingBrowsers.add(launchPromise);
+        
+        try {
+          const browser = await launchPromise;
+          const browserInfo: BrowserInfo = {
+            browser,
+            activeContexts: 1,
+            maxContexts: this.maxContextsPerBrowser
+          };
+          this.browsers.push(browserInfo);
+          this.browserIndex = (this.browserIndex + 1) % this.browsers.length;
+          console.log(`✅ Browser pool: ${this.browsers.length}/${this.maxBrowsers} browsers active`);
+          return browser;
+        } catch (error) {
+          throw error;
+        } finally {
+          this.launchingBrowsers.delete(launchPromise);
+        }
       }
+
+      // Wait for any launching browser to finish
+      if (this.launchingBrowsers.size > 0) {
+        try {
+          const browser = await Promise.race(Array.from(this.launchingBrowsers));
+          if (browser && browser.isConnected()) {
+            const browserInfo: BrowserInfo = {
+              browser,
+              activeContexts: 1,
+              maxContexts: this.maxContextsPerBrowser
+            };
+            this.browsers.push(browserInfo);
+            return browser;
+          }
+        } catch (error) {
+          // Continue waiting if launch failed
+        }
+      }
+
+      // Wait a bit before retrying
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    // Fallback: wait a bit and try to get an existing browser
-    await new Promise(resolve => setTimeout(resolve, 100));
-    const availableBrowser = this.browsers.find(b => b && b.isConnected());
-    if (availableBrowser) {
-      return availableBrowser;
-    }
+    // If we've exhausted all attempts, throw an error
+    throw new Error('No browsers available in pool after waiting');
+  }
 
-    // Last resort: return first browser even if it might be busy
-    if (this.browsers.length > 0) {
-      return this.browsers[0];
+  /**
+   * Release a browser context (call when context is closed)
+   */
+  releaseBrowser(browser: any): void {
+    const browserInfo = this.browsers.find(b => b.browser === browser);
+    if (browserInfo && browserInfo.activeContexts > 0) {
+      browserInfo.activeContexts--;
+      console.log(`🔄 Browser pool: Released context from browser (${browserInfo.activeContexts}/${browserInfo.maxContexts} contexts)`);
     }
-
-    throw new Error('No browsers available in pool');
   }
 
   async close(): Promise<void> {
-    await Promise.all(this.browsers.map(browser => browser?.close().catch(() => {})));
+    await Promise.all(this.browsers.map(browserInfo => browserInfo.browser?.close().catch(() => {})));
     this.browsers = [];
     this.launchingBrowsers.clear();
   }
 
-  getStatus(): { active: number; max: number } {
+  getStatus(): { active: number; max: number; totalContexts: number } {
+    const activeBrowsers = this.browsers.filter(b => b.browser && b.browser.isConnected());
+    const totalContexts = activeBrowsers.reduce((sum, b) => sum + b.activeContexts, 0);
     return {
-      active: this.browsers.filter(b => b && b.isConnected()).length,
+      active: activeBrowsers.length,
       max: this.maxBrowsers,
+      totalContexts,
     };
   }
 }

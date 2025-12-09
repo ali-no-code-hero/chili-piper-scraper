@@ -6,7 +6,7 @@ services:
       repo: ali-no-code-hero/chili-piper-scraper
       branch: main
       deploy_on_push: true
-            build_command: npm ci && rm -rf node_modules/playwright node_modules/playwright-core && npm install playwright@^1.56.1 && npx playwright install chromium --with-deps && npm run build
+            build_command: rm -rf node_modules package-lock.json && npm install && npx playwright install chromium --with-deps && npm run build
     run_command: npm start
     environment_slug: node-js
     instance_count: 1

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ChiliPiperScraper } from '@/lib/scraper';
 import { SecurityMiddleware, ValidationSchemas } from '@/lib/security-middleware';
+// Dynamic import to avoid bundling Playwright during build
 
 const security = new SecurityMiddleware();
 
@@ -61,6 +61,8 @@ export async function POST(request: NextRequest) {
         
         try {
           // Create scraper with streaming callback
+          // Dynamic import to avoid bundling Playwright during build
+          const { ChiliPiperScraper } = await import('@/lib/scraper');
           const scraper = new ChiliPiperScraper();
           
           // Define the streaming callback

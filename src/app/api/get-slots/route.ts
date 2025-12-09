@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ChiliPiperScraper } from '@/lib/scraper';
 import { SecurityMiddleware, ValidationSchemas } from '@/lib/security-middleware';
+// Dynamic import to avoid bundling Playwright during build
 
 const security = new SecurityMiddleware();
 
@@ -55,7 +55,8 @@ export async function POST(request: NextRequest) {
       console.log(`📅 Requested ${requestedDays} days`);
     }
     
-    // Run the scraping
+    // Run the scraping (dynamic import to avoid bundling Playwright)
+    const { ChiliPiperScraper } = await import('@/lib/scraper');
     const scraper = new ChiliPiperScraper();
     const result = await scraper.scrapeSlots(
       body.first_name,

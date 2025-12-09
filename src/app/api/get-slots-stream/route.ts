@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { ChiliPiperScraper } from '@/lib/scraper';
+// Dynamic import to avoid bundling Playwright during build
 
 // Production API keys for Chili Piper Slot Scraper
 const VALID_API_KEYS = [
@@ -102,7 +102,8 @@ export async function POST(request: NextRequest) {
           
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(initialResponse)}\n\n`));
           
-          // Run the scraping
+          // Run the scraping (dynamic import to avoid bundling Playwright)
+          const { ChiliPiperScraper } = await import('@/lib/scraper');
           const scraper = new ChiliPiperScraper();
           const result = await scraper.scrapeSlots(
             body.first_name,

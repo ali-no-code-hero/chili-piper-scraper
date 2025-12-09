@@ -2,7 +2,7 @@ require('dotenv').config();
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Optimized for App Platform
+  // Optimized for Railway/Docker
   output: 'standalone',
   // Exclude problematic packages from server-side bundling
   serverExternalPackages: ['jsonwebtoken', 'bcryptjs', 'playwright', 'playwright-core'],

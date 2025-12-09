@@ -1,13 +1,13 @@
 {
   "/api/admin/secure/route": "app/api/admin/secure/route.js",
-  "/_not-found/page": "app/_not-found/page.js",
   "/_global-error/page": "app/_global-error/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
   "/api/get-slots-stream/route": "app/api/get-slots-stream/route.js",
-  "/api/test-simple/route": "app/api/test-simple/route.js",
   "/api/get-slots-per-day-stream/route": "app/api/get-slots-per-day-stream/route.js",
+  "/api/get-slots/route": "app/api/get-slots/route.js",
+  "/api/test-simple/route": "app/api/test-simple/route.js",
   "/api/health/route": "app/api/health/route.js",
   "/api/get-slots-mock/route": "app/api/get-slots-mock/route.js",
-  "/api/get-slots/route": "app/api/get-slots/route.js",
   "/admin/secure/page": "app/admin/secure/page.js",
   "/page": "app/page.js"
 }

@@ -6,7 +6,7 @@ services:
       repo: ali-no-code-hero/chili-piper-scraper
       branch: main
       deploy_on_push: true
-    build_command: npm install && npm run build
+            build_command: npm install && npx playwright install chromium --with-deps && npm run build
     run_command: npm start
     environment_slug: node-js
     instance_count: 1

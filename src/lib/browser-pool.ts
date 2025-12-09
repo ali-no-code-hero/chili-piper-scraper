@@ -210,7 +210,7 @@ class BrowserPool {
         const browserInfo = this.browsers[index];
         if (browserInfo && browserInfo.browser.isConnected() && 
             browserInfo.activeContexts < browserInfo.maxContexts) {
-          // Check if browser is locked (context being created)
+          // Check if browser is locked (context being created) - wait for it
           const lock = this.browserLocks.get(browserInfo.browser);
           if (lock) {
             // Wait for lock to release before using this browser
@@ -221,11 +221,14 @@ class BrowserPool {
             }
           }
           
-          // Reserve the browser by incrementing context count
-          browserInfo.activeContexts++;
-          this.browserIndex = (index + 1) % this.browsers.length;
-          console.log(`✅ Browser pool: Using browser ${index + 1} (${browserInfo.activeContexts}/${browserInfo.maxContexts} contexts)`);
-          return browserInfo.browser;
+          // Double-check availability after waiting for lock (another request might have taken it)
+          if (browserInfo.activeContexts < browserInfo.maxContexts) {
+            // Reserve the browser by incrementing context count
+            browserInfo.activeContexts++;
+            this.browserIndex = (index + 1) % this.browsers.length;
+            console.log(`✅ Browser pool: Using browser ${index + 1} (${browserInfo.activeContexts}/${browserInfo.maxContexts} contexts)`);
+            return browserInfo.browser;
+          }
         }
       }
 

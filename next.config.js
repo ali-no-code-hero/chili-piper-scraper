@@ -5,15 +5,17 @@ const nextConfig = {
   // Optimized for App Platform
   output: 'standalone',
   // Exclude problematic packages from server-side bundling
-  serverExternalPackages: ['jsonwebtoken', 'bcryptjs'],
+  serverExternalPackages: ['jsonwebtoken', 'bcryptjs', 'playwright', 'playwright-core'],
   // Webpack configuration to properly externalize packages
   webpack: (config, { isServer }) => {
     if (isServer) {
-      // Externalize jsonwebtoken and its dependencies
+      // Externalize packages that cause bundling issues
       config.externals = config.externals || [];
       config.externals.push({
         'jsonwebtoken': 'commonjs jsonwebtoken',
         'bcryptjs': 'commonjs bcryptjs',
+        'playwright': 'commonjs playwright',
+        'playwright-core': 'commonjs playwright-core',
       });
     }
     return config;

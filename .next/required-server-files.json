@@ -290,7 +290,9 @@
     "configFileName": "next.config.js",
     "serverExternalPackages": [
       "jsonwebtoken",
-      "bcryptjs"
+      "bcryptjs",
+      "playwright",
+      "playwright-core"
     ],
     "turbopack": {
       "root": "/Users/alisyed/Documents/chili-piper-scraper"

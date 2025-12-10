@@ -50,6 +50,7 @@ export enum SuccessCode {
 
 export interface ErrorResponse {
   success: false;
+  status: number;
   error: {
     code: ErrorCode;
     type: ErrorType;
@@ -63,6 +64,7 @@ export interface ErrorResponse {
 
 export interface SuccessResponse<T = any> {
   success: true;
+  status: number;
   code: SuccessCode;
   data: T;
   timestamp?: string;
@@ -83,9 +85,11 @@ export class ErrorHandler {
     requestId?: string
   ): ErrorResponse {
     const type = this.getErrorType(code);
+    const status = this.getStatusCode(code);
     
     return {
       success: false,
+      status,
       error: {
         code,
         type,
@@ -165,6 +169,7 @@ export class ErrorHandler {
   ): SuccessResponse<T> {
     return {
       success: true,
+      status: this.getSuccessStatusCode(),
       code,
       data,
       timestamp: new Date().toISOString(),

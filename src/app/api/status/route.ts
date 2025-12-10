@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { concurrencyManager } from '@/lib/concurrency-manager';
 import { browserPool } from '@/lib/browser-pool';
 import { SecurityMiddleware } from '@/lib/security-middleware';
+import { ErrorHandler, SuccessCode, ErrorCode } from '@/lib/error-handler';
 
 const security = new SecurityMiddleware();
 
 export async function GET(request: NextRequest) {
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
   try {
     const concurrencyStatus = concurrencyManager.getStatus();
     const browserStatus = browserPool.getStatus();
@@ -27,22 +30,24 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString(),
     };
 
-    const response = NextResponse.json({
-      success: true,
-      data: status,
-    });
+    const successResponse = ErrorHandler.createSuccess(
+      SuccessCode.OPERATION_SUCCESS,
+      status,
+      requestId
+    );
 
+    const response = NextResponse.json(
+      successResponse,
+      { status: ErrorHandler.getSuccessStatusCode() }
+    );
     return security.addSecurityHeaders(response);
   } catch (error) {
     console.error('❌ Status API error:', error);
     
+    const errorResponse = ErrorHandler.parseError(error, requestId);
     const response = NextResponse.json(
-      {
-        success: false,
-        error: 'Internal Server Error',
-        message: 'Failed to retrieve status'
-      },
-      { status: 500 }
+      errorResponse,
+      { status: ErrorHandler.getStatusCode(errorResponse.error.code) }
     );
     
     return security.addSecurityHeaders(response);

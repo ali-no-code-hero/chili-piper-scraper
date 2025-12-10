@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { ErrorHandler, ErrorCode, SuccessCode } from '@/lib/error-handler';
 // Dynamic import to avoid bundling Playwright during build
 
 // Production API keys for Chili Piper Slot Scraper
@@ -19,6 +20,8 @@ function validateApiKey(authHeader: string): boolean {
 }
 
 export async function POST(request: NextRequest) {
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
   try {
     console.log('🔍 Get-Slots Streaming API - Request received');
     
@@ -28,15 +31,19 @@ export async function POST(request: NextRequest) {
     
     if (!validateApiKey(authHeader)) {
       console.log('❌ Authentication failed');
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: 'Unauthorized',
-          message: 'Invalid or missing API key. Please provide a valid Bearer token.',
+      const errorResponse = ErrorHandler.createError(
+        ErrorCode.INVALID_API_KEY,
+        'Invalid or missing API key',
+        'Please provide a valid Bearer token in the Authorization header.',
+        { 
           usage: {
             example: 'Authorization: Bearer your-api-key-here'
           }
-        }),
+        },
+        requestId
+      );
+      return new Response(
+        JSON.stringify(errorResponse),
         { 
           status: 401,
           headers: {
@@ -61,12 +68,15 @@ export async function POST(request: NextRequest) {
     
     if (missingFields.length > 0) {
       console.log(`❌ Missing required fields: ${missingFields.join(', ')}`);
+      const errorResponse = ErrorHandler.createError(
+        ErrorCode.MISSING_FIELDS,
+        'Missing required fields',
+        `The following fields are required: ${missingFields.join(', ')}`,
+        { missingFields },
+        requestId
+      );
       return new Response(
-        JSON.stringify({
-          success: false,
-          error: 'Missing required fields',
-          message: `The following fields are required: ${missingFields.join(', ')}`
-        }),
+        JSON.stringify(errorResponse),
         { 
           status: 400,
           headers: {
@@ -88,17 +98,18 @@ export async function POST(request: NextRequest) {
         
         try {
           // Send initial response
-          const initialResponse = {
-            success: true,
-            streaming: true,
-            message: 'Starting slot collection...',
-            data: {
+          const initialResponse = ErrorHandler.createSuccess(
+            SuccessCode.REQUEST_PROCESSED,
+            {
+              streaming: true,
+              message: 'Starting slot collection...',
               total_slots: 0,
               total_days: 0,
               slots: [],
               note: 'Streaming results as they become available'
-            }
-          };
+            },
+            requestId
+          );
           
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(initialResponse)}\n\n`));
           
@@ -114,11 +125,7 @@ export async function POST(request: NextRequest) {
           
           if (!result.success) {
             console.log(`❌ Scraping failed: ${result.error}`);
-            const errorResponse = {
-              success: false,
-              error: 'Scraping failed',
-              message: result.error
-            };
+            const errorResponse = ErrorHandler.parseError(result.error, requestId);
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorResponse)}\n\n`));
             controller.close();
             return;
@@ -133,17 +140,18 @@ export async function POST(request: NextRequest) {
             const chunk = allSlots.slice(i, i + chunkSize);
             const progress = Math.round((i + chunk.length) / allSlots.length * 100);
             
-            const streamingResponse = {
-              success: true,
-              streaming: true,
-              message: `Streaming slots... ${progress}% complete`,
-              data: {
+            const streamingResponse = ErrorHandler.createSuccess(
+              SuccessCode.REQUEST_PROCESSED,
+              {
+                streaming: true,
+                message: `Streaming slots... ${progress}% complete`,
                 total_slots: allSlots.length,
                 total_days: result.data?.total_days || 0,
                 slots: chunk,
                 note: `Streaming: ${i + chunk.length}/${allSlots.length} slots (${progress}%)`
-              }
-            };
+              },
+              requestId
+            );
             
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(streamingResponse)}\n\n`));
             
@@ -152,23 +160,22 @@ export async function POST(request: NextRequest) {
           }
           
           // Send final completion response
-          const finalResponse = {
-            success: true,
-            streaming: false,
-            message: 'Slot collection completed',
-            data: result.data
-          };
+          const finalResponse = ErrorHandler.createSuccess(
+            SuccessCode.SCRAPING_SUCCESS,
+            {
+              streaming: false,
+              message: 'Slot collection completed',
+              ...result.data
+            },
+            requestId
+          );
           
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(finalResponse)}\n\n`));
           controller.close();
           
         } catch (error) {
           console.error('❌ Streaming error:', error);
-          const errorResponse = {
-            success: false,
-            error: 'Streaming failed',
-            message: error instanceof Error ? error.message : 'Unknown error occurred'
-          };
+          const errorResponse = ErrorHandler.parseError(error, requestId);
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorResponse)}\n\n`));
           controller.close();
         }
@@ -176,6 +183,7 @@ export async function POST(request: NextRequest) {
     });
     
     return new Response(stream, {
+      status: ErrorHandler.getSuccessStatusCode(),
       headers: {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
@@ -190,12 +198,15 @@ export async function POST(request: NextRequest) {
     console.error('❌ API error:', error);
     
     if (error instanceof SyntaxError) {
+      const errorResponse = ErrorHandler.createError(
+        ErrorCode.INVALID_INPUT,
+        'Invalid JSON',
+        'Request body must be valid JSON',
+        { originalError: error.message },
+        requestId
+      );
       return new Response(
-        JSON.stringify({
-          success: false,
-          error: 'Invalid JSON',
-          message: 'Request body must be valid JSON'
-        }),
+        JSON.stringify(errorResponse),
         { 
           status: 400,
           headers: {
@@ -208,14 +219,11 @@ export async function POST(request: NextRequest) {
       );
     }
     
+    const errorResponse = ErrorHandler.parseError(error, requestId);
     return new Response(
-      JSON.stringify({
-        success: false,
-        error: 'Internal Server Error',
-        message: error instanceof Error ? error.message : 'Unknown error occurred'
-      }),
+      JSON.stringify(errorResponse),
       { 
-        status: 500,
+        status: ErrorHandler.getStatusCode(errorResponse.error.code),
         headers: {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*',

@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SecurityMiddleware, ValidationSchemas } from '@/lib/security-middleware';
 import { concurrencyManager } from '@/lib/concurrency-manager';
+import { ErrorHandler, ErrorCode, SuccessCode } from '@/lib/error-handler';
 // Dynamic import to avoid bundling Playwright during build
 
 const security = new SecurityMiddleware();
 
 export async function POST(request: NextRequest) {
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
   try {
     // Log all headers for debugging
     const allHeaders: Record<string, string> = {};
@@ -27,7 +30,18 @@ export async function POST(request: NextRequest) {
 
     if (!securityResult.allowed) {
       console.error('❌ Security check failed:', securityResult.response);
-      return security.addSecurityHeaders(securityResult.response!);
+      const errorResponse = ErrorHandler.createError(
+        ErrorCode.UNAUTHORIZED,
+        'Request blocked by security middleware',
+        securityResult.response?.statusText || 'Authentication or validation failed',
+        undefined,
+        requestId
+      );
+      const response = NextResponse.json(
+        errorResponse,
+        { status: ErrorHandler.getStatusCode(errorResponse.error.code) }
+      );
+      return security.addSecurityHeaders(response);
     }
 
     const body = securityResult.sanitizedData!;
@@ -41,14 +55,18 @@ export async function POST(request: NextRequest) {
     // Extract days parameter if provided
     const requestedDays = body.days ? parseInt(body.days.toString(), 10) : undefined;
     if (requestedDays && (requestedDays < 1 || requestedDays > 30)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Validation Error',
-          message: 'days parameter must be between 1 and 30'
-        },
+      const errorResponse = ErrorHandler.createError(
+        ErrorCode.VALIDATION_ERROR,
+        'Invalid days parameter',
+        'days parameter must be between 1 and 30',
+        { providedValue: requestedDays },
+        requestId
+      );
+      const response = NextResponse.json(
+        errorResponse,
         { status: 400 }
       );
+      return security.addSecurityHeaders(response);
     }
     
     console.log('🔍 Starting scraping process...');
@@ -86,13 +104,10 @@ export async function POST(request: NextRequest) {
         error: result.error
       }, clientIP);
       
+      const errorResponse = ErrorHandler.parseError(result.error, requestId);
       const response = NextResponse.json(
-        {
-          success: false,
-          error: 'Scraping failed',
-          message: result.error
-        },
-        { status: 500 }
+        errorResponse,
+        { status: ErrorHandler.getStatusCode(errorResponse.error.code) }
       );
       
       return security.addSecurityHeaders(response);
@@ -111,7 +126,17 @@ export async function POST(request: NextRequest) {
       slotsFound: result.data?.total_slots
     }, clientIP);
     
-    const response = NextResponse.json(result);
+    // Create structured success response with code
+    const successResponse = ErrorHandler.createSuccess(
+      SuccessCode.SCRAPING_SUCCESS,
+      result.data,
+      requestId
+    );
+    
+    const response = NextResponse.json(
+      successResponse,
+      { status: ErrorHandler.getSuccessStatusCode() }
+    );
     return security.addSecurityHeaders(response);
     
   } catch (error: any) {
@@ -119,13 +144,18 @@ export async function POST(request: NextRequest) {
     
     // Handle queue timeout errors
     if (error.message && error.message.includes('timeout')) {
-      const response = NextResponse.json(
-        {
-          success: false,
-          error: 'Request Timeout',
-          message: 'Request timed out while waiting in queue or during execution. Please try again.',
-          queueStatus: concurrencyManager.getStatus()
+      const errorResponse = ErrorHandler.createError(
+        ErrorCode.REQUEST_TIMEOUT,
+        'Request timed out',
+        'Request timed out while waiting in queue or during execution. Please try again.',
+        { 
+          queueStatus: concurrencyManager.getStatus(),
+          originalError: error.message
         },
+        requestId
+      );
+      const response = NextResponse.json(
+        errorResponse,
         { status: 504 }
       );
       return security.addSecurityHeaders(response);
@@ -133,25 +163,28 @@ export async function POST(request: NextRequest) {
 
     // Handle queue full errors
     if (error.message && error.message.includes('queue is full')) {
-      const response = NextResponse.json(
-        {
-          success: false,
-          error: 'Service Unavailable',
-          message: 'Request queue is full. Please try again later.',
-          queueStatus: concurrencyManager.getStatus()
+      const errorResponse = ErrorHandler.createError(
+        ErrorCode.QUEUE_FULL,
+        'Request queue is full',
+        'The system is currently processing too many requests. Please try again later.',
+        { 
+          queueStatus: concurrencyManager.getStatus(),
+          originalError: error.message
         },
+        requestId
+      );
+      const response = NextResponse.json(
+        errorResponse,
         { status: 503 }
       );
       return security.addSecurityHeaders(response);
     }
     
+    // Generic error
+    const errorResponse = ErrorHandler.parseError(error, requestId);
     const response = NextResponse.json(
-      {
-        success: false,
-        error: 'Internal Server Error',
-        message: error.message || 'An unexpected error occurred'
-      },
-      { status: 500 }
+      errorResponse,
+      { status: ErrorHandler.getStatusCode(errorResponse.error.code) }
     );
     
     return security.addSecurityHeaders(response);

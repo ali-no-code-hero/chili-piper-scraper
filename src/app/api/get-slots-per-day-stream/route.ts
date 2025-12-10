@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SecurityMiddleware, ValidationSchemas } from '@/lib/security-middleware';
+import { ErrorHandler, ErrorCode, SuccessCode } from '@/lib/error-handler';
 // Dynamic import to avoid bundling Playwright during build
 
 const security = new SecurityMiddleware();
 
 export async function POST(request: NextRequest) {
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
   try {
     console.log('🔍 Get-Slots Per-Day Streaming API - Request received');
     
@@ -17,14 +20,17 @@ export async function POST(request: NextRequest) {
     });
 
     if (!securityResult.allowed) {
+      const errorResponse = ErrorHandler.createError(
+        ErrorCode.UNAUTHORIZED,
+        'Request blocked by security middleware',
+        securityResult.response?.statusText || 'Authentication or validation failed',
+        undefined,
+        requestId
+      );
       return new NextResponse(
-        JSON.stringify({
-          success: false,
-          error: 'Security check failed',
-          message: 'Request blocked by security middleware'
-        }),
+        JSON.stringify(errorResponse),
         { 
-          status: securityResult.response?.status || 400,
+          status: ErrorHandler.getStatusCode(errorResponse.error.code),
           headers: {
             'Content-Type': 'application/json',
             ...security.addSecurityHeaders(new NextResponse()).headers
@@ -45,17 +51,18 @@ export async function POST(request: NextRequest) {
     
     const readableStream = new ReadableStream({
       async start(controller) {
-        const initialResponse = {
-          success: true,
-          streaming: true,
-          message: "Starting slot collection...",
-          data: {
+        const initialResponse = ErrorHandler.createSuccess(
+          SuccessCode.REQUEST_PROCESSED,
+          {
+            streaming: true,
+            message: "Starting slot collection...",
             total_slots: 0,
             total_days: 0,
             slots: [],
             note: "Streaming results per day as they become available"
-          }
-        };
+          },
+          requestId
+        );
         
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(initialResponse)}\n\n`));
         
@@ -74,17 +81,18 @@ export async function POST(request: NextRequest) {
               gmt: "GMT-05:00 America/Chicago (CDT)"
             }));
             
-            const streamingResponse = {
-              success: true,
-              streaming: true,
-              message: `Found ${dayData.slots.length} slots for ${dayData.date}`,
-              data: {
+            const streamingResponse = ErrorHandler.createSuccess(
+              SuccessCode.REQUEST_PROCESSED,
+              {
+                streaming: true,
+                message: `Found ${dayData.slots.length} slots for ${dayData.date}`,
                 total_slots: dayData.totalSlots,
                 total_days: dayData.totalDays,
                 slots: daySlots,
                 note: `Streaming: ${dayData.totalDays}/7 days collected`
-              }
-            };
+              },
+              requestId
+            );
             
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(streamingResponse)}\n\n`));
           };
@@ -106,29 +114,25 @@ export async function POST(request: NextRequest) {
               error: result.error
             }, clientIP);
             
-            const errorResponse = {
-              success: false,
-              streaming: false,
-              error: 'Scraping failed',
-              message: result.error || 'Unknown scraping error'
-            };
+            const errorResponse = ErrorHandler.parseError(result.error, requestId);
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorResponse)}\n\n`));
             controller.close();
             return;
           }
 
           // Final response after all chunks are sent
-          const finalResponse = {
-            success: true,
-            streaming: false,
-            message: "Slot collection completed",
-            data: {
+          const finalResponse = ErrorHandler.createSuccess(
+            SuccessCode.SCRAPING_SUCCESS,
+            {
+              streaming: false,
+              message: "Slot collection completed",
               total_slots: result.data?.total_slots || 0,
               total_days: result.data?.total_days || 0,
               note: `Found ${result.data?.total_days || 0} days with ${result.data?.total_slots || 0} total booking slots`,
               slots: result.data?.slots || [] // Send all slots in the final response
-            }
-          };
+            },
+            requestId
+          );
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(finalResponse)}\n\n`));
           controller.close();
 
@@ -148,12 +152,7 @@ export async function POST(request: NextRequest) {
             error: error instanceof Error ? error.message : 'Unknown error'
           }, clientIP);
           
-          const errorResponse = {
-            success: false,
-            streaming: false,
-            error: 'Internal Server Error',
-            message: error instanceof Error ? error.message : 'Unknown error occurred'
-          };
+          const errorResponse = ErrorHandler.parseError(error, requestId);
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorResponse)}\n\n`));
           controller.close();
         }
@@ -168,6 +167,7 @@ export async function POST(request: NextRequest) {
     });
 
     const response = new NextResponse(readableStream, {
+      status: ErrorHandler.getSuccessStatusCode(),
       headers: {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache, no-transform',
@@ -186,14 +186,11 @@ export async function POST(request: NextRequest) {
       error: error instanceof Error ? error.message : 'Unknown error'
     }, request.headers.get('x-forwarded-for') || 'unknown');
     
+    const errorResponse = ErrorHandler.parseError(error, requestId);
     return new NextResponse(
-      JSON.stringify({
-        success: false,
-        error: 'Internal Server Error',
-        message: 'An unexpected error occurred'
-      }),
+      JSON.stringify(errorResponse),
       { 
-        status: 500,
+        status: ErrorHandler.getStatusCode(errorResponse.error.code),
         headers: {
           'Content-Type': 'application/json',
           ...security.addSecurityHeaders(new NextResponse()).headers

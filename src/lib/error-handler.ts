@@ -51,6 +51,7 @@ export enum SuccessCode {
 export interface ErrorResponse {
   success: false;
   status: number;
+  responseTime: number; // Time in milliseconds from request received to response sent
   error: {
     code: ErrorCode;
     type: ErrorType;
@@ -65,6 +66,7 @@ export interface ErrorResponse {
 export interface SuccessResponse<T = any> {
   success: true;
   status: number;
+  responseTime: number; // Time in milliseconds from request received to response sent
   code: SuccessCode;
   data: T;
   timestamp?: string;
@@ -82,7 +84,8 @@ export class ErrorHandler {
     message: string,
     details?: string,
     metadata?: Record<string, any>,
-    requestId?: string
+    requestId?: string,
+    responseTime?: number
   ): ErrorResponse {
     const type = this.getErrorType(code);
     const status = this.getStatusCode(code);
@@ -90,6 +93,7 @@ export class ErrorHandler {
     return {
       success: false,
       status,
+      responseTime: responseTime || 0,
       error: {
         code,
         type,
@@ -165,11 +169,13 @@ export class ErrorHandler {
   static createSuccess<T>(
     code: SuccessCode,
     data: T,
-    requestId?: string
+    requestId?: string,
+    responseTime?: number
   ): SuccessResponse<T> {
     return {
       success: true,
       status: this.getSuccessStatusCode(),
+      responseTime: responseTime || 0,
       code,
       data,
       timestamp: new Date().toISOString(),
@@ -180,7 +186,7 @@ export class ErrorHandler {
   /**
    * Parse error from scraper or other sources and convert to structured format
    */
-  static parseError(error: any, requestId?: string): ErrorResponse {
+  static parseError(error: any, requestId?: string, responseTime?: number): ErrorResponse {
     const errorMessage = error instanceof Error ? error.message : String(error);
     
     // Check for specific error patterns
@@ -190,7 +196,8 @@ export class ErrorHandler {
         'Calendar elements not found on the page',
         'The scraper could not locate the calendar component. This may indicate the page structure has changed or the form is not loading correctly.',
         { originalError: errorMessage },
-        requestId
+        requestId,
+        responseTime
       );
     }
     
@@ -200,7 +207,8 @@ export class ErrorHandler {
         'Browser connection lost',
         'The browser instance was closed or disconnected during scraping. This may be due to resource constraints or network issues.',
         { originalError: errorMessage },
-        requestId
+        requestId,
+        responseTime
       );
     }
     
@@ -210,7 +218,8 @@ export class ErrorHandler {
         'Scraping operation timed out',
         'The scraping operation exceeded the maximum allowed time. The target site may be slow or unresponsive.',
         { originalError: errorMessage },
-        requestId
+        requestId,
+        responseTime
       );
     }
     
@@ -220,7 +229,8 @@ export class ErrorHandler {
         'Request queue is full',
         'The system is currently processing too many requests. Please try again later.',
         { originalError: errorMessage },
-        requestId
+        requestId,
+        responseTime
       );
     }
     
@@ -231,7 +241,8 @@ export class ErrorHandler {
         'Scraping operation failed',
         errorMessage,
         { originalError: errorMessage },
-        requestId
+        requestId,
+        responseTime
       );
     }
     
@@ -241,7 +252,8 @@ export class ErrorHandler {
       'An unexpected error occurred',
       errorMessage,
       { originalError: errorMessage },
-      requestId
+      requestId,
+      responseTime
     );
   }
 }

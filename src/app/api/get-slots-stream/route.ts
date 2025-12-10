@@ -20,6 +20,7 @@ function validateApiKey(authHeader: string): boolean {
 }
 
 export async function POST(request: NextRequest) {
+  const requestStartTime = Date.now(); // Start timing from the very beginning
   const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   
   try {
@@ -31,6 +32,7 @@ export async function POST(request: NextRequest) {
     
     if (!validateApiKey(authHeader)) {
       console.log('❌ Authentication failed');
+      const responseTime = Date.now() - requestStartTime;
       const errorResponse = ErrorHandler.createError(
         ErrorCode.INVALID_API_KEY,
         'Invalid or missing API key',
@@ -40,7 +42,8 @@ export async function POST(request: NextRequest) {
             example: 'Authorization: Bearer your-api-key-here'
           }
         },
-        requestId
+        requestId,
+        responseTime
       );
       return new Response(
         JSON.stringify(errorResponse),
@@ -68,12 +71,14 @@ export async function POST(request: NextRequest) {
     
     if (missingFields.length > 0) {
       console.log(`❌ Missing required fields: ${missingFields.join(', ')}`);
+      const responseTime = Date.now() - requestStartTime;
       const errorResponse = ErrorHandler.createError(
         ErrorCode.MISSING_FIELDS,
         'Missing required fields',
         `The following fields are required: ${missingFields.join(', ')}`,
         { missingFields },
-        requestId
+        requestId,
+        responseTime
       );
       return new Response(
         JSON.stringify(errorResponse),
@@ -98,6 +103,7 @@ export async function POST(request: NextRequest) {
         
         try {
           // Send initial response
+          const initialResponseTime = Date.now() - requestStartTime;
           const initialResponse = ErrorHandler.createSuccess(
             SuccessCode.REQUEST_PROCESSED,
             {
@@ -108,7 +114,8 @@ export async function POST(request: NextRequest) {
               slots: [],
               note: 'Streaming results as they become available'
             },
-            requestId
+            requestId,
+            initialResponseTime
           );
           
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(initialResponse)}\n\n`));
@@ -125,7 +132,8 @@ export async function POST(request: NextRequest) {
           
           if (!result.success) {
             console.log(`❌ Scraping failed: ${result.error}`);
-            const errorResponse = ErrorHandler.parseError(result.error, requestId);
+            const responseTime = Date.now() - requestStartTime;
+            const errorResponse = ErrorHandler.parseError(result.error, requestId, responseTime);
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorResponse)}\n\n`));
             controller.close();
             return;
@@ -139,6 +147,7 @@ export async function POST(request: NextRequest) {
           for (let i = 0; i < allSlots.length; i += chunkSize) {
             const chunk = allSlots.slice(i, i + chunkSize);
             const progress = Math.round((i + chunk.length) / allSlots.length * 100);
+            const responseTime = Date.now() - requestStartTime;
             
             const streamingResponse = ErrorHandler.createSuccess(
               SuccessCode.REQUEST_PROCESSED,
@@ -150,7 +159,8 @@ export async function POST(request: NextRequest) {
                 slots: chunk,
                 note: `Streaming: ${i + chunk.length}/${allSlots.length} slots (${progress}%)`
               },
-              requestId
+              requestId,
+              responseTime
             );
             
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(streamingResponse)}\n\n`));
@@ -160,6 +170,7 @@ export async function POST(request: NextRequest) {
           }
           
           // Send final completion response
+          const finalResponseTime = Date.now() - requestStartTime;
           const finalResponse = ErrorHandler.createSuccess(
             SuccessCode.SCRAPING_SUCCESS,
             {
@@ -167,7 +178,8 @@ export async function POST(request: NextRequest) {
               message: 'Slot collection completed',
               ...result.data
             },
-            requestId
+            requestId,
+            finalResponseTime
           );
           
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(finalResponse)}\n\n`));
@@ -175,7 +187,8 @@ export async function POST(request: NextRequest) {
           
         } catch (error) {
           console.error('❌ Streaming error:', error);
-          const errorResponse = ErrorHandler.parseError(error, requestId);
+          const responseTime = Date.now() - requestStartTime;
+          const errorResponse = ErrorHandler.parseError(error, requestId, responseTime);
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorResponse)}\n\n`));
           controller.close();
         }
@@ -197,13 +210,16 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('❌ API error:', error);
     
+    const responseTime = Date.now() - requestStartTime;
+    
     if (error instanceof SyntaxError) {
       const errorResponse = ErrorHandler.createError(
         ErrorCode.INVALID_INPUT,
         'Invalid JSON',
         'Request body must be valid JSON',
         { originalError: error.message },
-        requestId
+        requestId,
+        responseTime
       );
       return new Response(
         JSON.stringify(errorResponse),
@@ -219,7 +235,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    const errorResponse = ErrorHandler.parseError(error, requestId);
+    const errorResponse = ErrorHandler.parseError(error, requestId, responseTime);
     return new Response(
       JSON.stringify(errorResponse),
       { 

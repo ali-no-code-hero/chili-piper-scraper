@@ -7,6 +7,7 @@ import { ErrorHandler, ErrorCode, SuccessCode } from '@/lib/error-handler';
 const security = new SecurityMiddleware();
 
 export async function POST(request: NextRequest) {
+  const requestStartTime = Date.now(); // Start timing from the very beginning
   const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   
   try {
@@ -30,12 +31,14 @@ export async function POST(request: NextRequest) {
 
     if (!securityResult.allowed) {
       console.error('❌ Security check failed:', securityResult.response);
+      const responseTime = Date.now() - requestStartTime;
       const errorResponse = ErrorHandler.createError(
         ErrorCode.UNAUTHORIZED,
         'Request blocked by security middleware',
         securityResult.response?.statusText || 'Authentication or validation failed',
         undefined,
-        requestId
+        requestId,
+        responseTime
       );
       const response = NextResponse.json(
         errorResponse,
@@ -48,19 +51,20 @@ export async function POST(request: NextRequest) {
     console.log(`✅ Parsed and validated data:`, body);
     
     // Record API usage
-    const startTime = Date.now();
     const clientIP = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
     const userAgent = request.headers.get('user-agent') || 'unknown';
     
     // Extract days parameter if provided
     const requestedDays = body.days ? parseInt(body.days.toString(), 10) : undefined;
     if (requestedDays && (requestedDays < 1 || requestedDays > 30)) {
+      const responseTime = Date.now() - requestStartTime;
       const errorResponse = ErrorHandler.createError(
         ErrorCode.VALIDATION_ERROR,
         'Invalid days parameter',
         'days parameter must be between 1 and 30',
         { providedValue: requestedDays },
-        requestId
+        requestId,
+        responseTime
       );
       const response = NextResponse.json(
         errorResponse,
@@ -96,7 +100,7 @@ export async function POST(request: NextRequest) {
       console.log(`❌ Scraping failed: ${result.error}`);
       
       // Record failed usage
-      const responseTime = Date.now() - startTime;
+      const responseTime = Date.now() - requestStartTime;
       security.logSecurityEvent('SCRAPING_FAILED', {
         endpoint: '/api/get-slots',
         userAgent,
@@ -104,7 +108,7 @@ export async function POST(request: NextRequest) {
         error: result.error
       }, clientIP);
       
-      const errorResponse = ErrorHandler.parseError(result.error, requestId);
+      const errorResponse = ErrorHandler.parseError(result.error, requestId, responseTime);
       const response = NextResponse.json(
         errorResponse,
         { status: ErrorHandler.getStatusCode(errorResponse.error.code) }
@@ -117,7 +121,7 @@ export async function POST(request: NextRequest) {
     console.log(`📊 Result: ${result.data?.total_days} days, ${result.data?.total_slots} slots`);
     
     // Record successful usage
-    const responseTime = Date.now() - startTime;
+    const responseTime = Date.now() - requestStartTime;
     security.logSecurityEvent('SCRAPING_SUCCESS', {
       endpoint: '/api/get-slots',
       userAgent,
@@ -130,7 +134,8 @@ export async function POST(request: NextRequest) {
     const successResponse = ErrorHandler.createSuccess(
       SuccessCode.SCRAPING_SUCCESS,
       result.data,
-      requestId
+      requestId,
+      responseTime
     );
     
     const response = NextResponse.json(
@@ -142,6 +147,8 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('❌ API error:', error);
     
+    const responseTime = Date.now() - requestStartTime;
+    
     // Handle queue timeout errors
     if (error.message && error.message.includes('timeout')) {
       const errorResponse = ErrorHandler.createError(
@@ -152,7 +159,8 @@ export async function POST(request: NextRequest) {
           queueStatus: concurrencyManager.getStatus(),
           originalError: error.message
         },
-        requestId
+        requestId,
+        responseTime
       );
       const response = NextResponse.json(
         errorResponse,
@@ -171,7 +179,8 @@ export async function POST(request: NextRequest) {
           queueStatus: concurrencyManager.getStatus(),
           originalError: error.message
         },
-        requestId
+        requestId,
+        responseTime
       );
       const response = NextResponse.json(
         errorResponse,
@@ -181,7 +190,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Generic error
-    const errorResponse = ErrorHandler.parseError(error, requestId);
+    const errorResponse = ErrorHandler.parseError(error, requestId, responseTime);
     const response = NextResponse.json(
       errorResponse,
       { status: ErrorHandler.getStatusCode(errorResponse.error.code) }

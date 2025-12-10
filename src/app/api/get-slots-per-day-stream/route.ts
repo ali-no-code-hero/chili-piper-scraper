@@ -6,6 +6,7 @@ import { ErrorHandler, ErrorCode, SuccessCode } from '@/lib/error-handler';
 const security = new SecurityMiddleware();
 
 export async function POST(request: NextRequest) {
+  const requestStartTime = Date.now(); // Start timing from the very beginning
   const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   
   try {
@@ -20,12 +21,14 @@ export async function POST(request: NextRequest) {
     });
 
     if (!securityResult.allowed) {
+      const responseTime = Date.now() - requestStartTime;
       const errorResponse = ErrorHandler.createError(
         ErrorCode.UNAUTHORIZED,
         'Request blocked by security middleware',
         securityResult.response?.statusText || 'Authentication or validation failed',
         undefined,
-        requestId
+        requestId,
+        responseTime
       );
       return new NextResponse(
         JSON.stringify(errorResponse),
@@ -51,6 +54,7 @@ export async function POST(request: NextRequest) {
     
     const readableStream = new ReadableStream({
       async start(controller) {
+        const initialResponseTime = Date.now() - requestStartTime;
         const initialResponse = ErrorHandler.createSuccess(
           SuccessCode.REQUEST_PROCESSED,
           {
@@ -61,7 +65,8 @@ export async function POST(request: NextRequest) {
             slots: [],
             note: "Streaming results per day as they become available"
           },
-          requestId
+          requestId,
+          initialResponseTime
         );
         
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(initialResponse)}\n\n`));
@@ -81,6 +86,7 @@ export async function POST(request: NextRequest) {
               gmt: "GMT-05:00 America/Chicago (CDT)"
             }));
             
+            const responseTime = Date.now() - requestStartTime;
             const streamingResponse = ErrorHandler.createSuccess(
               SuccessCode.REQUEST_PROCESSED,
               {
@@ -91,7 +97,8 @@ export async function POST(request: NextRequest) {
                 slots: daySlots,
                 note: `Streaming: ${dayData.totalDays}/7 days collected`
               },
-              requestId
+              requestId,
+              responseTime
             );
             
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(streamingResponse)}\n\n`));
@@ -114,13 +121,15 @@ export async function POST(request: NextRequest) {
               error: result.error
             }, clientIP);
             
-            const errorResponse = ErrorHandler.parseError(result.error, requestId);
+            const responseTime = Date.now() - requestStartTime;
+            const errorResponse = ErrorHandler.parseError(result.error, requestId, responseTime);
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorResponse)}\n\n`));
             controller.close();
             return;
           }
 
           // Final response after all chunks are sent
+          const finalResponseTime = Date.now() - requestStartTime;
           const finalResponse = ErrorHandler.createSuccess(
             SuccessCode.SCRAPING_SUCCESS,
             {
@@ -131,7 +140,8 @@ export async function POST(request: NextRequest) {
               note: `Found ${result.data?.total_days || 0} days with ${result.data?.total_slots || 0} total booking slots`,
               slots: result.data?.slots || [] // Send all slots in the final response
             },
-            requestId
+            requestId,
+            finalResponseTime
           );
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(finalResponse)}\n\n`));
           controller.close();
@@ -152,7 +162,8 @@ export async function POST(request: NextRequest) {
             error: error instanceof Error ? error.message : 'Unknown error'
           }, clientIP);
           
-          const errorResponse = ErrorHandler.parseError(error, requestId);
+          const responseTime = Date.now() - requestStartTime;
+          const errorResponse = ErrorHandler.parseError(error, requestId, responseTime);
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorResponse)}\n\n`));
           controller.close();
         }
@@ -181,12 +192,14 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('❌ API error:', error);
     
+    const responseTime = Date.now() - requestStartTime;
+    
     security.logSecurityEvent('STREAMING_API_ERROR', {
       endpoint: '/api/get-slots-per-day-stream',
       error: error instanceof Error ? error.message : 'Unknown error'
     }, request.headers.get('x-forwarded-for') || 'unknown');
     
-    const errorResponse = ErrorHandler.parseError(error, requestId);
+    const errorResponse = ErrorHandler.parseError(error, requestId, responseTime);
     return new NextResponse(
       JSON.stringify(errorResponse),
       { 

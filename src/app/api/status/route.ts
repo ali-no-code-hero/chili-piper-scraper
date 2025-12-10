@@ -7,6 +7,7 @@ import { ErrorHandler, SuccessCode, ErrorCode } from '@/lib/error-handler';
 const security = new SecurityMiddleware();
 
 export async function GET(request: NextRequest) {
+  const requestStartTime = Date.now(); // Start timing from the very beginning
   const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   
   try {
@@ -30,10 +31,12 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString(),
     };
 
+    const responseTime = Date.now() - requestStartTime;
     const successResponse = ErrorHandler.createSuccess(
       SuccessCode.OPERATION_SUCCESS,
       status,
-      requestId
+      requestId,
+      responseTime
     );
 
     const response = NextResponse.json(
@@ -44,7 +47,8 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('❌ Status API error:', error);
     
-    const errorResponse = ErrorHandler.parseError(error, requestId);
+    const responseTime = Date.now() - requestStartTime;
+    const errorResponse = ErrorHandler.parseError(error, requestId, responseTime);
     const response = NextResponse.json(
       errorResponse,
       { status: ErrorHandler.getStatusCode(errorResponse.error.code) }

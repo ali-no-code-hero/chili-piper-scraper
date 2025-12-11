@@ -239,7 +239,7 @@ export async function POST(request: NextRequest) {
     return new Response(
       JSON.stringify(errorResponse),
       { 
-        status: ErrorHandler.getStatusCode(errorResponse.error.code),
+        status: ErrorHandler.getStatusCode(errorResponse.code),
         headers: {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*',

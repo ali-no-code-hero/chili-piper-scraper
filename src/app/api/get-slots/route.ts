@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       );
       const response = NextResponse.json(
         errorResponse,
-        { status: ErrorHandler.getStatusCode(errorResponse.error.code) }
+        { status: ErrorHandler.getStatusCode(errorResponse.code) }
       );
       return security.addSecurityHeaders(response);
     }
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
       const errorResponse = ErrorHandler.parseError(result.error, requestId, responseTime);
       const response = NextResponse.json(
         errorResponse,
-        { status: ErrorHandler.getStatusCode(errorResponse.error.code) }
+        { status: ErrorHandler.getStatusCode(errorResponse.code) }
       );
       
       return security.addSecurityHeaders(response);
@@ -193,7 +193,7 @@ export async function POST(request: NextRequest) {
     const errorResponse = ErrorHandler.parseError(error, requestId, responseTime);
     const response = NextResponse.json(
       errorResponse,
-      { status: ErrorHandler.getStatusCode(errorResponse.error.code) }
+      { status: ErrorHandler.getStatusCode(errorResponse.code) }
     );
     
     return security.addSecurityHeaders(response);

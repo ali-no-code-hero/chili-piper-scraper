@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
     const errorResponse = ErrorHandler.parseError(error, requestId, responseTime);
     const response = NextResponse.json(
       errorResponse,
-      { status: ErrorHandler.getStatusCode(errorResponse.error.code) }
+      { status: ErrorHandler.getStatusCode(errorResponse.code) }
     );
     
     return security.addSecurityHeaders(response);

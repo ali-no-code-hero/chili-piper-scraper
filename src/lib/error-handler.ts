@@ -51,14 +51,14 @@ export enum SuccessCode {
 export interface ErrorResponse {
   success: false;
   status: number;
+  code: ErrorCode;
+  timestamp: string;
+  requestId?: string;
   responseTime: number; // Time in milliseconds from request received to response sent
   error: {
-    code: ErrorCode;
     type: ErrorType;
     message: string;
     details?: string;
-    timestamp: string;
-    requestId?: string;
     metadata?: Record<string, any>;
   };
 }
@@ -93,14 +93,14 @@ export class ErrorHandler {
     return {
       success: false,
       status,
+      code,
+      timestamp: new Date().toISOString(),
+      requestId,
       responseTime: responseTime || 0,
       error: {
-        code,
         type,
         message,
         details,
-        timestamp: new Date().toISOString(),
-        requestId,
         metadata
       }
     };

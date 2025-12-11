@@ -203,7 +203,7 @@ export async function POST(request: NextRequest) {
     return new NextResponse(
       JSON.stringify(errorResponse),
       { 
-        status: ErrorHandler.getStatusCode(errorResponse.error.code),
+        status: ErrorHandler.getStatusCode(errorResponse.code),
         headers: {
           'Content-Type': 'application/json',
           ...security.addSecurityHeaders(new NextResponse()).headers

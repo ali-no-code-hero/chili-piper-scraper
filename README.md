@@ -36,7 +36,7 @@ A production-ready web scraping service that automatically extracts available me
 
 - Node.js 20.9.0 or higher
 - Playwright browser dependencies (installed automatically)
-- 2GB+ RAM recommended
+- 2GB+ RAM recommended (32GB+ recommended for 50 concurrent browser instances)
 
 ## 🛠️ Local Development
 
@@ -90,6 +90,8 @@ curl -X POST http://your-domain.com/api/get-slots \
   }'
 ```
 
+**Note**: After a successful slot request, the browser instance is kept open for 15 minutes (configurable) to enable fast booking. The instance is automatically cleaned up after the timeout period.
+
 ### Response Format
 
 ```json
@@ -110,6 +112,48 @@ curl -X POST http://your-domain.com/api/get-slots \
 }
 ```
 
+### Book a Slot
+
+```bash
+curl -X POST http://your-domain.com/api/book-slot \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{
+    "email": "john.doe@example.com",
+    "dateTime": "November 13, 2025 at 1:25 PM CST",
+    "firstName": "John",
+    "lastName": "Doe",
+    "phone": "5551234567"
+  }'
+```
+
+**Request Body**:
+- `email` (required): Email address of the user (must match the email used in get-slots)
+- `dateTime` (required): Date and time in format "November 13, 2025 at 1:25 PM CST"
+- `firstName` (required if no existing instance): First name (required when creating new instance)
+- `lastName` (required if no existing instance): Last name (required when creating new instance)
+- `phone` (required if no existing instance): Phone number (required when creating new instance)
+
+**Behavior**:
+- If a browser instance exists for the email (from a previous get-slots request), it will be reused
+- If no instance exists, a new one will be created automatically (requires firstName, lastName, phone)
+- The instance will navigate to the calendar, find the specified date and time, and book the slot
+- After successful booking, the instance is closed
+
+### Response Format
+
+```json
+{
+  "success": true,
+  "code": "OPERATION_SUCCESS",
+  "data": {
+    "message": "Slot booked successfully",
+    "date": "2025-11-13",
+    "time": "1:25 PM"
+  }
+}
+```
+
 ## 🔐 Security Features
 
 - **API Key Authentication**: All endpoints require valid API keys
@@ -122,18 +166,22 @@ curl -X POST http://your-domain.com/api/get-slots \
 
 ### Environment Variables
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `CHILI_PIPER_FORM_URL` | Target Chili Piper form URL | Yes |
-| `NODE_ENV` | Environment mode | Yes |
-| `PORT` | Server port | Yes |
-| `JWT_SECRET` | JWT signing secret | Yes |
-| `DEFAULT_API_KEY` | Default API key for authentication | Yes |
-| `API_KEYS` | Comma-separated list of additional API keys | No |
-| `ADMIN_USERNAME` | Admin panel username | Yes |
-| `ADMIN_PASSWORD_HASH` | Bcrypt hash of admin password | Yes |
-| `MAX_SCRAPING_TIMEOUT` | Scraping timeout (ms) | No |
-| `MAX_DAYS_TO_COLLECT` | Max days to scrape | No |
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `CHILI_PIPER_FORM_URL` | Target Chili Piper form URL | Yes | - |
+| `NODE_ENV` | Environment mode | Yes | - |
+| `PORT` | Server port | Yes | - |
+| `JWT_SECRET` | JWT signing secret | Yes | - |
+| `DEFAULT_API_KEY` | Default API key for authentication | Yes | - |
+| `API_KEYS` | Comma-separated list of additional API keys | No | - |
+| `ADMIN_USERNAME` | Admin panel username | Yes | - |
+| `ADMIN_PASSWORD_HASH` | Bcrypt hash of admin password | Yes | - |
+| `MAX_SCRAPING_TIMEOUT` | Scraping timeout (ms) | No | 30000 |
+| `MAX_DAYS_TO_COLLECT` | Max days to scrape | No | 7 |
+| `MAX_CONCURRENT_REQUESTS` | Maximum concurrent operations (scraping + booking) | No | 15 |
+| `MAX_BROWSER_POOL_SIZE` | Maximum browser instances in pool | No | 2 |
+| `MAX_BROWSER_INSTANCES` | Maximum persistent browser instances (per email) | No | 50 |
+| `BROWSER_INSTANCE_TIMEOUT_MS` | Timeout for persistent instances (ms) | No | 900000 (15 min) |
 
 ### Generate Secrets
 
@@ -158,7 +206,8 @@ node scripts/generate-password-hash.js yourSecurePassword123
 ## 📊 API Endpoints
 
 - `GET /api/health` - Health check endpoint
-- `POST /api/get-slots` - Get available slots (requires API key)
+- `POST /api/get-slots` - Get available slots (requires API key, keeps browser instance open)
+- `POST /api/book-slot` - Book a specific time slot (requires API key, reuses existing instance if available)
 - `POST /api/get-slots-stream` - Streaming API (requires API key)
 - `POST /api/get-slots-per-day-stream` - Per-day streaming (requires API key)
 - `POST /api/admin/secure` - Admin operations (requires admin token)

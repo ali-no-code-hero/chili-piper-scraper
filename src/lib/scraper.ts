@@ -1,6 +1,7 @@
 import { chromium, Browser } from 'playwright';
 import { browserPool } from './browser-pool';
 import { getCalendarContextPool } from './calendar-context-pool';
+import { browserInstanceManager } from './browser-instance-manager';
 
 export interface SlotData {
   date: string;
@@ -43,6 +44,22 @@ export class ChiliPiperScraper {
     
     // Phone field ID from HTML (aa1e0f82-816d-478f-bf04-64a447af86b3) - can be overridden via env
     this.phoneFieldId = process.env.CHILI_PIPER_PHONE_FIELD_ID || 'aa1e0f82-816d-478f-bf04-64a447af86b3';
+  }
+
+  /**
+   * Get existing browser instance for an email
+   * Returns the page if instance exists and is valid, null otherwise
+   */
+  getExistingInstance(email: string): { browser: any; context: any; page: any } | null {
+    const instance = browserInstanceManager.getInstance(email);
+    if (!instance) {
+      return null;
+    }
+    return {
+      browser: instance.browser,
+      context: instance.context,
+      page: instance.page,
+    };
   }
 
   /**
@@ -542,22 +559,36 @@ export class ChiliPiperScraper {
 
       const slots = collectedSlots;
 
-      // Close page and context to free resources
+      // Register instance instead of closing - keep page on calendar view for future bookings
+      // Ensure page is still on calendar view (it should be after getAvailableSlots)
       try {
-        if (page) {
-          await page.close();
+        // Verify calendar is still visible using common selectors
+        const calendarStillVisible = await page.$('[data-id="calendar-day-button"], button[data-test-id^="days:"]').catch(() => null);
+        if (!calendarStillVisible) {
+          // Calendar might have been lost, try to ensure we're still on calendar
+          console.log('⚠️ Calendar not visible after scraping, ensuring we stay on calendar view...');
         }
-        if (context) {
-          await context.close();
-          // Release browser back to pool
-          browserPool.releaseBrowser(browser);
-        }
+
+        // Register the instance with the browser instance manager
+        // Note: We keep the browser, context, and page open
+        await browserInstanceManager.registerInstance(email, browser, context, page);
+        console.log(`✅ Browser instance registered for ${email} - keeping open for future bookings`);
+        
+        // Don't release browser back to pool - it's now managed by browserInstanceManager
+        // Don't close page or context - they're kept open
       } catch (e) {
-        // Ignore if already closed, but still try to release browser
-        if (context) {
-          try {
+        console.error(`⚠️ Error registering browser instance for ${email}:`, e);
+        // Fallback: clean up if registration fails
+        try {
+          if (page && !page.isClosed()) {
+            await page.close();
+          }
+          if (context) {
+            await context.close();
             browserPool.releaseBrowser(browser);
-          } catch {}
+          }
+        } catch (cleanupError) {
+          // Ignore cleanup errors
         }
       }
 

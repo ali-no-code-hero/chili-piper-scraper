@@ -245,6 +245,29 @@ export async function POST(request: NextRequest) {
     const { date, time } = parsed;
     const formattedTime = formatTimeForSlot(time);
 
+    // Test mode: If email contains "test", return success without actually booking
+    if (email.toLowerCase().includes('test')) {
+      console.log(`🧪 Test mode: Email contains "test", returning mock success response`);
+      const responseTime = Date.now() - requestStartTime;
+      const successResponse = ErrorHandler.createSuccess(
+        SuccessCode.OPERATION_SUCCESS,
+        {
+          message: 'Slot booked successfully (TEST MODE - no actual booking performed)',
+          date: date,
+          time: time,
+          testMode: true,
+        },
+        requestId,
+        responseTime
+      );
+
+      const response = NextResponse.json(
+        successResponse,
+        { status: ErrorHandler.getSuccessStatusCode() }
+      );
+      return security.addSecurityHeaders(response);
+    }
+
     // Run booking through concurrency manager
     const result = await concurrencyManager.execute(async () => {
       const scraper = new ChiliPiperScraper();

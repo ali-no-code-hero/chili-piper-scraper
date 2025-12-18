@@ -1,4 +1,5 @@
 import { Browser, BrowserContext, Page } from 'playwright';
+import { browserPool } from './browser-pool';
 
 interface BrowserInstance {
   browser: Browser;
@@ -63,6 +64,10 @@ class BrowserInstanceManager {
       createdAt: Date.now(),
     });
 
+    // Release browser from pool so it's available for new requests
+    // The browser is now managed by instance manager, not the pool
+    browserPool.releaseBrowser(browser);
+
     console.log(`✅ Registered browser instance for ${email} (${this.instances.size}/${this.maxInstances} instances)`);
   }
 
@@ -112,6 +117,7 @@ class BrowserInstanceManager {
         await instance.context.close().catch(() => {});
       }
       // Note: We don't close the browser itself as it may be from the browser pool
+      // The browser pool will handle disconnected browsers in its cleanup
     } catch (error) {
       console.error(`Error cleaning up instance for ${email}:`, error);
     } finally {

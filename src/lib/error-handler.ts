@@ -21,6 +21,8 @@ export enum ErrorCode {
   CALENDAR_NOT_FOUND = 'CALENDAR_NOT_FOUND',
   BROWSER_ERROR = 'BROWSER_ERROR',
   TIMEOUT_ERROR = 'TIMEOUT_ERROR',
+  SLOT_NOT_FOUND = 'SLOT_NOT_FOUND',
+  DAY_BUTTON_NOT_FOUND = 'DAY_BUTTON_NOT_FOUND',
   
   // Concurrency Errors (503)
   QUEUE_FULL = 'QUEUE_FULL',
@@ -228,6 +230,30 @@ export class ErrorHandler {
         ErrorCode.QUEUE_FULL,
         'Request queue is full',
         'The system is currently processing too many requests. Please try again later.',
+        { originalError: errorMessage },
+        requestId,
+        responseTime
+      );
+    }
+    
+    // Time slot not found error
+    if (errorMessage.includes('Time slot button not found') || errorMessage.includes('Time slot not found')) {
+      return this.createError(
+        ErrorCode.SLOT_NOT_FOUND,
+        'Time slot not found',
+        'The requested time slot could not be found on the calendar. The slot may have been booked by another user, or the time format may not match.',
+        { originalError: errorMessage },
+        requestId,
+        responseTime
+      );
+    }
+    
+    // Day button not found error
+    if (errorMessage.includes('Day button not found') || errorMessage.includes('day button not found')) {
+      return this.createError(
+        ErrorCode.DAY_BUTTON_NOT_FOUND,
+        'Day button not found',
+        'The requested date could not be found on the calendar. The date may be outside the available range or the calendar may not have loaded correctly.',
         { originalError: errorMessage },
         requestId,
         responseTime

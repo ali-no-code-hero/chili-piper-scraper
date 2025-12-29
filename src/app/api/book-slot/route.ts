@@ -467,6 +467,40 @@ export async function POST(request: NextRequest) {
       return security.addSecurityHeaders(response);
     }
 
+    // Handle slot not found errors
+    if (error.message && (error.message.includes('Time slot button not found') || error.message.includes('Time slot not found'))) {
+      const errorResponse = ErrorHandler.createError(
+        ErrorCode.SLOT_NOT_FOUND,
+        'Time slot not found',
+        'The requested time slot could not be found on the calendar. The slot may have been booked by another user, or the time format may not match.',
+        { originalError: error.message },
+        requestId,
+        responseTime
+      );
+      const response = NextResponse.json(
+        errorResponse,
+        { status: 500 }
+      );
+      return security.addSecurityHeaders(response);
+    }
+
+    // Handle day button not found errors
+    if (error.message && (error.message.includes('Day button not found') || error.message.includes('day button not found'))) {
+      const errorResponse = ErrorHandler.createError(
+        ErrorCode.DAY_BUTTON_NOT_FOUND,
+        'Day button not found',
+        'The requested date could not be found on the calendar. The date may be outside the available range or the calendar may not have loaded correctly.',
+        { originalError: error.message },
+        requestId,
+        responseTime
+      );
+      const response = NextResponse.json(
+        errorResponse,
+        { status: 500 }
+      );
+      return security.addSecurityHeaders(response);
+    }
+
     // Generic error
     const errorResponse = ErrorHandler.parseError(error, requestId, responseTime);
     const response = NextResponse.json(

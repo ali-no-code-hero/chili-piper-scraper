@@ -444,7 +444,7 @@ export async function POST(request: NextRequest) {
       // Log available slots for debugging
       try {
         const availableSlots = await page.$$eval('[data-id="calendar-slot"], button[data-test-id^="slot-"]', 
-          buttons => buttons.map(b => ({
+          (buttons: Element[]) => buttons.map((b: Element) => ({
             text: b.textContent?.trim() || '',
             dataTestId: b.getAttribute('data-test-id') || '',
             disabled: b.hasAttribute('disabled') || (b as HTMLButtonElement).disabled,
@@ -553,7 +553,7 @@ export async function POST(request: NextRequest) {
         let availableSlotInfo = '';
         try {
           const slots = await page.$$eval('[data-id="calendar-slot"], button[data-test-id^="slot-"]', 
-            buttons => buttons.map(b => b.textContent?.trim()).filter(Boolean)
+            (buttons: Element[]) => buttons.map((b: Element) => b.textContent?.trim()).filter(Boolean) as string[]
           );
           availableSlotInfo = ` Available slots: ${slots.join(', ')}`;
         } catch {}

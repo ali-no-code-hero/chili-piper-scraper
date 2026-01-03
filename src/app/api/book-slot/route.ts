@@ -428,40 +428,118 @@ export async function POST(request: NextRequest) {
         throw new Error(`Day button not found for date ${date}`);
       }
 
-      // Wait a moment for slots to load
-      await page.waitForTimeout(500);
+      // Wait for slots to load - use reliable wait condition
+      try {
+        await page.waitForSelector('[data-id="calendar-slot"], button[data-test-id^="slot-"]', { timeout: 5000 });
+        console.log(`✅ Slot buttons appeared after clicking day button`);
+      } catch (error) {
+        // If slots don't appear, wait a bit more and try again
+        await page.waitForTimeout(1000);
+        const slotsExist = await page.$('[data-id="calendar-slot"], button[data-test-id^="slot-"]');
+        if (!slotsExist) {
+          throw new Error(`No slot buttons found after clicking day button for ${date}`);
+        }
+      }
+
+      // Log available slots for debugging
+      try {
+        const availableSlots = await page.$$eval('[data-id="calendar-slot"], button[data-test-id^="slot-"]', 
+          buttons => buttons.map(b => ({
+            text: b.textContent?.trim() || '',
+            dataTestId: b.getAttribute('data-test-id') || '',
+            disabled: b.hasAttribute('disabled') || (b as HTMLButtonElement).disabled,
+            ariaDisabled: b.getAttribute('aria-disabled') === 'true'
+          }))
+        );
+        console.log(`🔍 Available slots (${availableSlots.length} total):`, 
+          availableSlots.map(s => `${s.text} (${s.dataTestId})`).join(', '));
+      } catch (error) {
+        console.log(`⚠️ Could not log available slots:`, error);
+      }
 
       // Find and click the time slot button
       const slotTimeId = `slot-${formattedTime}`;
       let slotClicked = false;
       
-      // Try exact data-test-id match first
-      try {
-        const slotButton = await page.$(`button[data-test-id="${slotTimeId}"]`);
-        if (slotButton) {
-          await slotButton.click();
-          slotClicked = true;
-          console.log(`✅ Clicked time slot button: ${slotTimeId}`);
-        }
-      } catch {}
+      // Helper function to normalize time for comparison
+      const normalizeTime = (timeStr: string): string => {
+        return timeStr.trim()
+          .replace(/\s+/g, '') // Remove all spaces
+          .toUpperCase()
+          .replace(/^0+/, ''); // Remove leading zeros (e.g., "09:30" -> "9:30")
+      };
 
-      // Fallback: try by text content
+      // Helper function to check if times match
+      const timesMatch = (time1: string, time2: string): boolean => {
+        const norm1 = normalizeTime(time1);
+        const norm2 = normalizeTime(time2);
+        return norm1 === norm2;
+      };
+      
+      // Try exact data-test-id match first (with variations)
+      const slotIdVariations = [
+        slotTimeId, // "slot-5:00PM"
+        `slot-${time.replace(/\s+/g, '')}`, // "slot-5:00 PM" -> "slot-5:00PM"
+        `slot-${time.replace(/\s+/g, '').toUpperCase()}`, // "slot-5:00PM" (already uppercase)
+        `slot-${time.replace(/\s+/g, '').toLowerCase()}`, // "slot-5:00pm"
+      ];
+      
+      for (const slotId of slotIdVariations) {
+        try {
+          const slotButton = await page.$(`button[data-test-id="${slotId}"]`);
+          if (slotButton) {
+            const isDisabled = await slotButton.evaluate((el: any) => 
+              el.disabled || el.getAttribute('aria-disabled') === 'true'
+            );
+            if (!isDisabled) {
+              await slotButton.click();
+              slotClicked = true;
+              console.log(`✅ Clicked time slot button by data-test-id: ${slotId}`);
+              break;
+            } else {
+              console.log(`⚠️ Slot button found but is disabled: ${slotId}`);
+            }
+          }
+        } catch (error) {
+          continue;
+        }
+      }
+
+      // Fallback: try by text content with improved matching
       if (!slotClicked) {
         const slotButtons = await page.$$('[data-id="calendar-slot"], button[data-test-id^="slot-"]');
+        console.log(`🔍 Trying text matching on ${slotButtons.length} slot buttons...`);
+        
         for (const button of slotButtons) {
           try {
             const buttonText = await button.textContent();
             if (!buttonText) continue;
             
-            // Normalize time for comparison
-            const normalizedButtonTime = buttonText.trim().replace(/\s+/g, '').toUpperCase();
-            const normalizedTargetTime = formattedTime;
+            // Check if button is disabled
+            const isDisabled = await button.evaluate((el: any) => 
+              el.disabled || el.getAttribute('aria-disabled') === 'true'
+            );
+            if (isDisabled) {
+              console.log(`⚠️ Skipping disabled slot: ${buttonText.trim()}`);
+              continue;
+            }
             
+            // Try multiple matching strategies
+            const trimmedText = buttonText.trim();
+            const normalizedButtonTime = normalizeTime(trimmedText);
+            const normalizedTargetTime = normalizeTime(time);
+            
+            // Match strategies:
+            // 1. Exact normalized match (e.g., "5:00PM" === "5:00PM")
+            // 2. Original text match (e.g., "5:00 PM" === "5:00 PM")
+            // 3. Case-insensitive match
             if (normalizedButtonTime === normalizedTargetTime || 
-                buttonText.trim().toUpperCase() === time.toUpperCase()) {
+                trimmedText.toUpperCase() === time.toUpperCase() ||
+                trimmedText.toLowerCase() === time.toLowerCase() ||
+                timesMatch(trimmedText, time)) {
               await button.click();
               slotClicked = true;
-              console.log(`✅ Clicked time slot button by text: ${buttonText}`);
+              console.log(`✅ Clicked time slot button by text: ${trimmedText} (matched ${time})`);
               break;
             }
           } catch (error) {
@@ -471,7 +549,16 @@ export async function POST(request: NextRequest) {
       }
 
       if (!slotClicked) {
-        throw new Error(`Time slot button not found for time ${time} (formatted: ${slotTimeId})`);
+        // Get available slots one more time for error message
+        let availableSlotInfo = '';
+        try {
+          const slots = await page.$$eval('[data-id="calendar-slot"], button[data-test-id^="slot-"]', 
+            buttons => buttons.map(b => b.textContent?.trim()).filter(Boolean)
+          );
+          availableSlotInfo = ` Available slots: ${slots.join(', ')}`;
+        } catch {}
+        
+        throw new Error(`Time slot button not found for time ${time} (formatted: ${slotTimeId}).${availableSlotInfo}`);
       }
 
       // Wait a moment to ensure booking is processed

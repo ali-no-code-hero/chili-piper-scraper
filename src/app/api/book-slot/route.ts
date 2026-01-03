@@ -452,7 +452,7 @@ export async function POST(request: NextRequest) {
           }))
         );
         console.log(`🔍 Available slots (${availableSlots.length} total):`, 
-          availableSlots.map(s => `${s.text} (${s.dataTestId})`).join(', '));
+          availableSlots.map((s: { text: string; dataTestId: string; disabled: boolean; ariaDisabled: boolean }) => `${s.text} (${s.dataTestId})`).join(', '));
       } catch (error) {
         console.log(`⚠️ Could not log available slots:`, error);
       }

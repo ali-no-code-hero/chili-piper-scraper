@@ -241,12 +241,15 @@ class BrowserPool {
           const browser = await launchPromise;
           const browserInfo: BrowserInfo = {
             browser,
-            activeContexts: 1,
+            activeContexts: 0, // Start at 0, increment when actually reserving
             maxContexts: this.maxContextsPerBrowser
           };
           this.browsers.push(browserInfo);
+          // Reserve the browser by incrementing context count (same as existing browsers)
+          browserInfo.activeContexts++;
           this.browserIndex = (this.browserIndex + 1) % this.browsers.length;
           console.log(`✅ Browser pool: ${this.browsers.length}/${this.maxBrowsers} browsers active`);
+          console.log(`✅ Browser pool: Using browser ${this.browsers.length} (${browserInfo.activeContexts}/${browserInfo.maxContexts} contexts)`);
           return browser;
         } catch (error) {
           throw error;
@@ -262,10 +265,14 @@ class BrowserPool {
           if (browser && browser.isConnected()) {
             const browserInfo: BrowserInfo = {
               browser,
-              activeContexts: 1,
+              activeContexts: 0, // Start at 0, increment when actually reserving
               maxContexts: this.maxContextsPerBrowser
             };
             this.browsers.push(browserInfo);
+            // Reserve the browser by incrementing context count (same as existing browsers)
+            browserInfo.activeContexts++;
+            this.browserIndex = (this.browserIndex + 1) % this.browsers.length;
+            console.log(`✅ Browser pool: Using browser ${this.browsers.length} (${browserInfo.activeContexts}/${browserInfo.maxContexts} contexts)`);
             return browser;
           }
         } catch (error) {

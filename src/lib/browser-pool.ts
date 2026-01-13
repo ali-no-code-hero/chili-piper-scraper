@@ -101,93 +101,125 @@ class BrowserPool {
   private async launchBrowser(): Promise<any> {
     const playwright = await getPlaywright();
     const { chromium } = playwright;
-    try {
-      const browser = await chromium.launch({
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--disable-software-rasterizer',
-          '--disable-extensions',
-          '--disable-plugins',
-          '--disable-images',
-          '--disable-javascript-harmony-shipping',
-          '--disable-background-networking',
-          '--disable-sync',
-          '--metrics-recording-only',
-          '--disable-default-apps',
-          '--mute-audio',
-          '--no-first-run',
-          '--disable-infobars',
-          '--disable-notifications',
-          '--disable-setuid-sandbox',
-          '--single-process'
-        ],
-        ignoreDefaultArgs: ['--disable-extensions']
-      });
-      // Verify browser is connected before returning
-      if (!browser.isConnected()) {
-        throw new Error('Browser launched but not connected');
-      }
-      return browser;
-    } catch (error: any) {
-      // If browser is not installed, try to install it automatically
-      if (error.message && (error.message.includes('Executable doesn\'t exist') || error.message.includes('Browser not found'))) {
-        console.log('📦 Playwright browser not found. Attempting to install chromium...');
-        try {
-          const { execSync } = require('child_process');
-          // Set browser path to workspace cache to avoid permission issues
-          const env = { ...process.env, PLAYWRIGHT_BROWSERS_PATH: '/workspace/.cache/ms-playwright' };
-          // Try installing without --with-deps first (doesn't require root)
-          try {
-            execSync('npx playwright install chromium', { 
-              stdio: 'inherit',
-              cwd: process.cwd(),
-              env: env,
-              timeout: 300000 // 5 minutes
-            });
-            console.log('✅ Playwright browser installed. Retrying launch...');
-          } catch (installError: any) {
-            // If that fails, try with --with-deps (might need root, but worth trying)
-            console.log('⚠️ Standard install failed, trying with dependencies...');
-            execSync('npx playwright install chromium --with-deps', { 
-              stdio: 'inherit',
-              cwd: process.cwd(),
-              env: env,
-              timeout: 300000 // 5 minutes
-            });
-            console.log('✅ Playwright browser installed with dependencies. Retrying launch...');
-          }
-          // Retry launch after installation
-          return await chromium.launch({
-            headless: true,
-            args: [
-              '--no-sandbox',
-              '--disable-dev-shm-usage',
-              '--disable-gpu',
-              '--disable-software-rasterizer',
-              '--disable-extensions',
-              '--disable-plugins',
-              '--disable-images',
-              '--disable-javascript-harmony-shipping',
-              '--disable-background-networking',
-              '--disable-sync',
-              '--metrics-recording-only',
-              '--disable-default-apps',
-              '--mute-audio',
-              '--no-first-run',
-              '--disable-infobars',
-              '--disable-notifications'
-            ]
-          });
-        } catch (installError: any) {
-          console.error('❌ Failed to install Playwright browser:', installError.message);
-          throw new Error(`Playwright browser not installed. Please run: npx playwright install chromium --with-deps. Original error: ${error.message}`);
+    
+    // Retry logic for browser launch (handles immediate crashes)
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        const browser = await chromium.launch({
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--disable-software-rasterizer',
+            '--disable-extensions',
+            '--disable-plugins',
+            '--disable-images',
+            '--disable-javascript-harmony-shipping',
+            '--disable-background-networking',
+            '--disable-sync',
+            '--metrics-recording-only',
+            '--disable-default-apps',
+            '--mute-audio',
+            '--no-first-run',
+            '--disable-infobars',
+            '--disable-notifications',
+            '--disable-setuid-sandbox',
+            // Removed --single-process as it can cause immediate crashes
+          ],
+          ignoreDefaultArgs: ['--disable-extensions']
+        });
+        
+        // Wait a moment for browser to stabilize after launch
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        // Verify browser is connected
+        if (!browser.isConnected()) {
+          throw new Error('Browser launched but not connected');
         }
+        
+        // Additional readiness check: try to get browser version
+        try {
+          await browser.version();
+        } catch (e) {
+          throw new Error('Browser launched but not ready');
+        }
+        
+        return browser;
+      } catch (error: any) {
+        retries--;
+        
+        // Retry if browser closed immediately after launch
+        if (error.message && (
+          error.message.includes('has been closed') || 
+          error.message.includes('Target page, context or browser has been closed') ||
+          error.message.includes('Browser launched but not connected') ||
+          error.message.includes('Browser launched but not ready')
+        ) && retries > 0) {
+          console.log(`⚠️ Browser launch failed, retrying... (${retries} attempts left)`);
+          await new Promise(resolve => setTimeout(resolve, 500));
+          continue;
+        }
+        
+        // Handle browser not installed errors
+        if (error.message && (error.message.includes('Executable doesn\'t exist') || error.message.includes('Browser not found'))) {
+          console.log('📦 Playwright browser not found. Attempting to install chromium...');
+          try {
+            const { execSync } = require('child_process');
+            const env = { ...process.env, PLAYWRIGHT_BROWSERS_PATH: '/workspace/.cache/ms-playwright' };
+            try {
+              execSync('npx playwright install chromium', { 
+                stdio: 'inherit',
+                cwd: process.cwd(),
+                env: env,
+                timeout: 300000
+              });
+              console.log('✅ Playwright browser installed. Retrying launch...');
+            } catch (installError: any) {
+              console.log('⚠️ Standard install failed, trying with dependencies...');
+              execSync('npx playwright install chromium --with-deps', { 
+                stdio: 'inherit',
+                cwd: process.cwd(),
+                env: env,
+                timeout: 300000
+              });
+              console.log('✅ Playwright browser installed with dependencies. Retrying launch...');
+            }
+            // Retry launch after installation (without --single-process)
+            return await chromium.launch({
+              headless: true,
+              args: [
+                '--no-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--disable-software-rasterizer',
+                '--disable-extensions',
+                '--disable-plugins',
+                '--disable-images',
+                '--disable-javascript-harmony-shipping',
+                '--disable-background-networking',
+                '--disable-sync',
+                '--metrics-recording-only',
+                '--disable-default-apps',
+                '--mute-audio',
+                '--no-first-run',
+                '--disable-infobars',
+                '--disable-notifications'
+                // Removed --single-process
+              ]
+            });
+          } catch (installError: any) {
+            console.error('❌ Failed to install Playwright browser:', installError.message);
+            throw new Error(`Playwright browser not installed. Please run: npx playwright install chromium --with-deps. Original error: ${error.message}`);
+          }
+        }
+        
+        throw error;
       }
-      throw error;
     }
+    
+    throw new Error('Failed to launch browser after retries');
   }
 
   async getBrowser(): Promise<any> {

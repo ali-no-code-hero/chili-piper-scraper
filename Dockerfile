@@ -41,6 +41,9 @@ COPY . .
 # Build Next.js application
 RUN npm run build
 
+# Standalone needs static and public copied in (next build does not include them)
+RUN cp -r .next/static .next/standalone/.next/static && (cp -r public .next/standalone/public 2>/dev/null || true)
+
 # Expose port
 EXPOSE 3000
 
@@ -48,5 +51,5 @@ EXPOSE 3000
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Start the application
-CMD ["npm", "start"]
+# Start the application (standalone output requires this, not "next start")
+CMD ["node", ".next/standalone/server.js"]

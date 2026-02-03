@@ -22,7 +22,7 @@ Authorization: Bearer your-api-key-here
 
 Contact your administrator to obtain an API key. API keys are managed through the admin interface.
 
-## Endpoints
+## Endpointsx
 
 ### 1. Get Available Slots (Regular)
 

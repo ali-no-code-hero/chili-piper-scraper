@@ -87,7 +87,81 @@ data: {"success":true,"streaming":false,"message":"Slot collection completed","d
 
 **Performance:** ~4 seconds for first data, complete in ~10-15 seconds
 
-### 3. Health Check
+### 3. Book Calendly Slot (AgentFire Demo)
+
+**Endpoint:** `POST /api/book-calendly`
+
+**Description:** Books an AgentFire demo slot on Calendly. Accepts a date, time, contact info, and answers to all Calendly questions. Uses the same instance-reuse logic as the Chili Piper book-slot (one browser instance per email). You can use either numeric keys (`question_0` … `question_9`) or label-based keys for `answers`.
+
+**Request Body:**
+```json
+{
+  "date": "2026-02-04",
+  "time": "9:30am",
+  "firstName": "Jane",
+  "lastName": "Doe",
+  "email": "jane@example.com",
+  "phone": "+15551234567",
+  "answers": {
+    "Phone Number": "+15551234567",
+    "question_1": "Looking for a new agent website.",
+    "Which of the following best describes you:": "Agent",
+    "Which of the following options best describe your goals with an AgentFire website? (Please select all that apply)": ["Build and strengthen my online brand", "Generate more leads and drive measurable business growth"],
+    "Current Website URL:": "https://example.com",
+    "What best describes the type of website design you're looking for?": "A 'themed' website design that can be launched quickly",
+    "MLS Board(s) you belong to:": "MLS Board X",
+    "How'd you hear about AgentFire? (i.e. Received an Email, Google Search, Facebook Ad, Instagram Ad, Partner / Referral, etc.)": "Google Search",
+    "If something comes up and you need to reschedule, will you let us know ahead of your demo so that we can free up that time for someone else?": ["Yes of course! "],
+    "Your Location": "Texas, US"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| date | string | Yes | Date in `YYYY-MM-DD` format |
+| time | string | Yes | Time slot, e.g. `9:30am` or `2:00 PM` |
+| firstName | string | Yes | First name |
+| lastName | string | Yes | Last name |
+| email | string | Yes | Email address (used for instance reuse) |
+| phone | string | No | Phone number |
+| answers | object | Yes | Map of question keys to values. Keys can be `question_0` … `question_9` or label-based (e.g. `"Phone Number"`, `"Which of the following best describes you:"`). Single-choice: string; multi-choice: array of strings. |
+
+**Label-based answer keys (optional):** You can use these labels instead of `question_N` in `answers`:
+
+- `"Phone Number"` → question_0  
+- `"To help us prepare for your demo, please share a bit about yourself and what you're looking for with an AgentFire website."` → question_1  
+- `"Which of the following best describes you:"` → question_2  
+- `"Which of the following options best describe your goals with an AgentFire website? (Please select all that apply)"` → question_3  
+- `"Current Website URL:"` → question_4  
+- `"What best describes the type of website design you're looking for?"` → question_5  
+- `"MLS Board(s) you belong to:"` → question_6  
+- `"How'd you hear about AgentFire? (i.e. Received an Email, Google Search, Facebook Ad, Instagram Ad, Partner / Referral, etc.)"` → question_7  
+- `"If something comes up and you need to reschedule, will you let us know ahead of your demo so that we can free up that time for someone else?"` → question_8  
+- `"Your Location"` → question_9  
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "status": 200,
+  "code": "OPERATION_SUCCESS",
+  "data": {
+    "message": "Calendly slot booked successfully",
+    "date": "2026-02-04",
+    "time": "9:30am"
+  },
+  "responseTime": 12000,
+  "requestId": "req_..."
+}
+```
+
+**Error Responses:**  
+- `400` – Validation error (invalid date, time, or answers).  
+- `500` – Slot not found, day not available, or form/booking failure.  
+- `504` – Request timeout.
+
+### 4. Health Check
 
 **Endpoint:** `GET /api/health`
 

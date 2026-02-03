@@ -91,9 +91,21 @@ data: {"success":true,"streaming":false,"message":"Slot collection completed","d
 
 **Endpoint:** `POST /api/book-calendly`
 
-**Description:** Books an AgentFire demo slot on Calendly. Accepts a date, time, contact info, and answers to all Calendly questions. Uses the same instance-reuse logic as the Chili Piper book-slot (one browser instance per email). You can use either numeric keys (`question_0` … `question_9`) or label-based keys for `answers`.
+**Description:** Books an AgentFire demo slot on Calendly. **Dynamic data:** only `date`, `time`, `firstName`, `lastName`, `email`, and optionally `phone` are required. All other form questions use fixed default selections unless you override them via `answers`. Uses the same instance-reuse logic as the Chili Piper book-slot (one browser instance per email).
 
-**Request Body:**
+**Minimal Request (dynamic fields only; all other answers use defaults):**
+```json
+{
+  "date": "2026-02-05",
+  "time": "6:00am",
+  "firstName": "Jane",
+  "lastName": "Doe",
+  "email": "jane@example.com",
+  "phone": "+15551234567"
+}
+```
+
+**Request with optional overrides:** You can pass `answers` to override any default. Keys can be `question_0` … `question_9` or label-based.
 ```json
 {
   "date": "2026-02-04",
@@ -103,16 +115,8 @@ data: {"success":true,"streaming":false,"message":"Slot collection completed","d
   "email": "jane@example.com",
   "phone": "+15551234567",
   "answers": {
-    "Phone Number": "+15551234567",
-    "question_1": "Looking for a new agent website.",
-    "Which of the following best describes you:": "Agent",
-    "Which of the following options best describe your goals with an AgentFire website? (Please select all that apply)": ["Build and strengthen my online brand", "Generate more leads and drive measurable business growth"],
-    "Current Website URL:": "https://example.com",
-    "What best describes the type of website design you're looking for?": "A 'themed' website design that can be launched quickly",
-    "MLS Board(s) you belong to:": "MLS Board X",
-    "How'd you hear about AgentFire? (i.e. Received an Email, Google Search, Facebook Ad, Instagram Ad, Partner / Referral, etc.)": "Google Search",
-    "If something comes up and you need to reschedule, will you let us know ahead of your demo so that we can free up that time for someone else?": ["Yes of course! "],
-    "Your Location": "Texas, US"
+    "question_1": "Custom demo notes.",
+    "Current Website URL:": "https://mywebsite.com"
   }
 }
 ```
@@ -124,8 +128,10 @@ data: {"success":true,"streaming":false,"message":"Slot collection completed","d
 | firstName | string | Yes | First name |
 | lastName | string | Yes | Last name |
 | email | string | Yes | Email address (used for instance reuse) |
-| phone | string | No | Phone number |
-| answers | object | Yes | Map of question keys to values. Keys can be `question_0` … `question_9` or label-based (e.g. `"Phone Number"`, `"Which of the following best describes you:"`). Single-choice: string; multi-choice: array of strings. |
+| phone | string | No | Phone number (used for Phone Number question; recommended) |
+| answers | object | No | Override default answers. If omitted, defaults are used for all questions. Keys: `question_0` … `question_9` or label-based. Single-choice: string; multi-choice: array of strings. |
+
+**Default answers (used when `answers` is omitted or a key is not provided):** question_1: "AgentAdvice booking", question_2: "Agent", question_3: ["Build and strengthen my online brand"], question_4: "www.test.com", question_5: "A 'themed' website design that can be launched quickly", question_6: "N/A", question_7: "AGENTADVICE", question_8: ["Yes of course! "], question_9: "United States". Phone (question_0) is taken from `phone` when provided.
 
 **Label-based answer keys (optional):** You can use these labels instead of `question_N` in `answers`:
 

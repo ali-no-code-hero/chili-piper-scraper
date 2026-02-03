@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
         lastName: { type: 'string', required: true, minLength: 1, maxLength: 155 },
         email: { type: 'email', required: true, maxLength: 255 },
         phone: { type: 'string', required: false, maxLength: 30 },
-        answers: { type: 'object', required: true },
+        answers: { type: 'object', required: false },
       },
       allowedMethods: ['POST'],
     });
@@ -82,24 +82,25 @@ export async function POST(request: NextRequest) {
       return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: 400 }));
     }
 
-    if (typeof answers !== 'object' || answers === null || Array.isArray(answers)) {
-      const responseTime = Date.now() - requestStartTime;
-      const errorResponse = ErrorHandler.createError(
-        ErrorCode.VALIDATION_ERROR,
-        'Invalid answers',
-        'answers must be an object mapping question keys to values',
-        undefined,
-        requestId,
-        responseTime
-      );
-      return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: 400 }));
-    }
-
-    const answersRecord: Record<string, string | string[]> = {};
-    for (const [k, v] of Object.entries(answers)) {
-      if (typeof v === 'string') answersRecord[k] = v;
-      else if (Array.isArray(v)) answersRecord[k] = v.filter((x): x is string => typeof x === 'string');
-      else if (v != null) answersRecord[k] = String(v);
+    let answersRecord: Record<string, string | string[]> = {};
+    if (answers != null) {
+      if (typeof answers !== 'object' || Array.isArray(answers)) {
+        const responseTime = Date.now() - requestStartTime;
+        const errorResponse = ErrorHandler.createError(
+          ErrorCode.VALIDATION_ERROR,
+          'Invalid answers',
+          'answers must be an object mapping question keys to values',
+          undefined,
+          requestId,
+          responseTime
+        );
+        return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: 400 }));
+      }
+      for (const [k, v] of Object.entries(answers)) {
+        if (typeof v === 'string') answersRecord[k] = v;
+        else if (Array.isArray(v)) answersRecord[k] = v.filter((x): x is string => typeof x === 'string');
+        else if (v != null) answersRecord[k] = String(v);
+      }
     }
 
     const result = await concurrencyManager.execute(
@@ -111,7 +112,7 @@ export async function POST(request: NextRequest) {
           lastName,
           email,
           phone,
-          answers: answersRecord,
+          answers: Object.keys(answersRecord).length > 0 ? answersRecord : undefined,
         }),
       45000
     );

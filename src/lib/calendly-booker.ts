@@ -26,6 +26,22 @@ export function resolveAnswerKey(key: string): string {
   return key;
 }
 
+/**
+ * Default form answers for all non-dynamic fields (same selections every time).
+ * Dynamic fields: First Name, Last Name, Email, Phone Number (question_0).
+ */
+export const DEFAULT_CALENDLY_ANSWERS: Record<string, string | string[]> = {
+  question_1: 'AgentAdvice booking',
+  question_2: 'Agent',
+  question_3: ['Build and strengthen my online brand'],
+  question_4: 'www.test.com',
+  question_5: "A 'themed' website design that can be launched quickly",
+  question_6: 'N/A',
+  question_7: 'AGENTADVICE',
+  question_8: ['Yes of course! '],
+  question_9: 'United States',
+};
+
 export interface BookCalendlySlotOptions {
   date: string; // YYYY-MM-DD
   time: string; // e.g. "9:30am" or "9:30 AM"
@@ -33,7 +49,8 @@ export interface BookCalendlySlotOptions {
   lastName: string;
   email: string;
   phone?: string;
-  answers: Record<string, string | string[]>;
+  /** Optional. If omitted, defaults are used for all questions; phone from options. */
+  answers?: Record<string, string | string[]>;
 }
 
 export interface BookCalendlySlotResult {
@@ -407,18 +424,33 @@ async function fillFormAndSubmit(
 }
 
 /**
+ * Build merged answers: defaults + optional overrides. Phone (question_0) from opts.phone or answers.
+ */
+function buildMergedAnswers(opts: BookCalendlySlotOptions): Record<string, string | string[]> {
+  const merged: Record<string, string | string[]> = { ...DEFAULT_CALENDLY_ANSWERS };
+  if (opts.answers) {
+    for (const [key, value] of Object.entries(opts.answers)) {
+      const fieldName = resolveAnswerKey(key);
+      merged[fieldName] = value;
+    }
+  }
+  const phoneValue = opts.phone ?? (merged['question_0'] as string | undefined);
+  if (phoneValue != null && phoneValue !== '') {
+    merged['question_0'] = typeof phoneValue === 'string' ? phoneValue : (phoneValue as string[])[0] ?? '';
+  }
+  return merged;
+}
+
+/**
  * Book a Calendly AgentFire demo slot. Uses instance reuse per email.
+ * Dynamic fields: firstName, lastName, email, phone (question_0). All other answers use defaults unless overridden in options.answers.
  */
 export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<BookCalendlySlotResult> {
   const [year, month] = opts.date.split('-');
   const calendlyUrl = `${CALENDLY_BASE_URL}?month=${year}-${month}`;
   const normalizedTime = normalizeTimeForCalendly(opts.time);
 
-  const normalizedAnswers: Record<string, string | string[]> = {};
-  for (const [key, value] of Object.entries(opts.answers)) {
-    const fieldName = resolveAnswerKey(key);
-    normalizedAnswers[fieldName] = value;
-  }
+  const normalizedAnswers = buildMergedAnswers(opts);
 
   try {
     const { page } = await ensurePageForEmail(

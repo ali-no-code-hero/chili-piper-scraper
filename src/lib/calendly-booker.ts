@@ -175,12 +175,12 @@ async function dismissCookieConsent(page: Page): Promise<void> {
       return;
     }
     // Compact banner may show "I understand" instead of "Allow All"
-    const byText = await page.getByRole('button', { name: /I understand/i }).first().catch(() => null);
-    if (byText) {
-      console.log(`${LOG_PREFIX} Dismissing cookie consent (I understand)`);
+    try {
+      const byText = page.getByRole('button', { name: /I understand/i }).first();
       await byText.click({ timeout: 2000 });
+      console.log(`${LOG_PREFIX} Dismissing cookie consent (I understand)`);
       await page.waitForTimeout(500);
-    } else {
+    } catch {
       console.log(`${LOG_PREFIX} No cookie consent banner found`);
     }
   } catch {

@@ -169,8 +169,16 @@ async function dismissCookieConsent(page: Page): Promise<void> {
   try {
     const acceptBtn = await page.$('#accept-recommended-btn-handler');
     if (acceptBtn) {
-      console.log(`${LOG_PREFIX} Dismissing cookie consent banner`);
+      console.log(`${LOG_PREFIX} Dismissing cookie consent (Allow All)`);
       await acceptBtn.click({ timeout: 2000 });
+      await page.waitForTimeout(500);
+      return;
+    }
+    // Compact banner may show "I understand" instead of "Allow All"
+    const byText = await page.getByRole('button', { name: /I understand/i }).first().catch(() => null);
+    if (byText) {
+      console.log(`${LOG_PREFIX} Dismissing cookie consent (I understand)`);
+      await byText.click({ timeout: 2000 });
       await page.waitForTimeout(500);
     } else {
       console.log(`${LOG_PREFIX} No cookie consent banner found`);
@@ -220,6 +228,10 @@ async function selectDay(page: Page, date: string): Promise<void> {
     await page.waitForTimeout(300);
   }
 
+  // In headless/server environments (e.g. Railway), Calendly often shows all days as "No times available"
+  // (disabled), so no element has the bookable class. We first try bookable buttons, then fall back to
+  // finding the exact day by aria-label ("MonthName Day -") or by button text, and force-click so the
+  // time panel may still load. If the time panel stays empty, Calendly may be withholding slots in that context.
   let dayButton: any = null;
   const bookableSelector = 'tbody[data-testid="calendar-table"] button.booking-kit_button-bookable_80ba95eb';
   const dayButtons = await page.$$(bookableSelector);
@@ -234,14 +246,27 @@ async function selectDay(page: Page, date: string): Promise<void> {
   }
   if (!dayButton) {
     // Fallback: in headless/server environments Calendly may show all days as "No times available"
-    // (disabled). Click the requested date by aria-label anyway and see if slots load.
+    // (disabled). Find the exact day by aria-label. Use "February 5 -" pattern to avoid matching 15/25.
     console.log(`${LOG_PREFIX} No bookable day match; trying fallback by aria-label (${targetMonthName}, ${targetDay})`);
+    const exactAriaPattern = `${targetMonthName} ${targetDay} -`;
     const byAria = await page.$(
-      `tbody[data-testid="calendar-table"] button[aria-label*="${targetMonthName}"][aria-label*="${targetDay}"]`
+      `tbody[data-testid="calendar-table"] button[aria-label*="${targetMonthName} ${targetDay} -"]`
     );
     if (byAria) {
       dayButton = byAria;
-      console.log(`${LOG_PREFIX} Using fallback day button (may be disabled)`);
+      console.log(`${LOG_PREFIX} Using fallback day button (aria-label contains "${exactAriaPattern}")`);
+    }
+    // Second fallback: match by button text (exact day number) in case aria-label format differs
+    if (!dayButton) {
+      const allDayButtons = await page.$$('tbody[data-testid="calendar-table"] button[aria-label]');
+      for (const btn of allDayButtons) {
+        const text = (await btn.textContent())?.trim().replace(/\D/g, '') || '';
+        if (text === String(targetDay)) {
+          dayButton = btn;
+          console.log(`${LOG_PREFIX} Using fallback day button (matched by day number text)`);
+          break;
+        }
+      }
     }
   }
   if (!dayButton) {

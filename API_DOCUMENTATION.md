@@ -162,6 +162,8 @@ data: {"success":true,"streaming":false,"message":"Slot collection completed","d
 }
 ```
 
+**Performance and client timeout:** Booking can take **30–60 seconds** (browser automation, page load, form submit). **Use a request timeout of at least 60 seconds** when calling this endpoint; otherwise you may get client-side timeouts (e.g. "Operation timed out" / code 28) before the server responds.
+
 **Error Responses:**  
 - `400` – Validation error (invalid date, time, or answers).  
 - `500` – Slot not found, day not available, or form/booking failure.  

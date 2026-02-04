@@ -74,6 +74,8 @@ export function normalizeTimeForCalendly(time: string): string {
   return time.replace(/\s+/g, '').toLowerCase();
 }
 
+const LOG_PREFIX = '[Calendly]';
+
 async function ensurePageForEmail(
   email: string,
   firstName: string,
@@ -82,8 +84,10 @@ async function ensurePageForEmail(
 ): Promise<{ page: Page; owned: boolean }> {
   const instance = browserInstanceManager.getInstance(email);
   if (instance && !instance.page.isClosed()) {
+    console.log(`${LOG_PREFIX} Reusing existing browser page for ${email}`);
     return { page: instance.page, owned: false };
   }
+  console.log(`${LOG_PREFIX} No valid instance for ${email}; creating new browser page`);
 
   let browser: any = null;
   let context: any = null;
@@ -153,7 +157,10 @@ async function ensurePageForEmail(
     route.continue();
   });
 
+  console.log(`${LOG_PREFIX} Navigating to ${calendlyUrl}`);
   await page.goto(calendlyUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+  const finalUrl = page.url();
+  console.log(`${LOG_PREFIX} Page loaded: ${finalUrl}`);
   await browserInstanceManager.registerInstance(email, browser, context, page);
   return { page, owned: true };
 }
@@ -162,11 +169,14 @@ async function dismissCookieConsent(page: Page): Promise<void> {
   try {
     const acceptBtn = await page.$('#accept-recommended-btn-handler');
     if (acceptBtn) {
+      console.log(`${LOG_PREFIX} Dismissing cookie consent banner`);
       await acceptBtn.click({ timeout: 2000 });
       await page.waitForTimeout(500);
+    } else {
+      console.log(`${LOG_PREFIX} No cookie consent banner found`);
     }
   } catch {
-    // ignore
+    console.log(`${LOG_PREFIX} Cookie consent dismiss skipped (no button or error)`);
   }
 }
 
@@ -180,13 +190,16 @@ async function selectDay(page: Page, date: string): Promise<void> {
   ];
   const targetMonthName = monthNames[targetMonth - 1];
 
+  console.log(`${LOG_PREFIX} Selecting day: ${date} (${targetMonthName} ${targetDay}, ${year})`);
   await page.waitForSelector('[data-testid="calendar"]', { timeout: 10000 });
+  console.log(`${LOG_PREFIX} Calendar visible`);
   await page.waitForTimeout(500);
 
   for (let attempt = 0; attempt < 12; attempt++) {
     const titleEl = await page.$('[data-testid="title"]');
     const currentTitle = titleEl ? (await titleEl.textContent())?.trim() || '' : '';
     if (currentTitle.includes(targetMonthName) && currentTitle.includes(year)) {
+      console.log(`${LOG_PREFIX} Calendar month matches: "${currentTitle}"`);
       break;
     }
     const nextBtn = await page.$('button[aria-label="Go to next month"]');
@@ -210,6 +223,7 @@ async function selectDay(page: Page, date: string): Promise<void> {
   let dayButton: any = null;
   const bookableSelector = 'tbody[data-testid="calendar-table"] button.booking-kit_button-bookable_80ba95eb';
   const dayButtons = await page.$$(bookableSelector);
+  console.log(`${LOG_PREFIX} Found ${dayButtons.length} bookable day button(s)`);
   for (const btn of dayButtons) {
     const text = (await btn.textContent())?.trim() || '';
     const dayNum = text.replace(/\D/g, '') || text;
@@ -221,11 +235,13 @@ async function selectDay(page: Page, date: string): Promise<void> {
   if (!dayButton) {
     // Fallback: in headless/server environments Calendly may show all days as "No times available"
     // (disabled). Click the requested date by aria-label anyway and see if slots load.
+    console.log(`${LOG_PREFIX} No bookable day match; trying fallback by aria-label (${targetMonthName}, ${targetDay})`);
     const byAria = await page.$(
       `tbody[data-testid="calendar-table"] button[aria-label*="${targetMonthName}"][aria-label*="${targetDay}"]`
     );
     if (byAria) {
       dayButton = byAria;
+      console.log(`${LOG_PREFIX} Using fallback day button (may be disabled)`);
     }
   }
   if (!dayButton) {
@@ -239,9 +255,11 @@ async function selectDay(page: Page, date: string): Promise<void> {
     );
   }
   // Click even if button is disabled (server may show "No times available" for all days; slots can still load)
+  console.log(`${LOG_PREFIX} Clicking day ${targetDay}`);
   await dayButton.click({ force: true });
   // Allow time for slot list to load after day selection
   await page.waitForTimeout(1200);
+  console.log(`${LOG_PREFIX} Day clicked; waiting for time panel`);
 }
 
 /** Normalize for comparison: "6:00am" and "6:00 am" both become "6:00am" */
@@ -250,11 +268,28 @@ function normalizeTimeForMatch(t: string): string {
 }
 
 async function selectTimeSlot(page: Page, normalizedTime: string): Promise<void> {
-  await page.waitForSelector('[data-component="spotpicker-times-list"]', { timeout: 10000 });
-  // Wait until at least one time button is present (slots loaded)
-  await page.waitForSelector('button[data-container="time-button"]', { timeout: 15000, state: 'visible' }).catch(() => {
-    // continue; we'll throw a better error below
+  console.log(`${LOG_PREFIX} Waiting for time panel (spotpicker-times-list)...`);
+  // Wait for time panel container (attached is enough; it may be empty if no slots)
+  await page.waitForSelector('[data-component="spotpicker-times-list"]', { timeout: 20000, state: 'attached' }).catch(() => {
+    throw new Error(
+      'Time panel did not load for the selected day. Calendly may show no availability in this context (server/headless). Try a different date or run from a client with a browser.'
+    );
   });
+  console.log(`${LOG_PREFIX} Time panel attached; waiting for slot buttons...`);
+  // Wait until at least one time button is present (slots loaded); allow 10s after panel appears
+  const hasSlots = await page.waitForSelector('button[data-container="time-button"]', { timeout: 10000, state: 'visible' }).catch(() => null);
+  if (!hasSlots) {
+    const count = await page.$$eval('button[data-container="time-button"]', (nodes) => nodes.length).catch(() => 0);
+    console.log(`${LOG_PREFIX} Time buttons visible: ${count}`);
+    if (count === 0) {
+      throw new Error(
+        'No time slots available for the selected day. Calendly may show no availability in this context (server/headless or region). Try a different date.'
+      );
+    }
+  } else {
+    const count = await page.$$eval('button[data-container="time-button"]', (nodes) => nodes.length).catch(() => 0);
+    console.log(`${LOG_PREFIX} Found ${count} time slot(s); looking for "${normalizedTime}"`);
+  }
   await page.waitForTimeout(500);
 
   const targetNorm = normalizeTimeForMatch(normalizedTime);
@@ -262,6 +297,7 @@ async function selectTimeSlot(page: Page, normalizedTime: string): Promise<void>
     `button[data-container="time-button"][data-start-time="${normalizedTime}"]`
   );
   if (slotButton) {
+    console.log(`${LOG_PREFIX} Clicking time slot: ${normalizedTime}`);
     await slotButton.click();
     await page.waitForTimeout(500);
     return;
@@ -279,6 +315,7 @@ async function selectTimeSlot(page: Page, normalizedTime: string): Promise<void>
       startTime === normalizedTime ||
       text === displayTime
     ) {
+      console.log(`${LOG_PREFIX} Clicking time slot (matched): ${startTime || text}`);
       await btn.click();
       await page.waitForTimeout(500);
       return;
@@ -296,14 +333,17 @@ async function selectTimeSlot(page: Page, normalizedTime: string): Promise<void>
 }
 
 async function clickNextButton(page: Page, normalizedTime: string): Promise<void> {
+  console.log(`${LOG_PREFIX} Looking for Next button...`);
   const nextBtn = await page.$(`button[aria-label="Next ${normalizedTime}"]`);
   if (nextBtn) {
+    console.log(`${LOG_PREFIX} Clicking Next (aria-label match)`);
     await nextBtn.click();
     await page.waitForTimeout(800);
     return;
   }
   const confirmBtn = await page.$('button.booking-kit_confirm-button-selected_87095647');
   if (confirmBtn) {
+    console.log(`${LOG_PREFIX} Clicking Next (confirm button)`);
     await confirmBtn.click();
     await page.waitForTimeout(800);
     return;
@@ -312,6 +352,7 @@ async function clickNextButton(page: Page, normalizedTime: string): Promise<void
   for (const btn of allButtons) {
     const text = (await btn.textContent())?.trim() || '';
     if (text === 'Next') {
+      console.log(`${LOG_PREFIX} Clicking Next (text match)`);
       await btn.click();
       await page.waitForTimeout(800);
       return;
@@ -325,7 +366,9 @@ async function fillFormAndSubmit(
   opts: BookCalendlySlotOptions,
   normalizedAnswers: Record<string, string | string[]>
 ): Promise<void> {
+  console.log(`${LOG_PREFIX} Waiting for questionnaire form...`);
   await page.waitForSelector('input[name="first_name"]', { timeout: 10000 });
+  console.log(`${LOG_PREFIX} Form visible; filling first name, last name, email`);
   await page.waitForTimeout(300);
 
   await page.fill('input[name="first_name"]', opts.firstName);
@@ -448,8 +491,10 @@ async function fillFormAndSubmit(
   if (!submitBtn) {
     throw new Error('Schedule Event button not found');
   }
+  console.log(`${LOG_PREFIX} Clicking Schedule Event`);
   await submitBtn.click();
   await page.waitForTimeout(2000);
+  console.log(`${LOG_PREFIX} Submit clicked; booking flow complete`);
 }
 
 /**
@@ -479,6 +524,8 @@ export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<B
   const calendlyUrl = `${CALENDLY_BASE_URL}?month=${year}-${month}`;
   const normalizedTime = normalizeTimeForCalendly(opts.time);
 
+  console.log(`${LOG_PREFIX} Starting booking: date=${opts.date} time=${opts.time} (normalized: ${normalizedTime}) email=${opts.email}`);
+
   const normalizedAnswers = buildMergedAnswers(opts);
 
   try {
@@ -495,6 +542,7 @@ export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<B
     await clickNextButton(page, normalizedTime);
     await fillFormAndSubmit(page, opts, normalizedAnswers);
 
+    console.log(`${LOG_PREFIX} Booking success: ${opts.date} ${opts.time}`);
     return {
       success: true,
       date: opts.date,

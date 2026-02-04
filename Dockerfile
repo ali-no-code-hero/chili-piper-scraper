@@ -47,9 +47,10 @@ RUN cp -r .next/static .next/standalone/.next/static && (cp -r public .next/stan
 # Expose port
 EXPOSE 3000
 
-# Set environment variables
+# Set environment variables (HOSTNAME=0.0.0.0 so proxy can reach the app)
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
 
 # Start the application (standalone output requires this, not "next start")
 CMD ["node", ".next/standalone/server.js"]

@@ -520,8 +520,7 @@ function buildMergedAnswers(opts: BookCalendlySlotOptions): Record<string, strin
  * Dynamic fields: firstName, lastName, email, phone (question_0). All other answers use defaults unless overridden in options.answers.
  */
 export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<BookCalendlySlotResult> {
-  const [year, month] = opts.date.split('-');
-  const calendlyUrl = `${CALENDLY_BASE_URL}?month=${year}-${month}`;
+  const calendlyUrl = CALENDLY_BASE_URL;
   const normalizedTime = normalizeTimeForCalendly(opts.time);
 
   console.log(`${LOG_PREFIX} Starting booking: date=${opts.date} time=${opts.time} (normalized: ${normalizedTime}) email=${opts.email}`);

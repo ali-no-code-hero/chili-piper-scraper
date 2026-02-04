@@ -279,9 +279,11 @@ async function selectDay(page: Page, date: string): Promise<void> {
       `Bookable day ${targetDay} not found for ${targetMonthName} ${year}. Available: ${allDays?.slice(0, 5).join(', ') || 'none'}`
     );
   }
-  // Click even if button is disabled (server may show "No times available" for all days; slots can still load)
+  // Click using a locator so the element is re-resolved at click time (avoids "Element is not attached to the DOM"
+  // when the calendar re-renders between finding the button and clicking).
+  const dayClickSelector = `tbody[data-testid="calendar-table"] button[aria-label*="${targetMonthName} ${targetDay} -"]`;
   console.log(`${LOG_PREFIX} Clicking day ${targetDay}`);
-  await dayButton.click({ force: true });
+  await page.locator(dayClickSelector).first().click({ force: true });
   // Allow time for slot list to load after day selection
   await page.waitForTimeout(1200);
   console.log(`${LOG_PREFIX} Day clicked; waiting for time panel`);

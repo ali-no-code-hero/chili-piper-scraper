@@ -415,12 +415,25 @@ async function fillFormAndSubmit(
 ): Promise<void> {
   console.log(`${LOG_PREFIX} Waiting for questionnaire form...`);
   await page.waitForSelector('input[name="first_name"]', { timeout: 10000 });
-  console.log(`${LOG_PREFIX} Form visible; filling first name, last name, email`);
+  console.log(`${LOG_PREFIX} Form visible; filling required and optional fields`);
   await page.waitForTimeout(300);
 
+  const logFill = (field: string, value: string | string[], ok: boolean, detail?: string) => {
+    const v = Array.isArray(value) ? value.join(', ') : value;
+    const status = ok ? 'filled' : 'MISSING';
+    console.log(`${LOG_PREFIX} Form field ${field}: ${status} ${detail || ''} value="${(v || '').slice(0, 50)}${(v && v.length > 50 ? '...' : '')}"`);
+  };
+
   await page.fill('input[name="first_name"]', opts.firstName);
+  logFill('first_name', opts.firstName, true);
   await page.fill('input[name="last_name"]', opts.lastName);
-  await page.fill('input[name="email"], #email_input', opts.email);
+  logFill('last_name', opts.lastName, true);
+  try {
+    await page.fill('input[name="email"], #email_input', opts.email);
+    logFill('email', opts.email, true);
+  } catch {
+    logFill('email', opts.email, false, '(selector not found or error)');
+  }
 
   for (const [fieldName, value] of Object.entries(normalizedAnswers)) {
     const raw = value;
@@ -432,24 +445,40 @@ async function fillFormAndSubmit(
       const el = await page.$(selector);
       if (el) {
         await el.fill(values[0] || '');
+        logFill(fieldName, values[0] || '', true);
+      } else {
+        logFill(fieldName, values[0] || '', false, '(input not found)');
       }
       continue;
     }
     if (fieldName === 'question_1') {
       const el = await page.$('textarea[name="question_1"]');
-      if (el) await el.fill(values[0] || '');
+      if (el) {
+        await el.fill(values[0] || '');
+        logFill(fieldName, values[0] || '', true);
+      } else {
+        logFill(fieldName, values[0] || '', false, '(textarea not found)');
+      }
       continue;
     }
     if (fieldName === 'question_2') {
       const radio = await page.$(`input[name="question_2"][type="radio"][value="${values[0]}"]`);
-      if (radio) await radio.click();
-      else {
+      if (radio) {
+        await radio.click();
+        logFill(fieldName, values[0] || '', true, '(radio clicked)');
+      } else {
         const byLabel = await page.$(`[data-testid="${values[0]}"]`);
-        if (byLabel) await byLabel.click();
+        if (byLabel) {
+          await byLabel.click();
+          logFill(fieldName, values[0] || '', true, '(by testid)');
+        } else {
+          logFill(fieldName, values[0] || '', false, '(radio/testid not found)');
+        }
       }
       continue;
     }
     if (fieldName === 'question_3') {
+      let anyFilled = false;
       for (const v of values) {
         if (!v) continue;
         if (v === 'Other' || v.toLowerCase().includes('other')) {
@@ -457,34 +486,51 @@ async function fillFormAndSubmit(
           if (otherInput) await otherInput.fill(values[values.length - 1] || v);
           const otherCheckbox = await page.$('input[name="question_3"][aria-label="Other"]');
           if (otherCheckbox && !(await otherCheckbox.isChecked())) await otherCheckbox.click();
+          anyFilled = true;
           continue;
         }
         const divWithValue = await page.$(`div[value="${v}"]`);
-        if (divWithValue) await divWithValue.click();
-        else {
+        if (divWithValue) {
+          await divWithValue.click();
+          anyFilled = true;
+        } else {
           const labels = await page.$$('label');
           for (const label of labels) {
             const text = (await label.textContent())?.trim() || '';
             if (text === v || text.includes(v)) {
               await label.click();
+              anyFilled = true;
               break;
             }
           }
         }
       }
+      logFill(fieldName, values, anyFilled, anyFilled ? '(checkbox/label)' : '(no match found)');
       continue;
     }
     if (['question_4', 'question_6', 'question_7'].includes(fieldName)) {
       const el = await page.$(`input[name="${fieldName}"]`);
-      if (el) await el.fill(values[0] || '');
+      if (el) {
+        await el.fill(values[0] || '');
+        logFill(fieldName, values[0] || '', true);
+      } else {
+        logFill(fieldName, values[0] || '', false, '(input not found)');
+      }
       continue;
     }
     if (fieldName === 'question_5') {
       const radio = await page.$(`input[name="question_5"][type="radio"][value="${values[0]}"]`);
-      if (radio) await radio.click();
-      else {
+      if (radio) {
+        await radio.click();
+        logFill(fieldName, values[0] || '', true, '(radio clicked)');
+      } else {
         const byTestId = await page.$(`[data-testid="${values[0]}"]`);
-        if (byTestId) await byTestId.click();
+        if (byTestId) {
+          await byTestId.click();
+          logFill(fieldName, values[0] || '', true, '(by testid)');
+        } else {
+          logFill(fieldName, values[0] || '', false, '(radio/testid not found)');
+        }
       }
       continue;
     }
@@ -493,6 +539,9 @@ async function fillFormAndSubmit(
       if (checkbox && values.length > 0) {
         const checked = await checkbox.isChecked();
         if (!checked) await checkbox.click();
+        logFill(fieldName, values, true, '(checkbox)');
+      } else {
+        logFill(fieldName, values, !!checkbox, checkbox ? '(no value)' : '(checkbox not found)');
       }
       continue;
     }
@@ -502,20 +551,27 @@ async function fillFormAndSubmit(
         await combobox.click();
         await page.waitForTimeout(300);
         const option = await page.$(`[role="option"]:has-text("${values[0]}")`);
-        if (option) await option.click();
-        else {
+        if (option) {
+          await option.click();
+          logFill(fieldName, values[0] || '', true, '(combobox option)');
+        } else {
           const listbox = await page.$('[role="listbox"]');
+          let chosen = false;
           if (listbox) {
             const opts = await page.$$('[role="option"]');
             for (const o of opts) {
               const text = await o.textContent();
               if (text && values[0] && text.trim().toLowerCase().includes(values[0].toLowerCase())) {
                 await o.click();
+                chosen = true;
                 break;
               }
             }
           }
+          logFill(fieldName, values[0] || '', chosen, chosen ? '(listbox option)' : '(option not found)');
         }
+      } else {
+        logFill(fieldName, values[0] || '', false, '(combobox not found)');
       }
       continue;
     }
@@ -523,9 +579,13 @@ async function fillFormAndSubmit(
     const input = await page.$(`input[name="${fieldName}"], textarea[name="${fieldName}"]`);
     if (input) {
       await input.fill(values[0] || '');
+      logFill(fieldName, values[0] || '', true);
+    } else {
+      logFill(fieldName, values[0] || '', false, '(input/textarea not found)');
     }
   }
 
+  console.log(`${LOG_PREFIX} Form fill complete; looking for Schedule Event button`);
   const submitButtons = await page.$$('button[type="submit"]');
   let submitBtn: any = null;
   for (const btn of submitButtons) {

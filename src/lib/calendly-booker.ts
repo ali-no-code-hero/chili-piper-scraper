@@ -540,8 +540,24 @@ async function fillFormAndSubmit(
   }
   console.log(`${LOG_PREFIX} Clicking Schedule Event`);
   await submitBtn.click();
-  await page.waitForTimeout(2000);
-  console.log(`${LOG_PREFIX} Submit clicked; booking flow complete`);
+
+  // After submit, a "Confirmed / You are scheduled with ..." popup appears, then redirect to agentfire.com/thanks-for-booking/
+  // Only consider the booking complete when we reach the thank-you page.
+  const confirmationTimeout = 20000;
+  try {
+    await page.waitForURL(/agentfire\.com\/thanks-for-booking/, { timeout: confirmationTimeout });
+  } catch {
+    const stillOnForm = await page.$('input[name="first_name"]').then((el) => !!el);
+    if (stillOnForm) {
+      throw new Error(
+        'Confirmation page did not load after submitting. The booking may have failed (validation error or slot no longer available).'
+      );
+    }
+    throw new Error(
+      'Did not reach the booking confirmation page (agentfire.com/thanks-for-booking). The booking may have failed.'
+    );
+  }
+  console.log(`${LOG_PREFIX} Reached thanks-for-booking page; booking complete`);
 }
 
 /**

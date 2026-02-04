@@ -219,15 +219,13 @@ async function selectDay(page: Page, date: string): Promise<void> {
     }
   }
   if (!dayButton) {
-    const ariaLabelPattern = new RegExp(`${targetMonthName}\\s+${targetDay}\\b.*Times available`, 'i');
+    // Fallback: in headless/server environments Calendly may show all days as "No times available"
+    // (disabled). Click the requested date by aria-label anyway and see if slots load.
     const byAria = await page.$(
-      `tbody[data-testid="calendar-table"] button[aria-label*="${targetMonthName}"][aria-label*="${targetDay}"]:not([disabled])`
+      `tbody[data-testid="calendar-table"] button[aria-label*="${targetMonthName}"][aria-label*="${targetDay}"]`
     );
     if (byAria) {
-      const label = await byAria.getAttribute('aria-label') || '';
-      if (ariaLabelPattern.test(label) || label.includes(String(targetDay))) {
-        dayButton = byAria;
-      }
+      dayButton = byAria;
     }
   }
   if (!dayButton) {
@@ -240,7 +238,8 @@ async function selectDay(page: Page, date: string): Promise<void> {
       `Bookable day ${targetDay} not found for ${targetMonthName} ${year}. Available: ${allDays?.slice(0, 5).join(', ') || 'none'}`
     );
   }
-  await dayButton.click();
+  // Click even if button is disabled (server may show "No times available" for all days; slots can still load)
+  await dayButton.click({ force: true });
   // Allow time for slot list to load after day selection
   await page.waitForTimeout(1200);
 }

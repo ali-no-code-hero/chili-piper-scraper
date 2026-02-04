@@ -76,6 +76,26 @@ export function normalizeTimeForCalendly(time: string): string {
 
 const LOG_PREFIX = '[Calendly]';
 
+/** Build direct Calendly URL to the booking form for a given date/time (skips calendar and time picker). */
+function buildDirectCalendlyUrl(date: string, normalizedTime: string): string {
+  const match = normalizedTime.match(/^(\d{1,2}):(\d{2})(am|pm)$/);
+  let hour = 0;
+  let min = 0;
+  if (match) {
+    hour = parseInt(match[1], 10);
+    const isPm = match[3] === 'pm';
+    if (isPm && hour !== 12) hour += 12;
+    if (!isPm && hour === 12) hour = 0;
+    min = parseInt(match[2], 10);
+  }
+  const hourStr = String(hour).padStart(2, '0');
+  const minStr = String(min).padStart(2, '0');
+  const tzOffset = '-06:00'; // America/Chicago (CST)
+  const isoDateTime = `${date}T${hourStr}:${minStr}:00${tzOffset}`;
+  const month = date.slice(0, 7);
+  return `${CALENDLY_BASE_URL}/${isoDateTime}?month=${month}&date=${date}`;
+}
+
 async function ensurePageForEmail(
   email: string,
   firstName: string,
@@ -544,13 +564,16 @@ function buildMergedAnswers(opts: BookCalendlySlotOptions): Record<string, strin
 
 /**
  * Book a Calendly AgentFire demo slot. Uses instance reuse per email.
+ * Strategy: navigate directly to the slot URL (e.g. .../2026-02-05T06:00:00-06:00?month=2026-02&date=2026-02-05)
+ * to land on the "Enter Details" form, skipping calendar and time picker.
  * Dynamic fields: firstName, lastName, email, phone (question_0). All other answers use defaults unless overridden in options.answers.
  */
 export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<BookCalendlySlotResult> {
-  const calendlyUrl = CALENDLY_BASE_URL;
   const normalizedTime = normalizeTimeForCalendly(opts.time);
+  const directUrl = buildDirectCalendlyUrl(opts.date, normalizedTime);
 
   console.log(`${LOG_PREFIX} Starting booking: date=${opts.date} time=${opts.time} (normalized: ${normalizedTime}) email=${opts.email}`);
+  console.log(`${LOG_PREFIX} Using direct form URL (skip calendar/time picker)`);
 
   const normalizedAnswers = buildMergedAnswers(opts);
 
@@ -559,13 +582,10 @@ export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<B
       opts.email,
       opts.firstName,
       opts.lastName,
-      calendlyUrl
+      directUrl
     );
 
     await dismissCookieConsent(page);
-    await selectDay(page, opts.date);
-    await selectTimeSlot(page, normalizedTime);
-    await clickNextButton(page, normalizedTime);
     await fillFormAndSubmit(page, opts, normalizedAnswers);
 
     console.log(`${LOG_PREFIX} Booking success: ${opts.date} ${opts.time}`);

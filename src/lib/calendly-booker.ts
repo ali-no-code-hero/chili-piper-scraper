@@ -207,16 +207,27 @@ async function selectDay(page: Page, date: string): Promise<void> {
     await page.waitForTimeout(300);
   }
 
-  const dayButtons = await page.$$(
-    'tbody[data-testid="calendar-table"] button.booking-kit_button-bookable_80ba95eb'
-  );
   let dayButton: any = null;
+  const bookableSelector = 'tbody[data-testid="calendar-table"] button.booking-kit_button-bookable_80ba95eb';
+  const dayButtons = await page.$$(bookableSelector);
   for (const btn of dayButtons) {
     const text = (await btn.textContent())?.trim() || '';
     const dayNum = text.replace(/\D/g, '') || text;
     if (dayNum === String(targetDay)) {
       dayButton = btn;
       break;
+    }
+  }
+  if (!dayButton) {
+    const ariaLabelPattern = new RegExp(`${targetMonthName}\\s+${targetDay}\\b.*Times available`, 'i');
+    const byAria = await page.$(
+      `tbody[data-testid="calendar-table"] button[aria-label*="${targetMonthName}"][aria-label*="${targetDay}"]:not([disabled])`
+    );
+    if (byAria) {
+      const label = await byAria.getAttribute('aria-label') || '';
+      if (ariaLabelPattern.test(label) || label.includes(String(targetDay))) {
+        dayButton = byAria;
+      }
     }
   }
   if (!dayButton) {
@@ -230,13 +241,24 @@ async function selectDay(page: Page, date: string): Promise<void> {
     );
   }
   await dayButton.click();
-  await page.waitForTimeout(500);
+  // Allow time for slot list to load after day selection
+  await page.waitForTimeout(1200);
+}
+
+/** Normalize for comparison: "6:00am" and "6:00 am" both become "6:00am" */
+function normalizeTimeForMatch(t: string): string {
+  return (t || '').trim().toLowerCase().replace(/\s+/g, '');
 }
 
 async function selectTimeSlot(page: Page, normalizedTime: string): Promise<void> {
-  await page.waitForSelector('[data-component="spotpicker-times-list"]', { timeout: 8000 });
-  await page.waitForTimeout(300);
+  await page.waitForSelector('[data-component="spotpicker-times-list"]', { timeout: 10000 });
+  // Wait until at least one time button is present (slots loaded)
+  await page.waitForSelector('button[data-container="time-button"]', { timeout: 15000, state: 'visible' }).catch(() => {
+    // continue; we'll throw a better error below
+  });
+  await page.waitForTimeout(500);
 
+  const targetNorm = normalizeTimeForMatch(normalizedTime);
   const slotButton = await page.$(
     `button[data-container="time-button"][data-start-time="${normalizedTime}"]`
   );
@@ -250,7 +272,14 @@ async function selectTimeSlot(page: Page, normalizedTime: string): Promise<void>
   for (const btn of timeButtons) {
     const startTime = await btn.getAttribute('data-start-time');
     const text = (await btn.textContent())?.trim() || '';
-    if (startTime === normalizedTime || text === displayTime || text.toLowerCase().replace(/\s/g, '') === normalizedTime) {
+    const startNorm = normalizeTimeForMatch(startTime || '');
+    const textNorm = normalizeTimeForMatch(text || '');
+    if (
+      startNorm === targetNorm ||
+      textNorm === targetNorm ||
+      startTime === normalizedTime ||
+      text === displayTime
+    ) {
       await btn.click();
       await page.waitForTimeout(500);
       return;
@@ -259,10 +288,11 @@ async function selectTimeSlot(page: Page, normalizedTime: string): Promise<void>
   const available = await page.$$eval(
     'button[data-container="time-button"]',
     (nodes: Element[]) =>
-      (nodes as HTMLElement[]).map((n) => n.getAttribute('data-start-time') || n.textContent?.trim()).slice(0, 10)
+      (nodes as HTMLElement[]).map((n) => n.getAttribute('data-start-time') || n.textContent?.trim() || '').filter(Boolean).slice(0, 10)
   );
+  const count = await page.$$eval('button[data-container="time-button"]', (nodes) => nodes.length);
   throw new Error(
-    `Time slot "${normalizedTime}" not found. Available (sample): ${available.join(', ')}`
+    `Time slot "${normalizedTime}" not found. Buttons found: ${count}. Available (sample): ${available.join(', ') || 'none'}`
   );
 }
 

@@ -168,7 +168,9 @@ async function createNewBookingPage(calendlyUrl: string): Promise<{
     try {
       fs.mkdirSync(recordDir, { recursive: true });
       videoDir = recordDir;
-    } catch {
+      console.log(`${LOG_PREFIX} Recording enabled: ${videoDir}`);
+    } catch (e) {
+      console.warn(`${LOG_PREFIX} Recording disabled (mkdir failed):`, (e as Error)?.message);
       videoDir = null;
     }
   }
@@ -255,28 +257,40 @@ async function createNewBookingPage(calendlyUrl: string): Promise<{
       if (page && !page.isClosed()) await page.close().catch(() => {});
       const videoPromise = context?.video?.() ?? null;
       if (context) await context.close().catch(() => {});
-      if (outcome === 'failure' && videoPromise) {
-        try {
-          const video = await videoPromise;
-          if (video) {
-            const srcPath = await video.path();
-            if (srcPath && fs.existsSync(srcPath)) {
-              const failedDir = path.join(CALENDLY_VIDEO_DIR, 'failed');
-              try {
-                fs.mkdirSync(failedDir, { recursive: true });
-                const destName = `calendly-${sessionId}.webm`;
-                const destPath = path.join(failedDir, destName);
-                fs.copyFileSync(srcPath, destPath);
-                savedVideoPath = destPath;
-                console.log(`${LOG_PREFIX} Saved failure video: ${destPath}`);
-              } catch (copyErr) {
-                console.warn(`${LOG_PREFIX} Could not copy video to ${failedDir}:`, (copyErr as Error)?.message);
-                savedVideoPath = srcPath;
+      if (outcome === 'failure') {
+        if (!videoPromise) {
+          console.warn(`${LOG_PREFIX} No video promise (recording not active for this context)`);
+        } else {
+          try {
+            await new Promise((r) => setTimeout(r, 300));
+            const video = await videoPromise;
+            if (!video) {
+              console.warn(`${LOG_PREFIX} Video promise resolved to null`);
+            } else {
+              const srcPath = await video.path();
+              if (!srcPath) {
+                console.warn(`${LOG_PREFIX} Video path is empty`);
+              } else if (!fs.existsSync(srcPath)) {
+                console.warn(`${LOG_PREFIX} Video file missing at: ${srcPath}`);
+              } else {
+                const failedDir = path.join(CALENDLY_VIDEO_DIR, 'failed');
+                try {
+                  fs.mkdirSync(failedDir, { recursive: true });
+                  const destName = `calendly-${sessionId}.webm`;
+                  const destPath = path.join(failedDir, destName);
+                  fs.copyFileSync(srcPath, destPath);
+                  savedVideoPath = destPath;
+                  console.log(`${LOG_PREFIX} Saved failure video: ${destPath}`);
+                } catch (copyErr) {
+                  console.warn(`${LOG_PREFIX} Could not copy video to ${failedDir}:`, (copyErr as Error)?.message);
+                  savedVideoPath = srcPath;
+                  console.log(`${LOG_PREFIX} Using temp video path: ${srcPath}`);
+                }
               }
             }
+          } catch (e) {
+            console.warn(`${LOG_PREFIX} Could not save video:`, (e as Error)?.message);
           }
-        } catch (e) {
-          console.warn(`${LOG_PREFIX} Could not save video:`, (e as Error)?.message);
         }
       }
       if (outcome === 'success' && videoDir) {

@@ -255,14 +255,15 @@ async function createNewBookingPage(calendlyUrl: string): Promise<{
     let savedVideoPath: string | null = null;
     try {
       if (page && !page.isClosed()) await page.close().catch(() => {});
-      const videoPromise = context?.video?.() ?? null;
       if (context) await context.close().catch(() => {});
+      // Video is only available after context is closed (Playwright docs).
+      await new Promise((r) => setTimeout(r, 300));
+      const videoPromise = context?.video?.() ?? null;
       if (outcome === 'failure') {
         if (!videoPromise) {
           console.warn(`${LOG_PREFIX} No video promise (recording not active for this context)`);
         } else {
           try {
-            await new Promise((r) => setTimeout(r, 300));
             const video = await videoPromise;
             if (!video) {
               console.warn(`${LOG_PREFIX} Video promise resolved to null`);

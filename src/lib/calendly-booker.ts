@@ -145,6 +145,11 @@ async function ensurePageForEmail(
   const instance = browserInstanceManager.getInstance(email);
   if (instance && !instance.page.isClosed()) {
     console.log(`${LOG_PREFIX} Reusing existing browser page for ${email}`);
+    // Always navigate to the requested slot URL so each booking gets the correct date/time form.
+    console.log(`${LOG_PREFIX} Navigating to ${calendlyUrl}`);
+    await instance.page.goto(calendlyUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    const finalUrl = instance.page.url();
+    console.log(`${LOG_PREFIX} Page loaded: ${finalUrl}`);
     return { page: instance.page, owned: false };
   }
   console.log(`${LOG_PREFIX} No valid instance for ${email}; creating new browser page`);
@@ -659,20 +664,37 @@ async function fillFormAndSubmit(
   console.log(`${LOG_PREFIX} Clicking Schedule Event`);
   await submitBtn.click();
 
-  // After submit, a "Confirmed / You are scheduled with ..." popup appears, then redirect to agentfire.com/thanks-for-booking/
+  // After submit, a "Confirmed / You are scheduled with ..." popup may appear, then redirect to agentfire.com/thanks-for-booking/
   // Only consider the booking complete when we reach the thank-you page.
-  const confirmationTimeout = 20000;
+  const confirmationTimeout = 25000;
   try {
     await page.waitForURL(/agentfire\.com\/thanks-for-booking/, { timeout: confirmationTimeout });
   } catch {
     const stillOnForm = await page.$('input[name="first_name"]').then((el) => !!el);
+    let hint = '';
+    try {
+      const alert = await page.$('[role="alert"], .calendly-inline-error, [data-error], .error-message');
+      if (alert) {
+        const text = (await alert.textContent())?.trim() || '';
+        if (text.length > 0 && text.length < 300) hint = ` Page message: "${text}".`;
+      }
+      if (!hint) {
+        const bodyText = await page.evaluate(() => document.body?.innerText?.slice(0, 500) || '');
+        if (/no longer available|no longer open|already taken|slot.*taken/i.test(bodyText))
+          hint = ' Slot may no longer be available.';
+        else if (/required|please (enter|fill|select)/i.test(bodyText))
+          hint = ' A required field may be missing or invalid.';
+      }
+    } catch {
+      /* ignore when gathering hint */
+    }
     if (stillOnForm) {
       throw new Error(
-        'Confirmation page did not load after submitting. The booking may have failed (validation error or slot no longer available).'
+        `Confirmation page did not load after submitting. The booking may have failed (validation error or slot no longer available).${hint}`
       );
     }
     throw new Error(
-      'Did not reach the booking confirmation page (agentfire.com/thanks-for-booking). The booking may have failed.'
+      `Did not reach the booking confirmation page (agentfire.com/thanks-for-booking). The booking may have failed.${hint}`
     );
   }
   console.log(`${LOG_PREFIX} Reached thanks-for-booking page; booking complete`);

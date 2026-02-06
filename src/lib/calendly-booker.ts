@@ -455,7 +455,7 @@ async function fillFormAndSubmit(
 ): Promise<void> {
   console.log(`${LOG_PREFIX} Waiting for questionnaire form...`);
   await page.waitForSelector('input[name="first_name"]', { timeout: 10000 });
-  console.log(`${LOG_PREFIX} Form visible; filling required and optional fields`);
+  console.log(`${LOG_PREFIX} Form visible; filling radio/checkbox/combobox only (text fields prefilled via URL)`);
   await page.waitForTimeout(300);
 
   const logFill = (field: string, value: string | string[], ok: boolean, detail?: string) => {
@@ -464,48 +464,23 @@ async function fillFormAndSubmit(
     console.log(`${LOG_PREFIX} Form field ${field}: ${status} ${detail || ''} value="${(v || '').slice(0, 50)}${(v && v.length > 50 ? '...' : '')}"`);
   };
 
-  await page.fill('input[name="first_name"]', opts.firstName);
-  logFill('first_name', opts.firstName, true);
-  await page.fill('input[name="last_name"]', opts.lastName);
-  logFill('last_name', opts.lastName, true);
-  try {
-    await page.fill('input[name="email"], #email_input', opts.email);
-    logFill('email', opts.email, true);
-  } catch {
-    logFill('email', opts.email, false, '(selector not found or error)');
-  }
+  // first_name, last_name, email, question_0 (phone), question_1, question_4, question_6, question_7 are prefilled via URL – do not fill again (avoids detached DOM).
+  const urlPrefilledFields = new Set(['question_0', 'question_1', 'question_4', 'question_6', 'question_7']);
 
-  // Calendly does not prefill radio/checkbox/combobox from URL; we always fill them here.
+  // Calendly does not prefill radio/checkbox/combobox from URL; we only fill those here.
   const scrollIntoView = async (el: import('playwright-core').ElementHandle<SVGElement | HTMLElement> | null) => {
     if (el) await el.evaluate((e: HTMLElement) => e.scrollIntoView({ block: 'nearest', behavior: 'instant' }));
   };
 
   for (const [fieldName, value] of Object.entries(normalizedAnswers)) {
+    if (urlPrefilledFields.has(fieldName)) {
+      logFill(fieldName, value, true, '(prefilled via URL, skipped)');
+      continue;
+    }
     const raw = value;
     const isArray = Array.isArray(raw);
     const values = isArray ? (raw as string[]) : [raw as string];
 
-    if (fieldName === 'question_0') {
-      const selector = 'input[name="question_0"]';
-      const el = await page.$(selector);
-      if (el) {
-        await el.fill(values[0] || '');
-        logFill(fieldName, values[0] || '', true);
-      } else {
-        logFill(fieldName, values[0] || '', false, '(input not found)');
-      }
-      continue;
-    }
-    if (fieldName === 'question_1') {
-      const el = await page.$('textarea[name="question_1"]');
-      if (el) {
-        await el.fill(values[0] || '');
-        logFill(fieldName, values[0] || '', true);
-      } else {
-        logFill(fieldName, values[0] || '', false, '(textarea not found)');
-      }
-      continue;
-    }
     if (fieldName === 'question_2') {
       const radio = await page.$(`input[name="question_2"][type="radio"][value="${values[0]}"]`);
       if (radio) {
@@ -577,16 +552,6 @@ async function fillFormAndSubmit(
         }
       }
       logFill(fieldName, values, anyFilled, anyFilled ? '(checkbox/label or first option)' : '(no match found)');
-      continue;
-    }
-    if (['question_4', 'question_6', 'question_7'].includes(fieldName)) {
-      const el = await page.$(`input[name="${fieldName}"]`);
-      if (el) {
-        await el.fill(values[0] || '');
-        logFill(fieldName, values[0] || '', true);
-      } else {
-        logFill(fieldName, values[0] || '', false, '(input not found)');
-      }
       continue;
     }
     if (fieldName === 'question_5') {

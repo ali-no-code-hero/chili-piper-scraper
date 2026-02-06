@@ -1,5 +1,4 @@
 import { Page } from 'playwright';
-import { browserInstanceManager } from './browser-instance-manager';
 import { browserPool } from './browser-pool';
 
 const CALENDLY_BASE_URL = 'https://calendly.com/agentfire-demo/30-minute-demo';
@@ -58,6 +57,10 @@ export interface BookCalendlySlotResult {
   date?: string;
   time?: string;
   error?: string;
+  /** Field names or labels that Calendly indicated are missing or invalid (e.g. question_0, first_name). */
+  missingFields?: string[];
+  /** Error/validation messages shown on the page after submit failed. */
+  validationMessages?: string[];
 }
 
 /**
@@ -136,24 +139,10 @@ function buildDirectCalendlyUrl(
   return `${CALENDLY_BASE_URL}/${isoDateTime}?${baseQuery}&${prefill}`;
 }
 
-async function ensurePageForEmail(
-  email: string,
-  firstName: string,
-  lastName: string,
-  calendlyUrl: string
-): Promise<{ page: Page; owned: boolean }> {
-  const instance = browserInstanceManager.getInstance(email);
-  if (instance && !instance.page.isClosed()) {
-    console.log(`${LOG_PREFIX} Reusing existing browser page for ${email}`);
-    // Always navigate to the requested slot URL so each booking gets the correct date/time form.
-    console.log(`${LOG_PREFIX} Navigating to ${calendlyUrl}`);
-    await instance.page.goto(calendlyUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
-    const finalUrl = instance.page.url();
-    console.log(`${LOG_PREFIX} Page loaded: ${finalUrl}`);
-    return { page: instance.page, owned: false };
-  }
-  console.log(`${LOG_PREFIX} No valid instance for ${email}; creating new browser page`);
-
+/**
+ * Create a new browser session for a single Calendly booking. Caller must call cleanup() when done.
+ */
+async function createNewBookingPage(calendlyUrl: string): Promise<{ page: Page; cleanup: () => Promise<void> }> {
   let browser: any = null;
   let context: any = null;
   let page: any = null;
@@ -226,8 +215,69 @@ async function ensurePageForEmail(
   await page.goto(calendlyUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
   const finalUrl = page.url();
   console.log(`${LOG_PREFIX} Page loaded: ${finalUrl}`);
-  await browserInstanceManager.registerInstance(email, browser, context, page);
-  return { page, owned: true };
+
+  const cleanup = async () => {
+    try {
+      if (page && !page.isClosed()) await page.close().catch(() => {});
+      if (context) await context.close().catch(() => {});
+    } finally {
+      if (browser) browserPool.releaseBrowser(browser);
+    }
+  };
+
+  return { page, cleanup };
+}
+
+/**
+ * When a booking fails after clicking Schedule Event, Calendly often leaves validation errors on the page.
+ * Captures visible error messages and field names that are missing or invalid.
+ */
+async function captureCalendlyValidationErrors(page: Page): Promise<{
+  missingFields: string[];
+  validationMessages: string[];
+}> {
+  const empty = { missingFields: [] as string[], validationMessages: [] as string[] };
+  try {
+    if (page.isClosed()) return empty;
+    const result = await page.evaluate(() => {
+      const messages: string[] = [];
+      const fieldNames = new Set<string>();
+
+      // 1. Visible error/alert text (role=alert, common error classes)
+      const errorEls = document.querySelectorAll('[role="alert"], .calendly-inline-error, [data-error], .error-message, [class*="error"]:not(script), [class*="invalid"]:not(script)');
+      errorEls.forEach((el) => {
+        const text = (el as HTMLElement).innerText?.trim() || (el as HTMLElement).textContent?.trim() || '';
+        if (text && text.length < 500 && !messages.includes(text)) messages.push(text);
+      });
+
+      // 2. Form controls that are required and empty, or explicitly invalid
+      const controls = document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+        'input, select, textarea'
+      );
+      controls.forEach((el) => {
+        const name = el.getAttribute('name');
+        if (!name) return;
+        const isEmpty =
+          el.tagName === 'SELECT'
+            ? !(el as HTMLSelectElement).value
+            : !String((el as HTMLInputElement).value || '').trim();
+        const isInvalid = el.getAttribute('aria-invalid') === 'true';
+        const isRequired = el.hasAttribute('required');
+        if (isInvalid || (isRequired && isEmpty)) fieldNames.add(name);
+      });
+
+      return {
+        validationMessages: messages,
+        missingFields: Array.from(fieldNames),
+      };
+    });
+    if (result.validationMessages.length > 0 || result.missingFields.length > 0) {
+      console.log(`${LOG_PREFIX} Captured validation: missingFields=${result.missingFields.join(', ') || 'none'}, messages=${result.validationMessages.slice(0, 3).join('; ') || 'none'}`);
+    }
+    return result;
+  } catch {
+    return empty;
+  }
 }
 
 async function dismissCookieConsent(page: Page): Promise<void> {
@@ -696,7 +746,7 @@ function buildMergedAnswers(opts: BookCalendlySlotOptions): Record<string, strin
 }
 
 /**
- * Book a Calendly AgentFire demo slot. Uses instance reuse per email.
+ * Book a Calendly AgentFire demo slot. Each request uses a new browser session (no instance reuse).
  * Strategy: navigate directly to the slot URL (e.g. .../2026-02-05T06:00:00-06:00?month=2026-02&date=2026-02-05)
  * to land on the "Enter Details" form, skipping calendar and time picker.
  * Dynamic fields: firstName, lastName, email, phone (question_0). All other answers use defaults unless overridden in options.answers.
@@ -709,14 +759,8 @@ export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<B
   console.log(`${LOG_PREFIX} Starting booking: date=${opts.date} time=${opts.time} (normalized: ${normalizedTime}) email=${opts.email}`);
   console.log(`${LOG_PREFIX} Using direct form URL (skip calendar/time picker)`);
 
+  const { page, cleanup } = await createNewBookingPage(directUrl);
   try {
-    const { page } = await ensurePageForEmail(
-      opts.email,
-      opts.firstName,
-      opts.lastName,
-      directUrl
-    );
-
     await dismissCookieConsent(page);
     await fillFormAndSubmit(page, opts, normalizedAnswers);
 
@@ -727,11 +771,30 @@ export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<B
       time: opts.time,
     };
   } catch (error: any) {
-    const message = error?.message || String(error);
+    let message = error?.message || String(error);
     console.error('Calendly booking error:', message);
+    let missingFields: string[] | undefined;
+    let validationMessages: string[] | undefined;
+    try {
+      const captured = await captureCalendlyValidationErrors(page);
+      if (captured.missingFields.length > 0 || captured.validationMessages.length > 0) {
+        missingFields = captured.missingFields;
+        validationMessages = captured.validationMessages;
+        if (missingFields?.length)
+          message += ` Missing/invalid fields: ${missingFields.join(', ')}.`;
+        if (validationMessages?.length)
+          message += ` Calendly: ${validationMessages.slice(0, 2).join('; ')}.`;
+      }
+    } catch (_) {
+      /* ignore capture errors */
+    }
     return {
       success: false,
       error: message,
+      ...(missingFields?.length ? { missingFields } : {}),
+      ...(validationMessages?.length ? { validationMessages } : {}),
     };
+  } finally {
+    await cleanup();
   }
 }

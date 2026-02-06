@@ -123,11 +123,14 @@ export async function POST(request: NextRequest) {
       const isSlot = result.error?.toLowerCase().includes('slot') || result.error?.toLowerCase().includes('time');
       const isDay = result.error?.toLowerCase().includes('day') || result.error?.toLowerCase().includes('month');
       const code = isSlot ? ErrorCode.SLOT_NOT_FOUND : isDay ? ErrorCode.DAY_BUTTON_NOT_FOUND : ErrorCode.SCRAPING_FAILED;
+      const metadata: Record<string, unknown> = { originalError: result.error };
+      if (result.missingFields?.length) metadata.missingFields = result.missingFields;
+      if (result.validationMessages?.length) metadata.validationMessages = result.validationMessages;
       const errorResponse = ErrorHandler.createError(
         code,
         result.error || 'Booking failed',
         result.error || 'Calendly booking failed',
-        { originalError: result.error },
+        metadata,
         requestId,
         responseTime
       );

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as fs from 'fs';
 import * as path from 'path';
+import { Readable } from 'stream';
 
 const GALLERY_ENABLED =
   process.env.CALENDLY_VIDEO_GALLERY_ENABLED === '1' ||
@@ -40,8 +41,9 @@ export async function GET(
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    const stream = fs.createReadStream(filePath);
-    const response = new NextResponse(stream, {
+    const nodeStream = fs.createReadStream(filePath);
+    const webStream = Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>;
+    const response = new NextResponse(webStream, {
       status: 200,
       headers: {
         'Content-Type': 'video/webm',

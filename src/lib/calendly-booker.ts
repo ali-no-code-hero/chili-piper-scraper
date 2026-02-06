@@ -746,33 +746,13 @@ async function fillFormAndSubmit(
       if ((await comboboxLoc.count()) > 0) {
         await comboboxLoc.click();
         await page.waitForTimeout(300);
-        const optionLoc = page.locator('[role="option"]').filter({ hasText: values[0] || '' }).first();
-        if ((await optionLoc.count()) > 0) {
-          await optionLoc.click();
-          logFill(fieldName, values[0] || '', true, '(combobox option)');
+        const optsLoc = page.locator('[role="option"]');
+        const count = await optsLoc.count();
+        if (count > 0) {
+          await optsLoc.first().click();
+          logFill(fieldName, values[0] || '', true, '(first option selected)');
         } else {
-          const optsLoc = page.locator('[role="option"]');
-          const count = await optsLoc.count();
-          let chosen = false;
-          for (let i = 0; i < count; i++) {
-            const o = optsLoc.nth(i);
-            const text = await o.textContent();
-            if (text && values[0] && text.trim().toLowerCase().includes(values[0].toLowerCase())) {
-              await o.click();
-              chosen = true;
-              break;
-            }
-          }
-          if (!chosen && count > 0) {
-            await optsLoc.first().click();
-            chosen = true;
-          }
-          logFill(
-            fieldName,
-            values[0] || '',
-            chosen,
-            chosen ? '(listbox option)' : '(option not found)'
-          );
+          logFill(fieldName, values[0] || '', false, '(no options found)');
         }
       } else {
         logFill(fieldName, values[0] || '', false, '(combobox not found)');

@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { Page } from 'playwright';
+import { Page, Request, Response } from 'playwright';
 import { browserPool } from './browser-pool';
 
 const CALENDLY_VIDEO_DIR = process.env.CALENDLY_VIDEO_DIR || path.join(process.cwd(), '.calendly-videos');
@@ -91,12 +91,12 @@ const NETWORK_LOG_PREFIX = '[Calendly API]';
 
 /** Start logging API requests/responses after Schedule Event click. Returns cleanup to remove listeners. */
 function startScheduleEventNetworkLogging(page: Page): () => void {
-  const onRequest = (request: { url: string; method: string; resourceType: string }) => {
+  const onRequest = (request: Request) => {
     const type = request.resourceType();
     if (type !== 'xhr' && type !== 'fetch') return;
-    console.log(`${NETWORK_LOG_PREFIX} REQ ${request.method} ${request.url}`);
+    console.log(`${NETWORK_LOG_PREFIX} REQ ${request.method()} ${request.url()}`);
   };
-  const onResponse = (response: { url: string; status: () => number; ok: () => boolean; text: () => Promise<string> }) => {
+  const onResponse = (response: Response) => {
     const type = response.request().resourceType();
     if (type !== 'xhr' && type !== 'fetch') return;
     const status = response.status();

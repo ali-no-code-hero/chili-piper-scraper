@@ -634,15 +634,12 @@ async function fillFormAndSubmit(
       const byTestIdLoc = page.locator(`[data-testid="${values[0]}"]`).first();
       const firstRadioLoc = page.locator('input[name="question_2"][type="radio"]').first();
       if ((await radioLoc.count()) > 0) {
-        await radioLoc.scrollIntoViewIfNeeded();
         await radioLoc.click();
         logFill(fieldName, values[0] || '', true, '(radio clicked)');
       } else if ((await byTestIdLoc.count()) > 0) {
-        await byTestIdLoc.scrollIntoViewIfNeeded();
         await byTestIdLoc.click();
         logFill(fieldName, values[0] || '', true, '(by testid)');
       } else if ((await firstRadioLoc.count()) > 0) {
-        await firstRadioLoc.scrollIntoViewIfNeeded();
         await firstRadioLoc.click();
         logFill(fieldName, values[0] || '', true, '(first radio selected)');
       } else {
@@ -651,27 +648,27 @@ async function fillFormAndSubmit(
       continue;
     }
     if (fieldName === 'question_3') {
+      await page.waitForTimeout(250);
       let anyFilled = false;
+      const clickOpt = { force: true } as const;
       for (const v of values) {
         if (!v) continue;
         if (v === 'Other' || v.toLowerCase().includes('other')) {
           const otherInputLoc = page.locator('input[name="question_3"][placeholder="Other"]').first();
           if ((await otherInputLoc.count()) > 0) await otherInputLoc.fill(values[values.length - 1] || v);
           const otherCheckboxLoc = page.locator('input[name="question_3"][aria-label="Other"]').first();
-          if ((await otherCheckboxLoc.count()) > 0 && !(await otherCheckboxLoc.isChecked())) await otherCheckboxLoc.click();
+          if ((await otherCheckboxLoc.count()) > 0 && !(await otherCheckboxLoc.isChecked())) await otherCheckboxLoc.click(clickOpt);
           anyFilled = true;
           continue;
         }
         const divLoc = page.locator(`div[value="${v}"]`).first();
         if ((await divLoc.count()) > 0) {
-          await divLoc.scrollIntoViewIfNeeded();
-          await divLoc.click();
+          await divLoc.click(clickOpt);
           anyFilled = true;
         } else {
           const labelLoc = page.locator('label').filter({ hasText: v }).first();
           if ((await labelLoc.count()) > 0) {
-            await labelLoc.scrollIntoViewIfNeeded();
-            await labelLoc.click();
+            await labelLoc.click(clickOpt);
             anyFilled = true;
             break;
           }
@@ -680,14 +677,12 @@ async function fillFormAndSubmit(
       if (!anyFilled) {
         const firstCheckboxLoc = page.locator('input[name="question_3"][type="checkbox"]').first();
         if ((await firstCheckboxLoc.count()) > 0 && !(await firstCheckboxLoc.isChecked())) {
-          await firstCheckboxLoc.scrollIntoViewIfNeeded();
-          await firstCheckboxLoc.click();
+          await firstCheckboxLoc.click(clickOpt);
           anyFilled = true;
         } else {
           const firstDivLoc = page.locator('div[value]').first();
           if ((await firstDivLoc.count()) > 0) {
-            await firstDivLoc.scrollIntoViewIfNeeded();
-            await firstDivLoc.click();
+            await firstDivLoc.click(clickOpt);
             anyFilled = true;
           }
         }
@@ -700,15 +695,12 @@ async function fillFormAndSubmit(
       const byTestIdLoc = page.locator(`[data-testid="${values[0]}"]`).first();
       const firstRadioLoc = page.locator('input[name="question_5"][type="radio"]').first();
       if ((await radioLoc.count()) > 0) {
-        await radioLoc.scrollIntoViewIfNeeded();
         await radioLoc.click();
         logFill(fieldName, values[0] || '', true, '(radio clicked)');
       } else if ((await byTestIdLoc.count()) > 0) {
-        await byTestIdLoc.scrollIntoViewIfNeeded();
         await byTestIdLoc.click();
         logFill(fieldName, values[0] || '', true, '(by testid)');
       } else if ((await firstRadioLoc.count()) > 0) {
-        await firstRadioLoc.scrollIntoViewIfNeeded();
         await firstRadioLoc.click();
         logFill(fieldName, values[0] || '', true, '(first radio selected)');
       } else {
@@ -719,7 +711,6 @@ async function fillFormAndSubmit(
     if (fieldName === 'question_8') {
       const checkboxLoc = page.locator('input[name="question_8"][type="checkbox"]').first();
       if ((await checkboxLoc.count()) > 0) {
-        await checkboxLoc.scrollIntoViewIfNeeded();
         if (!(await checkboxLoc.isChecked())) await checkboxLoc.click();
         logFill(fieldName, values, true, '(checkbox)');
       } else {
@@ -730,12 +721,10 @@ async function fillFormAndSubmit(
     if (fieldName === 'question_9') {
       const comboboxLoc = page.locator('[name="question_9"][role="combobox"]').first();
       if ((await comboboxLoc.count()) > 0) {
-        await comboboxLoc.scrollIntoViewIfNeeded();
         await comboboxLoc.click();
         await page.waitForTimeout(300);
         const optionLoc = page.locator('[role="option"]').filter({ hasText: values[0] || '' }).first();
         if ((await optionLoc.count()) > 0) {
-          await optionLoc.scrollIntoViewIfNeeded();
           await optionLoc.click();
           logFill(fieldName, values[0] || '', true, '(combobox option)');
         } else {
@@ -746,14 +735,12 @@ async function fillFormAndSubmit(
             const o = optsLoc.nth(i);
             const text = await o.textContent();
             if (text && values[0] && text.trim().toLowerCase().includes(values[0].toLowerCase())) {
-              await o.scrollIntoViewIfNeeded();
               await o.click();
               chosen = true;
               break;
             }
           }
           if (!chosen && count > 0) {
-            await optsLoc.first().scrollIntoViewIfNeeded();
             await optsLoc.first().click();
             chosen = true;
           }
@@ -785,7 +772,6 @@ async function fillFormAndSubmit(
     throw new Error('Schedule Event button not found');
   }
   console.log(`${LOG_PREFIX} Clicking Schedule Event`);
-  await submitLoc.scrollIntoViewIfNeeded();
   await submitLoc.click();
 
   // After submit, a "Confirmed / You are scheduled with ..." popup may appear, then redirect to agentfire.com/thanks-for-booking/

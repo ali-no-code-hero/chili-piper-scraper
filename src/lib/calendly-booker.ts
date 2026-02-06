@@ -472,11 +472,7 @@ async function fillFormAndSubmit(
   // first_name, last_name, email, question_0 (phone), question_1, question_4, question_6, question_7 are prefilled via URL – do not fill again (avoids detached DOM).
   const urlPrefilledFields = new Set(['question_0', 'question_1', 'question_4', 'question_6', 'question_7']);
 
-  // Calendly does not prefill radio/checkbox/combobox from URL; we only fill those here.
-  const scrollIntoView = async (el: import('playwright-core').ElementHandle<SVGElement | HTMLElement> | null) => {
-    if (el) await el.evaluate((e: HTMLElement) => e.scrollIntoView({ block: 'nearest', behavior: 'instant' }));
-  };
-
+  // Use locators instead of element handles so elements are re-resolved at click/fill time (avoids "Element is not attached to the DOM" when Calendly re-renders).
   for (const [fieldName, value] of Object.entries(normalizedAnswers)) {
     if (urlPrefilledFields.has(fieldName)) {
       logFill(fieldName, value, true, '(prefilled via URL, skipped)');
@@ -487,27 +483,23 @@ async function fillFormAndSubmit(
     const values = isArray ? (raw as string[]) : [raw as string];
 
     if (fieldName === 'question_2') {
-      const radio = await page.$(`input[name="question_2"][type="radio"][value="${values[0]}"]`);
-      if (radio) {
-        await scrollIntoView(radio);
-        await radio.click();
+      const radioLoc = page.locator(`input[name="question_2"][type="radio"][value="${values[0]}"]`).first();
+      const byTestIdLoc = page.locator(`[data-testid="${values[0]}"]`).first();
+      const firstRadioLoc = page.locator('input[name="question_2"][type="radio"]').first();
+      if ((await radioLoc.count()) > 0) {
+        await radioLoc.scrollIntoViewIfNeeded();
+        await radioLoc.click();
         logFill(fieldName, values[0] || '', true, '(radio clicked)');
+      } else if ((await byTestIdLoc.count()) > 0) {
+        await byTestIdLoc.scrollIntoViewIfNeeded();
+        await byTestIdLoc.click();
+        logFill(fieldName, values[0] || '', true, '(by testid)');
+      } else if ((await firstRadioLoc.count()) > 0) {
+        await firstRadioLoc.scrollIntoViewIfNeeded();
+        await firstRadioLoc.click();
+        logFill(fieldName, values[0] || '', true, '(first radio selected)');
       } else {
-        const byLabel = await page.$(`[data-testid="${values[0]}"]`);
-        if (byLabel) {
-          await scrollIntoView(byLabel);
-          await byLabel.click();
-          logFill(fieldName, values[0] || '', true, '(by testid)');
-        } else {
-          const firstRadio = await page.$('input[name="question_2"][type="radio"]');
-          if (firstRadio) {
-            await scrollIntoView(firstRadio);
-            await firstRadio.click();
-            logFill(fieldName, values[0] || '', true, '(first radio selected)');
-          } else {
-            logFill(fieldName, values[0] || '', false, '(no radios found)');
-          }
-        }
+        logFill(fieldName, values[0] || '', false, '(no radios found)');
       }
       continue;
     }
@@ -516,42 +508,39 @@ async function fillFormAndSubmit(
       for (const v of values) {
         if (!v) continue;
         if (v === 'Other' || v.toLowerCase().includes('other')) {
-          const otherInput = await page.$('input[name="question_3"][placeholder="Other"]');
-          if (otherInput) await otherInput.fill(values[values.length - 1] || v);
-          const otherCheckbox = await page.$('input[name="question_3"][aria-label="Other"]');
-          if (otherCheckbox && !(await otherCheckbox.isChecked())) await otherCheckbox.click();
+          const otherInputLoc = page.locator('input[name="question_3"][placeholder="Other"]').first();
+          if ((await otherInputLoc.count()) > 0) await otherInputLoc.fill(values[values.length - 1] || v);
+          const otherCheckboxLoc = page.locator('input[name="question_3"][aria-label="Other"]').first();
+          if ((await otherCheckboxLoc.count()) > 0 && !(await otherCheckboxLoc.isChecked())) await otherCheckboxLoc.click();
           anyFilled = true;
           continue;
         }
-        const divWithValue = await page.$(`div[value="${v}"]`);
-        if (divWithValue) {
-          await scrollIntoView(divWithValue);
-          await divWithValue.click();
+        const divLoc = page.locator(`div[value="${v}"]`).first();
+        if ((await divLoc.count()) > 0) {
+          await divLoc.scrollIntoViewIfNeeded();
+          await divLoc.click();
           anyFilled = true;
         } else {
-          const labels = await page.$$('label');
-          for (const label of labels) {
-            const text = (await label.textContent())?.trim() || '';
-            if (text === v || text.includes(v)) {
-              await scrollIntoView(label);
-              await label.click();
-              anyFilled = true;
-              break;
-            }
+          const labelLoc = page.locator('label').filter({ hasText: v }).first();
+          if ((await labelLoc.count()) > 0) {
+            await labelLoc.scrollIntoViewIfNeeded();
+            await labelLoc.click();
+            anyFilled = true;
+            break;
           }
         }
       }
       if (!anyFilled) {
-        const firstCheckbox = await page.$('input[name="question_3"][type="checkbox"]');
-        if (firstCheckbox && !(await firstCheckbox.isChecked())) {
-          await scrollIntoView(firstCheckbox);
-          await firstCheckbox.click();
+        const firstCheckboxLoc = page.locator('input[name="question_3"][type="checkbox"]').first();
+        if ((await firstCheckboxLoc.count()) > 0 && !(await firstCheckboxLoc.isChecked())) {
+          await firstCheckboxLoc.scrollIntoViewIfNeeded();
+          await firstCheckboxLoc.click();
           anyFilled = true;
         } else {
-          const firstDiv = await page.$('div[value]');
-          if (firstDiv) {
-            await scrollIntoView(firstDiv);
-            await firstDiv.click();
+          const firstDivLoc = page.locator('div[value]').first();
+          if ((await firstDivLoc.count()) > 0) {
+            await firstDivLoc.scrollIntoViewIfNeeded();
+            await firstDivLoc.click();
             anyFilled = true;
           }
         }
@@ -560,36 +549,31 @@ async function fillFormAndSubmit(
       continue;
     }
     if (fieldName === 'question_5') {
-      const radio = await page.$(`input[name="question_5"][type="radio"][value="${values[0]}"]`);
-      if (radio) {
-        await scrollIntoView(radio);
-        await radio.click();
+      const radioLoc = page.locator(`input[name="question_5"][type="radio"][value="${values[0]}"]`).first();
+      const byTestIdLoc = page.locator(`[data-testid="${values[0]}"]`).first();
+      const firstRadioLoc = page.locator('input[name="question_5"][type="radio"]').first();
+      if ((await radioLoc.count()) > 0) {
+        await radioLoc.scrollIntoViewIfNeeded();
+        await radioLoc.click();
         logFill(fieldName, values[0] || '', true, '(radio clicked)');
+      } else if ((await byTestIdLoc.count()) > 0) {
+        await byTestIdLoc.scrollIntoViewIfNeeded();
+        await byTestIdLoc.click();
+        logFill(fieldName, values[0] || '', true, '(by testid)');
+      } else if ((await firstRadioLoc.count()) > 0) {
+        await firstRadioLoc.scrollIntoViewIfNeeded();
+        await firstRadioLoc.click();
+        logFill(fieldName, values[0] || '', true, '(first radio selected)');
       } else {
-        const byTestId = await page.$(`[data-testid="${values[0]}"]`);
-        if (byTestId) {
-          await scrollIntoView(byTestId);
-          await byTestId.click();
-          logFill(fieldName, values[0] || '', true, '(by testid)');
-        } else {
-          const firstRadio = await page.$('input[name="question_5"][type="radio"]');
-          if (firstRadio) {
-            await scrollIntoView(firstRadio);
-            await firstRadio.click();
-            logFill(fieldName, values[0] || '', true, '(first radio selected)');
-          } else {
-            logFill(fieldName, values[0] || '', false, '(no radios found)');
-          }
-        }
+        logFill(fieldName, values[0] || '', false, '(no radios found)');
       }
       continue;
     }
     if (fieldName === 'question_8') {
-      const checkbox = await page.$(`input[name="question_8"][type="checkbox"]`);
-      if (checkbox) {
-        await scrollIntoView(checkbox);
-        const checked = await checkbox.isChecked();
-        if (!checked) await checkbox.click();
+      const checkboxLoc = page.locator('input[name="question_8"][type="checkbox"]').first();
+      if ((await checkboxLoc.count()) > 0) {
+        await checkboxLoc.scrollIntoViewIfNeeded();
+        if (!(await checkboxLoc.isChecked())) await checkboxLoc.click();
         logFill(fieldName, values, true, '(checkbox)');
       } else {
         logFill(fieldName, values, false, '(checkbox not found)');
@@ -597,40 +581,40 @@ async function fillFormAndSubmit(
       continue;
     }
     if (fieldName === 'question_9') {
-      const combobox = await page.$('[name="question_9"][role="combobox"]');
-      if (combobox) {
-        await scrollIntoView(combobox);
-        await combobox.click();
+      const comboboxLoc = page.locator('[name="question_9"][role="combobox"]').first();
+      if ((await comboboxLoc.count()) > 0) {
+        await comboboxLoc.scrollIntoViewIfNeeded();
+        await comboboxLoc.click();
         await page.waitForTimeout(300);
-        const option = await page.$(`[role="option"]:has-text("${values[0]}")`);
-        if (option) {
-          await scrollIntoView(option);
-          await option.click();
+        const optionLoc = page.locator('[role="option"]').filter({ hasText: values[0] || '' }).first();
+        if ((await optionLoc.count()) > 0) {
+          await optionLoc.scrollIntoViewIfNeeded();
+          await optionLoc.click();
           logFill(fieldName, values[0] || '', true, '(combobox option)');
         } else {
-          const opts = await page.$$('[role="option"]');
+          const optsLoc = page.locator('[role="option"]');
+          const count = await optsLoc.count();
           let chosen = false;
-          for (const o of opts) {
+          for (let i = 0; i < count; i++) {
+            const o = optsLoc.nth(i);
             const text = await o.textContent();
             if (text && values[0] && text.trim().toLowerCase().includes(values[0].toLowerCase())) {
-              await scrollIntoView(o);
+              await o.scrollIntoViewIfNeeded();
               await o.click();
               chosen = true;
               break;
             }
           }
-          let usedFirst = false;
-          if (!chosen && opts.length > 0) {
-            await scrollIntoView(opts[0]);
-            await opts[0].click();
+          if (!chosen && count > 0) {
+            await optsLoc.first().scrollIntoViewIfNeeded();
+            await optsLoc.first().click();
             chosen = true;
-            usedFirst = true;
           }
           logFill(
             fieldName,
             values[0] || '',
             chosen,
-            chosen ? (usedFirst ? '(first option selected)' : '(listbox option)') : '(option not found)'
+            chosen ? '(listbox option)' : '(option not found)'
           );
         }
       } else {
@@ -639,9 +623,9 @@ async function fillFormAndSubmit(
       continue;
     }
 
-    const input = await page.$(`input[name="${fieldName}"], textarea[name="${fieldName}"]`);
-    if (input) {
-      await input.fill(values[0] || '');
+    const inputLoc = page.locator(`input[name="${fieldName}"], textarea[name="${fieldName}"]`).first();
+    if ((await inputLoc.count()) > 0) {
+      await inputLoc.fill(values[0] || '');
       logFill(fieldName, values[0] || '', true);
     } else {
       logFill(fieldName, values[0] || '', false, '(input/textarea not found)');
@@ -649,20 +633,13 @@ async function fillFormAndSubmit(
   }
 
   console.log(`${LOG_PREFIX} Form fill complete; looking for Schedule Event button`);
-  const submitButtons = await page.$$('button[type="submit"]');
-  let submitBtn: any = null;
-  for (const btn of submitButtons) {
-    const text = (await btn.textContent())?.trim() || '';
-    if (text.includes('Schedule Event')) {
-      submitBtn = btn;
-      break;
-    }
-  }
-  if (!submitBtn) {
+  const submitLoc = page.locator('button[type="submit"]').filter({ hasText: 'Schedule Event' }).first();
+  if ((await submitLoc.count()) === 0) {
     throw new Error('Schedule Event button not found');
   }
   console.log(`${LOG_PREFIX} Clicking Schedule Event`);
-  await submitBtn.click();
+  await submitLoc.scrollIntoViewIfNeeded();
+  await submitLoc.click();
 
   // After submit, a "Confirmed / You are scheduled with ..." popup may appear, then redirect to agentfire.com/thanks-for-booking/
   // Only consider the booking complete when we reach the thank-you page.

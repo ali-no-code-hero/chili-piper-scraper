@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { Page } from 'playwright';
 import { browserPool } from './browser-pool';
@@ -162,9 +163,11 @@ async function createNewBookingPage(calendlyUrl: string): Promise<{
   const sessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   let videoDir: string | null = null;
   if (CALENDLY_VIDEO_ENABLED) {
-    videoDir = path.join(CALENDLY_VIDEO_DIR, sessionId);
+    // Use OS temp dir for recording so it works on read-only app dirs (e.g. Railway).
+    const recordDir = path.join(os.tmpdir(), 'calendly-videos', sessionId);
     try {
-      fs.mkdirSync(videoDir, { recursive: true });
+      fs.mkdirSync(recordDir, { recursive: true });
+      videoDir = recordDir;
     } catch {
       videoDir = null;
     }
@@ -259,12 +262,17 @@ async function createNewBookingPage(calendlyUrl: string): Promise<{
             const srcPath = await video.path();
             if (srcPath && fs.existsSync(srcPath)) {
               const failedDir = path.join(CALENDLY_VIDEO_DIR, 'failed');
-              fs.mkdirSync(failedDir, { recursive: true });
-              const destName = `calendly-${sessionId}.webm`;
-              const destPath = path.join(failedDir, destName);
-              fs.copyFileSync(srcPath, destPath);
-              savedVideoPath = destPath;
-              console.log(`${LOG_PREFIX} Saved failure video: ${destPath}`);
+              try {
+                fs.mkdirSync(failedDir, { recursive: true });
+                const destName = `calendly-${sessionId}.webm`;
+                const destPath = path.join(failedDir, destName);
+                fs.copyFileSync(srcPath, destPath);
+                savedVideoPath = destPath;
+                console.log(`${LOG_PREFIX} Saved failure video: ${destPath}`);
+              } catch (copyErr) {
+                console.warn(`${LOG_PREFIX} Could not copy video to ${failedDir}:`, (copyErr as Error)?.message);
+                savedVideoPath = srcPath;
+              }
             }
           }
         } catch (e) {

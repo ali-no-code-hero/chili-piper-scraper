@@ -55,3 +55,6 @@ Thumbs.db
 *.tmp
 *.temp
 /tmp/
+
+# Calendly session recordings (videos saved on failure)
+.calendly-videos/

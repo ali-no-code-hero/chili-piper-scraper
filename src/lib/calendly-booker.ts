@@ -1,5 +1,10 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { Page } from 'playwright';
 import { browserPool } from './browser-pool';
+
+const CALENDLY_VIDEO_DIR = process.env.CALENDLY_VIDEO_DIR || path.join(process.cwd(), '.calendly-videos');
+const CALENDLY_VIDEO_ENABLED = process.env.CALENDLY_VIDEO_ENABLED !== '0' && process.env.CALENDLY_VIDEO_ENABLED !== 'false';
 
 const CALENDLY_BASE_URL = 'https://calendly.com/agentfire-demo/30-minute-demo';
 
@@ -61,6 +66,8 @@ export interface BookCalendlySlotResult {
   missingFields?: string[];
   /** Error/validation messages shown on the page after submit failed. */
   validationMessages?: string[];
+  /** Path to recorded video of the session (only set when booking failed and recording is enabled). */
+  videoPath?: string;
 }
 
 /**
@@ -140,16 +147,36 @@ function buildDirectCalendlyUrl(
 }
 
 /**
- * Create a new browser session for a single Calendly booking. Caller must call cleanup() when done.
+ * Create a new browser session for a single Calendly booking. Caller must call cleanup(outcome) when done.
+ * When outcome is 'failure', cleanup saves the recorded video and returns its path.
  */
-async function createNewBookingPage(calendlyUrl: string): Promise<{ page: Page; cleanup: () => Promise<void> }> {
+async function createNewBookingPage(calendlyUrl: string): Promise<{
+  page: Page;
+  cleanup: (outcome: 'success' | 'failure') => Promise<string | null>;
+}> {
   let browser: any = null;
   let context: any = null;
   let page: any = null;
   let releaseLock: (() => void) | null = null;
 
+  const sessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  let videoDir: string | null = null;
+  if (CALENDLY_VIDEO_ENABLED) {
+    videoDir = path.join(CALENDLY_VIDEO_DIR, sessionId);
+    try {
+      fs.mkdirSync(videoDir, { recursive: true });
+    } catch {
+      videoDir = null;
+    }
+  }
+
   browser = await browserPool.getBrowser();
   releaseLock = await browserPool.acquireContextLock(browser);
+
+  const contextOptions: { timezoneId: string; recordVideo?: { dir: string; size: { width: number; height: number } } } = {
+    timezoneId: 'America/Chicago',
+  };
+  if (videoDir) contextOptions.recordVideo = { dir: videoDir, size: { width: 1280, height: 720 } };
 
   let retries = 3;
   while (retries > 0) {
@@ -160,7 +187,7 @@ async function createNewBookingPage(calendlyUrl: string): Promise<{ page: Page; 
         browser = await browserPool.getBrowser();
         releaseLock = await browserPool.acquireContextLock(browser);
       }
-      context = await browser.newContext({ timezoneId: 'America/Chicago' });
+      context = await browser.newContext(contextOptions);
       page = await context.newPage();
       break;
     } catch (error: any) {
@@ -216,13 +243,45 @@ async function createNewBookingPage(calendlyUrl: string): Promise<{ page: Page; 
   const finalUrl = page.url();
   console.log(`${LOG_PREFIX} Page loaded: ${finalUrl}`);
 
-  const cleanup = async () => {
+  let cleaned = false;
+  const cleanup = async (outcome: 'success' | 'failure'): Promise<string | null> => {
+    if (cleaned) return null;
+    cleaned = true;
+    let savedVideoPath: string | null = null;
     try {
       if (page && !page.isClosed()) await page.close().catch(() => {});
+      const videoPromise = context?.video?.() ?? null;
       if (context) await context.close().catch(() => {});
+      if (outcome === 'failure' && videoPromise) {
+        try {
+          const video = await videoPromise;
+          if (video) {
+            const srcPath = await video.path();
+            if (srcPath && fs.existsSync(srcPath)) {
+              const failedDir = path.join(CALENDLY_VIDEO_DIR, 'failed');
+              fs.mkdirSync(failedDir, { recursive: true });
+              const destName = `calendly-${sessionId}.webm`;
+              const destPath = path.join(failedDir, destName);
+              fs.copyFileSync(srcPath, destPath);
+              savedVideoPath = destPath;
+              console.log(`${LOG_PREFIX} Saved failure video: ${destPath}`);
+            }
+          }
+        } catch (e) {
+          console.warn(`${LOG_PREFIX} Could not save video:`, (e as Error)?.message);
+        }
+      }
+      if (outcome === 'success' && videoDir) {
+        try {
+          fs.rmSync(videoDir, { recursive: true, force: true });
+        } catch {
+          /* ignore */
+        }
+      }
     } finally {
       if (browser) browserPool.releaseBrowser(browser);
     }
+    return savedVideoPath;
   };
 
   return { page, cleanup };
@@ -230,7 +289,7 @@ async function createNewBookingPage(calendlyUrl: string): Promise<{ page: Page; 
 
 /**
  * When a booking fails after clicking Schedule Event, Calendly often leaves validation errors on the page.
- * Captures visible error messages and field names that are missing or invalid.
+ * Waits briefly for client-side validation UI to render, then captures visible error messages and field names.
  */
 async function captureCalendlyValidationErrors(page: Page): Promise<{
   missingFields: string[];
@@ -239,18 +298,40 @@ async function captureCalendlyValidationErrors(page: Page): Promise<{
   const empty = { missingFields: [] as string[], validationMessages: [] as string[] };
   try {
     if (page.isClosed()) return empty;
+    // Give Calendly's client-side validation time to render (errors often appear after submit).
+    await page.waitForTimeout(1500);
+    if (page.isClosed()) return empty;
+
     const result = await page.evaluate(() => {
       const messages: string[] = [];
       const fieldNames = new Set<string>();
 
-      // 1. Visible error/alert text (role=alert, common error classes)
-      const errorEls = document.querySelectorAll('[role="alert"], .calendly-inline-error, [data-error], .error-message, [class*="error"]:not(script), [class*="invalid"]:not(script)');
-      errorEls.forEach((el) => {
-        const text = (el as HTMLElement).innerText?.trim() || (el as HTMLElement).textContent?.trim() || '';
-        if (text && text.length < 500 && !messages.includes(text)) messages.push(text);
-      });
+      // 1. Visible error/alert text (role=alert, common error classes, and Calendly-specific)
+      const errorSelectors = [
+        '[role="alert"]',
+        '.calendly-inline-error',
+        '[data-error]',
+        '.error-message',
+        '[class*="error"]',
+        '[class*="invalid"]',
+        '[class*="Error"]',
+        '[class*="Invalid"]',
+        '.field-error',
+      ];
+      const seen = new Set<string>();
+      for (const sel of errorSelectors) {
+        try {
+          document.querySelectorAll(sel).forEach((el) => {
+            const text = (el as HTMLElement).innerText?.trim() || (el as HTMLElement).textContent?.trim() || '';
+            if (text && text.length < 500 && text.length > 0 && !seen.has(text)) {
+              seen.add(text);
+              messages.push(text);
+            }
+          });
+        } catch (_) {}
+      }
 
-      // 2. Form controls that are required and empty, or explicitly invalid
+      // 2. Form controls that are required and empty, aria-invalid, or inside a container with error class
       const controls = document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
         'input, select, textarea'
       );
@@ -263,7 +344,20 @@ async function captureCalendlyValidationErrors(page: Page): Promise<{
             : !String((el as HTMLInputElement).value || '').trim();
         const isInvalid = el.getAttribute('aria-invalid') === 'true';
         const isRequired = el.hasAttribute('required');
-        if (isInvalid || (isRequired && isEmpty)) fieldNames.add(name);
+        const parentWithError = el.closest('[class*="error"], [class*="invalid"], [class*="Error"]');
+        if (isInvalid || (isRequired && isEmpty) || (parentWithError && isEmpty)) fieldNames.add(name);
+      });
+
+      // 3. Known Calendly form field names that are empty (first_name, last_name, email, question_0..9)
+      const knownFields = /^(first_name|last_name|email|question_\d+)$/;
+      controls.forEach((el) => {
+        const name = el.getAttribute('name');
+        if (!name || !knownFields.test(name) || fieldNames.has(name)) return;
+        const isEmpty =
+          el.tagName === 'SELECT'
+            ? !(el as HTMLSelectElement).value
+            : !String((el as HTMLInputElement).value || '').trim();
+        if (isEmpty && (el as HTMLInputElement).type !== 'hidden') fieldNames.add(name);
       });
 
       return {
@@ -271,11 +365,14 @@ async function captureCalendlyValidationErrors(page: Page): Promise<{
         missingFields: Array.from(fieldNames),
       };
     });
-    if (result.validationMessages.length > 0 || result.missingFields.length > 0) {
-      console.log(`${LOG_PREFIX} Captured validation: missingFields=${result.missingFields.join(', ') || 'none'}, messages=${result.validationMessages.slice(0, 3).join('; ') || 'none'}`);
-    }
+
+    const hasAny = result.validationMessages.length > 0 || result.missingFields.length > 0;
+    console.log(
+      `${LOG_PREFIX} Captured validation: missingFields=[${result.missingFields.join(', ') || 'none'}], messages=[${result.validationMessages.slice(0, 3).join('; ') || 'none'}]`
+    );
     return result;
-  } catch {
+  } catch (e) {
+    console.log(`${LOG_PREFIX} Validation capture failed (page may have navigated): ${(e as Error)?.message || ''}`);
     return empty;
   }
 }
@@ -760,11 +857,13 @@ export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<B
   console.log(`${LOG_PREFIX} Using direct form URL (skip calendar/time picker)`);
 
   const { page, cleanup } = await createNewBookingPage(directUrl);
+  let succeeded = false;
   try {
     await dismissCookieConsent(page);
     await fillFormAndSubmit(page, opts, normalizedAnswers);
 
     console.log(`${LOG_PREFIX} Booking success: ${opts.date} ${opts.time}`);
+    succeeded = true;
     return {
       success: true,
       date: opts.date,
@@ -788,13 +887,15 @@ export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<B
     } catch (_) {
       /* ignore capture errors */
     }
+    const videoPath = await cleanup('failure');
     return {
       success: false,
       error: message,
       ...(missingFields?.length ? { missingFields } : {}),
       ...(validationMessages?.length ? { validationMessages } : {}),
+      ...(videoPath ? { videoPath } : {}),
     };
   } finally {
-    await cleanup();
+    if (succeeded) await cleanup('success');
   }
 }

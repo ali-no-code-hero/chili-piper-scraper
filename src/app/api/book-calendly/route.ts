@@ -126,6 +126,7 @@ export async function POST(request: NextRequest) {
       const metadata: Record<string, unknown> = { originalError: result.error };
       if (result.missingFields?.length) metadata.missingFields = result.missingFields;
       if (result.validationMessages?.length) metadata.validationMessages = result.validationMessages;
+      if (result.videoPath) metadata.videoPath = result.videoPath;
       const errorResponse = ErrorHandler.createError(
         code,
         result.error || 'Booking failed',

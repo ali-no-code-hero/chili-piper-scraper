@@ -76,8 +76,46 @@ export function normalizeTimeForCalendly(time: string): string {
 
 const LOG_PREFIX = '[Calendly]';
 
-/** Build direct Calendly URL to the booking form for a given date/time (skips calendar and time picker). */
-function buildDirectCalendlyUrl(date: string, normalizedTime: string): string {
+/**
+ * Build query params for Calendly URL prefill: first_name, last_name, email, a1=phone, a2..a10.
+ * Note: Calendly does not prefill radio/checkbox/combobox from URL (a3,a4,a6,a9,a10); we always
+ * fill question_2, question_3, question_5, question_8, question_9 manually in fillFormAndSubmit.
+ */
+function buildCalendlyPrefillParams(
+  opts: BookCalendlySlotOptions,
+  normalizedAnswers: Record<string, string | string[]>
+): string {
+  const params = new URLSearchParams();
+  params.set('first_name', opts.firstName);
+  params.set('last_name', opts.lastName);
+  params.set('email', opts.email);
+  const a1 = opts.phone ?? (normalizedAnswers['question_0'] as string | undefined);
+  if (a1 != null && a1 !== '') {
+    params.set('a1', typeof a1 === 'string' ? a1 : (a1 as string[])[0] ?? '');
+  }
+  const q1 = normalizedAnswers['question_1'];
+  if (q1 != null) params.set('a2', Array.isArray(q1) ? q1[0] ?? '' : q1);
+  params.set('a3', '1'); // question_2 (radio) – URL not applied by Calendly; filled in form
+  params.set('a4', '1'); // question_3 (checkboxes) – URL not applied; filled in form
+  const q4 = normalizedAnswers['question_4'];
+  if (q4 != null) params.set('a5', Array.isArray(q4) ? q4[0] ?? '' : q4);
+  params.set('a6', '1'); // question_5 (radio) – URL not applied; filled in form
+  const q6 = normalizedAnswers['question_6'];
+  if (q6 != null) params.set('a7', Array.isArray(q6) ? q6[0] ?? '' : q6);
+  const q7 = normalizedAnswers['question_7'];
+  if (q7 != null) params.set('a8', Array.isArray(q7) ? q7[0] ?? '' : q7);
+  params.set('a9', '1'); // question_8 (checkbox) – URL not applied; filled in form
+  params.set('a10', '1'); // question_9 (location) – URL not applied; filled in form
+  return params.toString();
+}
+
+/** Build direct Calendly URL to the booking form for a given date/time (skips calendar and time picker). Includes prefill params. */
+function buildDirectCalendlyUrl(
+  date: string,
+  normalizedTime: string,
+  opts: BookCalendlySlotOptions,
+  normalizedAnswers: Record<string, string | string[]>
+): string {
   const match = normalizedTime.match(/^(\d{1,2}):(\d{2})(am|pm)$/);
   let hour = 0;
   let min = 0;
@@ -93,7 +131,9 @@ function buildDirectCalendlyUrl(date: string, normalizedTime: string): string {
   const tzOffset = '-06:00'; // America/Chicago (CST)
   const isoDateTime = `${date}T${hourStr}:${minStr}:00${tzOffset}`;
   const month = date.slice(0, 7);
-  return `${CALENDLY_BASE_URL}/${isoDateTime}?month=${month}&date=${date}`;
+  const baseQuery = `month=${month}&date=${date}`;
+  const prefill = buildCalendlyPrefillParams(opts, normalizedAnswers);
+  return `${CALENDLY_BASE_URL}/${isoDateTime}?${baseQuery}&${prefill}`;
 }
 
 async function ensurePageForEmail(
@@ -435,6 +475,11 @@ async function fillFormAndSubmit(
     logFill('email', opts.email, false, '(selector not found or error)');
   }
 
+  // Calendly does not prefill radio/checkbox/combobox from URL; we always fill them here.
+  const scrollIntoView = async (el: import('playwright-core').ElementHandle<SVGElement | HTMLElement> | null) => {
+    if (el) await el.evaluate((e: HTMLElement) => e.scrollIntoView({ block: 'nearest', behavior: 'instant' }));
+  };
+
   for (const [fieldName, value] of Object.entries(normalizedAnswers)) {
     const raw = value;
     const isArray = Array.isArray(raw);
@@ -464,15 +509,24 @@ async function fillFormAndSubmit(
     if (fieldName === 'question_2') {
       const radio = await page.$(`input[name="question_2"][type="radio"][value="${values[0]}"]`);
       if (radio) {
+        await scrollIntoView(radio);
         await radio.click();
         logFill(fieldName, values[0] || '', true, '(radio clicked)');
       } else {
         const byLabel = await page.$(`[data-testid="${values[0]}"]`);
         if (byLabel) {
+          await scrollIntoView(byLabel);
           await byLabel.click();
           logFill(fieldName, values[0] || '', true, '(by testid)');
         } else {
-          logFill(fieldName, values[0] || '', false, '(radio/testid not found)');
+          const firstRadio = await page.$('input[name="question_2"][type="radio"]');
+          if (firstRadio) {
+            await scrollIntoView(firstRadio);
+            await firstRadio.click();
+            logFill(fieldName, values[0] || '', true, '(first radio selected)');
+          } else {
+            logFill(fieldName, values[0] || '', false, '(no radios found)');
+          }
         }
       }
       continue;
@@ -491,6 +545,7 @@ async function fillFormAndSubmit(
         }
         const divWithValue = await page.$(`div[value="${v}"]`);
         if (divWithValue) {
+          await scrollIntoView(divWithValue);
           await divWithValue.click();
           anyFilled = true;
         } else {
@@ -498,6 +553,7 @@ async function fillFormAndSubmit(
           for (const label of labels) {
             const text = (await label.textContent())?.trim() || '';
             if (text === v || text.includes(v)) {
+              await scrollIntoView(label);
               await label.click();
               anyFilled = true;
               break;
@@ -505,7 +561,22 @@ async function fillFormAndSubmit(
           }
         }
       }
-      logFill(fieldName, values, anyFilled, anyFilled ? '(checkbox/label)' : '(no match found)');
+      if (!anyFilled) {
+        const firstCheckbox = await page.$('input[name="question_3"][type="checkbox"]');
+        if (firstCheckbox && !(await firstCheckbox.isChecked())) {
+          await scrollIntoView(firstCheckbox);
+          await firstCheckbox.click();
+          anyFilled = true;
+        } else {
+          const firstDiv = await page.$('div[value]');
+          if (firstDiv) {
+            await scrollIntoView(firstDiv);
+            await firstDiv.click();
+            anyFilled = true;
+          }
+        }
+      }
+      logFill(fieldName, values, anyFilled, anyFilled ? '(checkbox/label or first option)' : '(no match found)');
       continue;
     }
     if (['question_4', 'question_6', 'question_7'].includes(fieldName)) {
@@ -521,54 +592,76 @@ async function fillFormAndSubmit(
     if (fieldName === 'question_5') {
       const radio = await page.$(`input[name="question_5"][type="radio"][value="${values[0]}"]`);
       if (radio) {
+        await scrollIntoView(radio);
         await radio.click();
         logFill(fieldName, values[0] || '', true, '(radio clicked)');
       } else {
         const byTestId = await page.$(`[data-testid="${values[0]}"]`);
         if (byTestId) {
+          await scrollIntoView(byTestId);
           await byTestId.click();
           logFill(fieldName, values[0] || '', true, '(by testid)');
         } else {
-          logFill(fieldName, values[0] || '', false, '(radio/testid not found)');
+          const firstRadio = await page.$('input[name="question_5"][type="radio"]');
+          if (firstRadio) {
+            await scrollIntoView(firstRadio);
+            await firstRadio.click();
+            logFill(fieldName, values[0] || '', true, '(first radio selected)');
+          } else {
+            logFill(fieldName, values[0] || '', false, '(no radios found)');
+          }
         }
       }
       continue;
     }
     if (fieldName === 'question_8') {
       const checkbox = await page.$(`input[name="question_8"][type="checkbox"]`);
-      if (checkbox && values.length > 0) {
+      if (checkbox) {
+        await scrollIntoView(checkbox);
         const checked = await checkbox.isChecked();
         if (!checked) await checkbox.click();
         logFill(fieldName, values, true, '(checkbox)');
       } else {
-        logFill(fieldName, values, !!checkbox, checkbox ? '(no value)' : '(checkbox not found)');
+        logFill(fieldName, values, false, '(checkbox not found)');
       }
       continue;
     }
     if (fieldName === 'question_9') {
       const combobox = await page.$('[name="question_9"][role="combobox"]');
       if (combobox) {
+        await scrollIntoView(combobox);
         await combobox.click();
         await page.waitForTimeout(300);
         const option = await page.$(`[role="option"]:has-text("${values[0]}")`);
         if (option) {
+          await scrollIntoView(option);
           await option.click();
           logFill(fieldName, values[0] || '', true, '(combobox option)');
         } else {
-          const listbox = await page.$('[role="listbox"]');
+          const opts = await page.$$('[role="option"]');
           let chosen = false;
-          if (listbox) {
-            const opts = await page.$$('[role="option"]');
-            for (const o of opts) {
-              const text = await o.textContent();
-              if (text && values[0] && text.trim().toLowerCase().includes(values[0].toLowerCase())) {
-                await o.click();
-                chosen = true;
-                break;
-              }
+          for (const o of opts) {
+            const text = await o.textContent();
+            if (text && values[0] && text.trim().toLowerCase().includes(values[0].toLowerCase())) {
+              await scrollIntoView(o);
+              await o.click();
+              chosen = true;
+              break;
             }
           }
-          logFill(fieldName, values[0] || '', chosen, chosen ? '(listbox option)' : '(option not found)');
+          let usedFirst = false;
+          if (!chosen && opts.length > 0) {
+            await scrollIntoView(opts[0]);
+            await opts[0].click();
+            chosen = true;
+            usedFirst = true;
+          }
+          logFill(
+            fieldName,
+            values[0] || '',
+            chosen,
+            chosen ? (usedFirst ? '(first option selected)' : '(listbox option)') : '(option not found)'
+          );
         }
       } else {
         logFill(fieldName, values[0] || '', false, '(combobox not found)');
@@ -646,12 +739,11 @@ function buildMergedAnswers(opts: BookCalendlySlotOptions): Record<string, strin
  */
 export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<BookCalendlySlotResult> {
   const normalizedTime = normalizeTimeForCalendly(opts.time);
-  const directUrl = buildDirectCalendlyUrl(opts.date, normalizedTime);
+  const normalizedAnswers = buildMergedAnswers(opts);
+  const directUrl = buildDirectCalendlyUrl(opts.date, normalizedTime, opts, normalizedAnswers);
 
   console.log(`${LOG_PREFIX} Starting booking: date=${opts.date} time=${opts.time} (normalized: ${normalizedTime}) email=${opts.email}`);
   console.log(`${LOG_PREFIX} Using direct form URL (skip calendar/time picker)`);
-
-  const normalizedAnswers = buildMergedAnswers(opts);
 
   try {
     const { page } = await ensurePageForEmail(

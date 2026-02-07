@@ -73,6 +73,8 @@ export interface BookCalendlySlotResult {
   date?: string;
   time?: string;
   error?: string;
+  /** Last step reached before failure (for debugging). */
+  failedAfterStep?: string;
   /** Field names or labels that Calendly indicated are missing or invalid (e.g. question_0, first_name). */
   missingFields?: string[];
   /** Error/validation messages shown on the page after submit failed. */
@@ -215,8 +217,10 @@ async function createNewBookingPage(calendlyUrl: string): Promise<{
     }
   }
 
+  console.log(`${LOG_PREFIX} [create] Acquiring browser and context lock...`);
   browser = await browserPool.getBrowser();
   releaseLock = await browserPool.acquireContextLock(browser);
+  console.log(`${LOG_PREFIX} [create] Creating new context and page...`);
 
   const contextOptions: {
     timezoneId: string;
@@ -267,6 +271,7 @@ async function createNewBookingPage(calendlyUrl: string): Promise<{
     if (browser) browserPool.releaseBrowser(browser);
     throw new Error('Failed to create browser context');
   }
+  console.log(`${LOG_PREFIX} [create] Context and page ready`);
 
   page.setDefaultNavigationTimeout(15000);
   // Only block tracking/ads so the page loads normally (reduces bot detection; full CSS/images look like real user).
@@ -299,46 +304,35 @@ async function createNewBookingPage(calendlyUrl: string): Promise<{
     cleaned = true;
     let savedVideoPath: string | null = null;
     try {
-      // Get video promise before closing (Playwright: use page.video() when recordVideo is set on context).
       const videoPromise = page?.video?.() ?? context?.video?.() ?? null;
       if (page && !page.isClosed()) await page.close().catch(() => {});
-      if (context) await context.close().catch(() => {});
-      await new Promise((r) => setTimeout(r, 300));
-      if (outcome === 'failure') {
-        if (!videoPromise) {
-          console.warn(`${LOG_PREFIX} No video promise (recording not active for this context)`);
-        } else {
-          try {
-            const video = await videoPromise;
-            if (!video) {
-              console.warn(`${LOG_PREFIX} Video promise resolved to null`);
-            } else {
-              const srcPath = await video.path();
-              if (!srcPath) {
-                console.warn(`${LOG_PREFIX} Video path is empty`);
-              } else if (!fs.existsSync(srcPath)) {
-                console.warn(`${LOG_PREFIX} Video file missing at: ${srcPath}`);
-              } else {
-                const failedDir = path.join(CALENDLY_VIDEO_DIR, 'failed');
-                try {
-                  fs.mkdirSync(failedDir, { recursive: true });
-                  const destName = `calendly-${sessionId}.webm`;
-                  const destPath = path.join(failedDir, destName);
-                  fs.copyFileSync(srcPath, destPath);
-                  savedVideoPath = destPath;
-                  console.log(`${LOG_PREFIX} Saved failure video: ${destPath}`);
-                } catch (copyErr) {
-                  console.warn(`${LOG_PREFIX} Could not copy video to ${failedDir}:`, (copyErr as Error)?.message);
-                  savedVideoPath = srcPath;
-                  console.log(`${LOG_PREFIX} Using temp video path: ${srcPath}`);
-                }
+      // Save failure video before closing context so we don't read a closed stream (avoids "Controller is already closed").
+      if (outcome === 'failure' && videoPromise) {
+        try {
+          const video = await videoPromise;
+          if (video) {
+            const srcPath = await video.path();
+            if (srcPath && fs.existsSync(srcPath)) {
+              const failedDir = path.join(CALENDLY_VIDEO_DIR, 'failed');
+              try {
+                fs.mkdirSync(failedDir, { recursive: true });
+                const destName = `calendly-${sessionId}.webm`;
+                const destPath = path.join(failedDir, destName);
+                fs.copyFileSync(srcPath, destPath);
+                savedVideoPath = destPath;
+                console.log(`${LOG_PREFIX} Saved failure video: ${destPath}`);
+              } catch (copyErr) {
+                console.warn(`${LOG_PREFIX} Could not copy video to ${failedDir}:`, (copyErr as Error)?.message);
+                savedVideoPath = srcPath;
               }
             }
-          } catch (e) {
-            console.warn(`${LOG_PREFIX} Could not save video:`, (e as Error)?.message);
           }
+        } catch (e) {
+          console.warn(`${LOG_PREFIX} Could not save video:`, (e as Error)?.message);
         }
       }
+      if (context) await context.close().catch(() => {});
+      await new Promise((r) => setTimeout(r, 200));
       if (outcome === 'success' && videoDir) {
         try {
           fs.rmSync(videoDir, { recursive: true, force: true });
@@ -747,9 +741,9 @@ async function fillFormAndSubmit(
   opts: BookCalendlySlotOptions,
   normalizedAnswers: Record<string, string | string[]>
 ): Promise<void> {
-  console.log(`${LOG_PREFIX} Waiting for questionnaire form...`);
+  console.log(`${LOG_PREFIX} [form] Waiting for questionnaire form (input[name=first_name])...`);
   await page.waitForSelector('input[name="first_name"]', { timeout: 10000 });
-  console.log(`${LOG_PREFIX} Form visible; filling radio/checkbox/combobox only (text fields prefilled via URL)`);
+  console.log(`${LOG_PREFIX} [form] Form visible; filling radio/checkbox/combobox only (text fields prefilled via URL)`);
   await humanDelay(300);
 
   const logFill = (field: string, value: string | string[], ok: boolean, detail?: string) => {
@@ -761,7 +755,8 @@ async function fillFormAndSubmit(
   // first_name, last_name, email, question_0 (phone), question_1, question_4, question_6, question_7 are prefilled via URL – do not fill again (avoids detached DOM).
   const urlPrefilledFields = new Set(['question_0', 'question_1', 'question_4', 'question_6', 'question_7']);
 
-  // Use locators instead of element handles so elements are re-resolved at click/fill time (avoids "Element is not attached to the DOM" when Calendly re-renders).
+  // Use locators and force: true so clicks succeed even if a Calendly overlay is still present (e.g. T2M0sxxflxZJtbSit_lZ).
+  const formClickOpts = { force: true, timeout: 15000 } as const;
   for (const [fieldName, value] of Object.entries(normalizedAnswers)) {
     if (urlPrefilledFields.has(fieldName)) {
       logFill(fieldName, value, true, '(prefilled via URL, skipped)');
@@ -772,17 +767,18 @@ async function fillFormAndSubmit(
     const values = isArray ? (raw as string[]) : [raw as string];
 
     if (fieldName === 'question_2') {
+      console.log(`${LOG_PREFIX} [form] Filling question_2 (value=${values[0]})...`);
       const radioLoc = page.locator(`input[name="question_2"][type="radio"][value="${values[0]}"]`).first();
       const byTestIdLoc = page.locator(`[data-testid="${values[0]}"]`).first();
       const firstRadioLoc = page.locator('input[name="question_2"][type="radio"]').first();
       if ((await radioLoc.count()) > 0) {
-        await radioLoc.click();
+        await radioLoc.click(formClickOpts);
         logFill(fieldName, values[0] || '', true, '(radio clicked)');
       } else if ((await byTestIdLoc.count()) > 0) {
-        await byTestIdLoc.click();
+        await byTestIdLoc.click(formClickOpts);
         logFill(fieldName, values[0] || '', true, '(by testid)');
       } else if ((await firstRadioLoc.count()) > 0) {
-        await firstRadioLoc.click();
+        await firstRadioLoc.click(formClickOpts);
         logFill(fieldName, values[0] || '', true, '(first radio selected)');
       } else {
         logFill(fieldName, values[0] || '', false, '(no radios found)');
@@ -790,9 +786,10 @@ async function fillFormAndSubmit(
       continue;
     }
     if (fieldName === 'question_3') {
+      console.log(`${LOG_PREFIX} [form] Filling question_3 (values=${JSON.stringify(values)})...`);
       await page.waitForTimeout(250);
       let anyFilled = false;
-      const clickOpt = { force: true } as const;
+      const clickOpt = formClickOpts;
       for (const v of values) {
         if (!v) continue;
         if (v === 'Other' || v.toLowerCase().includes('other')) {
@@ -833,17 +830,18 @@ async function fillFormAndSubmit(
       continue;
     }
     if (fieldName === 'question_5') {
+      console.log(`${LOG_PREFIX} [form] Filling question_5 (value=${values[0]})...`);
       const radioLoc = page.locator(`input[name="question_5"][type="radio"][value="${values[0]}"]`).first();
       const byTestIdLoc = page.locator(`[data-testid="${values[0]}"]`).first();
       const firstRadioLoc = page.locator('input[name="question_5"][type="radio"]').first();
       if ((await radioLoc.count()) > 0) {
-        await radioLoc.click();
+        await radioLoc.click(formClickOpts);
         logFill(fieldName, values[0] || '', true, '(radio clicked)');
       } else if ((await byTestIdLoc.count()) > 0) {
-        await byTestIdLoc.click();
+        await byTestIdLoc.click(formClickOpts);
         logFill(fieldName, values[0] || '', true, '(by testid)');
       } else if ((await firstRadioLoc.count()) > 0) {
-        await firstRadioLoc.click();
+        await firstRadioLoc.click(formClickOpts);
         logFill(fieldName, values[0] || '', true, '(first radio selected)');
       } else {
         logFill(fieldName, values[0] || '', false, '(no radios found)');
@@ -851,9 +849,10 @@ async function fillFormAndSubmit(
       continue;
     }
     if (fieldName === 'question_8') {
+      console.log(`${LOG_PREFIX} [form] Filling question_8...`);
       const checkboxLoc = page.locator('input[name="question_8"][type="checkbox"]').first();
       if ((await checkboxLoc.count()) > 0) {
-        if (!(await checkboxLoc.isChecked())) await checkboxLoc.click();
+        if (!(await checkboxLoc.isChecked())) await checkboxLoc.click(formClickOpts);
         logFill(fieldName, values, true, '(checkbox)');
       } else {
         logFill(fieldName, values, false, '(checkbox not found)');
@@ -861,14 +860,15 @@ async function fillFormAndSubmit(
       continue;
     }
     if (fieldName === 'question_9') {
+      console.log(`${LOG_PREFIX} [form] Filling question_9 (value=${values[0]})...`);
       const comboboxLoc = page.locator('[name="question_9"][role="combobox"]').first();
       if ((await comboboxLoc.count()) > 0) {
-        await comboboxLoc.click();
+        await comboboxLoc.click(formClickOpts);
         await humanDelay(300);
         const optsLoc = page.locator('[role="option"]');
         const count = await optsLoc.count();
         if (count > 0) {
-          await optsLoc.first().click();
+          await optsLoc.first().click(formClickOpts);
           logFill(fieldName, values[0] || '', true, '(first option selected)');
         } else {
           logFill(fieldName, values[0] || '', false, '(no options found)');
@@ -888,7 +888,7 @@ async function fillFormAndSubmit(
     }
   }
 
-  console.log(`${LOG_PREFIX} Form fill complete; looking for Schedule Event button`);
+  console.log(`${LOG_PREFIX} [form] Form fill complete; looking for Schedule Event button`);
   const submitLoc = page.locator('button[type="submit"]').filter({ hasText: 'Schedule Event' }).first();
   if ((await submitLoc.count()) === 0) {
     throw new Error('Schedule Event button not found');
@@ -896,8 +896,9 @@ async function fillFormAndSubmit(
 
   await humanDelay(400); // Brief pause before submit (more human-like)
   const stopNetworkLogging = startScheduleEventNetworkLogging(page);
-  console.log(`${LOG_PREFIX} Clicking Schedule Event (API requests/responses will be logged)`);
-  await submitLoc.click();
+  console.log(`${LOG_PREFIX} [form] Clicking Schedule Event...`);
+  await submitLoc.click(formClickOpts);
+  console.log(`${LOG_PREFIX} [form] Schedule Event clicked; waiting for confirmation URL...`);
 
   // After submit, a "Confirmed / You are scheduled with ..." popup may appear, then redirect to agentfire.com/thanks-for-booking/
   // Only consider the booking complete when we reach the thank-you page.
@@ -905,6 +906,7 @@ async function fillFormAndSubmit(
   try {
     try {
       await page.waitForURL(/agentfire\.com\/thanks-for-booking/, { timeout: confirmationTimeout });
+      console.log(`${LOG_PREFIX} [form] Confirmation URL reached`);
     } catch {
       const stillOnForm = await page.$('input[name="first_name"]').then((el) => !!el);
       let hint = '';
@@ -973,8 +975,25 @@ export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<B
 
   const { page, cleanup } = await createNewBookingPage(directUrl);
   let succeeded = false;
+  let currentStep = 'create_page';
   try {
+    currentStep = 'cookie_dismiss';
+    console.log(`${LOG_PREFIX} [step=${currentStep}] Dismissing cookie consent...`);
     await dismissCookieConsent(page);
+    console.log(`${LOG_PREFIX} [step=${currentStep}] Cookie consent done`);
+
+    currentStep = 'wait_banner_hidden';
+    console.log(`${LOG_PREFIX} [step=${currentStep}] Waiting for banner hidden...`);
+    try {
+      await page.waitForSelector('#onetrust-banner-sdk', { state: 'hidden', timeout: 5000 });
+      console.log(`${LOG_PREFIX} [step=${currentStep}] Banner hidden`);
+    } catch {
+      console.log(`${LOG_PREFIX} [step=${currentStep}] Banner wait skipped (different id or already gone)`);
+    }
+    await humanDelay(600);
+
+    currentStep = 'fill_form';
+    console.log(`${LOG_PREFIX} [step=${currentStep}] Starting form fill and submit...`);
     await fillFormAndSubmit(page, opts, normalizedAnswers);
 
     console.log(`${LOG_PREFIX} Booking success: ${opts.date} ${opts.time}`);
@@ -986,7 +1005,7 @@ export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<B
     };
   } catch (error: any) {
     let message = error?.message || String(error);
-    console.error('Calendly booking error:', message);
+    console.error(`Calendly booking error (failed after step=${currentStep}):`, message);
     let missingFields: string[] | undefined;
     let validationMessages: string[] | undefined;
     try {
@@ -1002,10 +1021,12 @@ export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<B
     } catch (_) {
       /* ignore capture errors */
     }
+    console.log(`${LOG_PREFIX} [failure] Capturing validation errors and saving video (failedAfterStep=${currentStep})...`);
     const videoPath = await cleanup('failure');
     return {
       success: false,
       error: message,
+      failedAfterStep: currentStep,
       ...(missingFields?.length ? { missingFields } : {}),
       ...(validationMessages?.length ? { validationMessages } : {}),
       ...(videoPath ? { videoPath } : {}),

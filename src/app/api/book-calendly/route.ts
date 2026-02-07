@@ -124,6 +124,7 @@ export async function POST(request: NextRequest) {
       const isDay = result.error?.toLowerCase().includes('day') || result.error?.toLowerCase().includes('month');
       const code = isSlot ? ErrorCode.SLOT_NOT_FOUND : isDay ? ErrorCode.DAY_BUTTON_NOT_FOUND : ErrorCode.SCRAPING_FAILED;
       const metadata: Record<string, unknown> = { originalError: result.error };
+      if (result.failedAfterStep) metadata.failedAfterStep = result.failedAfterStep;
       if (result.missingFields?.length) metadata.missingFields = result.missingFields;
       if (result.validationMessages?.length) metadata.validationMessages = result.validationMessages;
       if (result.videoPath) metadata.videoPath = result.videoPath;

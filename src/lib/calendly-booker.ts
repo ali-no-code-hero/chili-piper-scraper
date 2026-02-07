@@ -9,6 +9,16 @@ const CALENDLY_VIDEO_ENABLED = process.env.CALENDLY_VIDEO_ENABLED !== '0' && pro
 
 const CALENDLY_BASE_URL = 'https://calendly.com/agentfire-demo/30-minute-demo';
 
+/** Realistic Chrome UA to reduce bot detection (Calendly context only). */
+const CALENDLY_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+/** Small random delay (ms) for more human-like behavior. */
+function humanDelay(baseMs: number, jitterMs: number = 80): Promise<void> {
+  const ms = Math.max(0, baseMs + (Math.random() * 2 - 1) * jitterMs);
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 /** Label-based keys for answers; maps to question_0 .. question_9 */
 export const CALENDLY_QUESTION_LABEL_TO_NAME: Record<string, string> = {
   'Phone Number': 'question_0',
@@ -208,8 +218,17 @@ async function createNewBookingPage(calendlyUrl: string): Promise<{
   browser = await browserPool.getBrowser();
   releaseLock = await browserPool.acquireContextLock(browser);
 
-  const contextOptions: { timezoneId: string; recordVideo?: { dir: string; size: { width: number; height: number } } } = {
+  const contextOptions: {
+    timezoneId: string;
+    locale: string;
+    userAgent: string;
+    viewport: { width: number; height: number };
+    recordVideo?: { dir: string; size: { width: number; height: number } };
+  } = {
     timezoneId: 'America/Chicago',
+    locale: 'en-US',
+    userAgent: CALENDLY_USER_AGENT,
+    viewport: { width: 1280, height: 720 },
   };
   if (videoDir) contextOptions.recordVideo = { dir: videoDir, size: { width: 1280, height: 720 } };
 
@@ -250,19 +269,15 @@ async function createNewBookingPage(calendlyUrl: string): Promise<{
   }
 
   page.setDefaultNavigationTimeout(15000);
+  // Only block tracking/ads so the page loads normally (reduces bot detection; full CSS/images look like real user).
   await page.route('**/*', (route: any) => {
     const url = route.request().url();
-    const rt = route.request().resourceType();
     if (
-      rt === 'image' ||
-      rt === 'stylesheet' ||
-      rt === 'font' ||
-      rt === 'media' ||
       url.includes('google-analytics') ||
       url.includes('googletagmanager') ||
       url.includes('facebook.net') ||
       url.includes('doubleclick') ||
-      url.includes('ads') ||
+      url.includes('/ads/') ||
       url.includes('tracking') ||
       url.includes('pixel') ||
       url.includes('beacon')
@@ -661,7 +676,7 @@ async function fillFormAndSubmit(
   console.log(`${LOG_PREFIX} Waiting for questionnaire form...`);
   await page.waitForSelector('input[name="first_name"]', { timeout: 10000 });
   console.log(`${LOG_PREFIX} Form visible; filling radio/checkbox/combobox only (text fields prefilled via URL)`);
-  await page.waitForTimeout(300);
+  await humanDelay(300);
 
   const logFill = (field: string, value: string | string[], ok: boolean, detail?: string) => {
     const v = Array.isArray(value) ? value.join(', ') : value;
@@ -775,7 +790,7 @@ async function fillFormAndSubmit(
       const comboboxLoc = page.locator('[name="question_9"][role="combobox"]').first();
       if ((await comboboxLoc.count()) > 0) {
         await comboboxLoc.click();
-        await page.waitForTimeout(300);
+        await humanDelay(300);
         const optsLoc = page.locator('[role="option"]');
         const count = await optsLoc.count();
         if (count > 0) {
@@ -805,6 +820,7 @@ async function fillFormAndSubmit(
     throw new Error('Schedule Event button not found');
   }
 
+  await humanDelay(400); // Brief pause before submit (more human-like)
   const stopNetworkLogging = startScheduleEventNetworkLogging(page);
   console.log(`${LOG_PREFIX} Clicking Schedule Event (API requests/responses will be logged)`);
   await submitLoc.click();

@@ -126,9 +126,10 @@ class BrowserPool {
             '--disable-infobars',
             '--disable-notifications',
             '--disable-setuid-sandbox',
+            '--disable-blink-features=AutomationControlled', // Reduces bot detection (navigator.webdriver)
             // Removed --single-process as it can cause immediate crashes
           ],
-          ignoreDefaultArgs: ['--disable-extensions']
+          ignoreDefaultArgs: ['--disable-extensions', '--enable-automation']
         });
         
         // Wait a moment for browser to stabilize after launch
@@ -205,9 +206,10 @@ class BrowserPool {
                 '--mute-audio',
                 '--no-first-run',
                 '--disable-infobars',
-                '--disable-notifications'
-                // Removed --single-process
-              ]
+                '--disable-notifications',
+                '--disable-blink-features=AutomationControlled'
+              ],
+              ignoreDefaultArgs: ['--disable-extensions', '--enable-automation']
             });
           } catch (installError: any) {
             console.error('❌ Failed to install Playwright browser:', installError.message);

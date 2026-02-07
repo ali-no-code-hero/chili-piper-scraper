@@ -447,10 +447,17 @@ async function captureCalendlyValidationErrors(page: Page): Promise<{
 
 async function dismissCookieConsent(page: Page): Promise<void> {
   try {
-    // Give the cookie banner time to render (often loaded by JS after page load)
-    await humanDelay(800);
-    const clickOpts = { timeout: 3000 } as const;
+    // OneTrust banner ("We use cookies and similar technologies...") often loads after DOM – wait for it
+    const bannerSelector = '#onetrust-consent-sdk';
+    try {
+      await page.waitForSelector(bannerSelector, { state: 'visible', timeout: 6000 });
+    } catch {
+      // Banner may not appear or already dismissed
+    }
+    await humanDelay(500);
+    const clickOpts = { timeout: 4000, force: true } as const;
 
+    // OneTrust: try known accept button IDs first (inside or outside banner)
     const acceptBtn = await page.$('#accept-recommended-btn-handler');
     if (acceptBtn) {
       console.log(`${LOG_PREFIX} Dismissing cookie consent (Allow All)`);
@@ -458,19 +465,51 @@ async function dismissCookieConsent(page: Page): Promise<void> {
       await humanDelay(400);
       return;
     }
-    // "I Understand" – try button role first, then any clickable with that text
-    const byRole = page.getByRole('button', { name: /I\s*understand/i }).first();
-    if ((await byRole.count()) > 0) {
-      await byRole.click(clickOpts);
-      console.log(`${LOG_PREFIX} Dismissing cookie consent (I understand)`);
+    const oneTrustAccept = await page.$('#onetrust-accept-btn-handler');
+    if (oneTrustAccept) {
+      console.log(`${LOG_PREFIX} Dismissing cookie consent (OneTrust accept)`);
+      await oneTrustAccept.click(clickOpts);
       await humanDelay(400);
       return;
     }
-    const byText = page.locator('a, button, [role="button"], [class*="button"]').filter({ hasText: /I\s*understand/i }).first();
+    // Button/link with "I Understand" or "Accept" (banner text: "cookies and similar technologies")
+    const byRole = page.getByRole('button', { name: /I\s*understand|Accept\s*all|Allow\s*all/i }).first();
+    if ((await byRole.count()) > 0) {
+      await byRole.click(clickOpts);
+      console.log(`${LOG_PREFIX} Dismissing cookie consent (I understand / Accept)`);
+      await humanDelay(400);
+      return;
+    }
+    const byText = page.locator('#onetrust-consent-sdk a, #onetrust-consent-sdk button, [id*="onetrust"] button, [id*="onetrust"] a').filter({ hasText: /I\s*understand|Accept|Allow\s*all/i }).first();
     if ((await byText.count()) > 0) {
       await byText.click(clickOpts);
-      console.log(`${LOG_PREFIX} Dismissing cookie consent (I understand, by text)`);
+      console.log(`${LOG_PREFIX} Dismissing cookie consent (OneTrust by text)`);
       await humanDelay(400);
+      return;
+    }
+    const anyAccept = page.locator('a, button').filter({ hasText: /I\s*understand/i }).first();
+    if ((await anyAccept.count()) > 0) {
+      await anyAccept.click(clickOpts);
+      console.log(`${LOG_PREFIX} Dismissing cookie consent (I understand, any)`);
+      await humanDelay(400);
+      return;
+    }
+    // Fallback: OneTrust JS API if exposed (AllowAll or Close dismisses banner)
+    const dismissed = await page.evaluate(() => {
+      const w = window as unknown as { OneTrust?: { AllowAll?: () => void; Close?: () => void } };
+      if (typeof w.OneTrust?.AllowAll === 'function') {
+        w.OneTrust.AllowAll();
+        return true;
+      }
+      if (typeof w.OneTrust?.Close === 'function') {
+        w.OneTrust.Close();
+        return true;
+      }
+      return false;
+    });
+    if (dismissed) {
+      console.log(`${LOG_PREFIX} Dismissing cookie consent (OneTrust JS)`);
+      await humanDelay(500);
       return;
     }
     console.log(`${LOG_PREFIX} No cookie consent banner found`);

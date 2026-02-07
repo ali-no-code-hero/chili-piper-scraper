@@ -447,24 +447,35 @@ async function captureCalendlyValidationErrors(page: Page): Promise<{
 
 async function dismissCookieConsent(page: Page): Promise<void> {
   try {
+    // Give the cookie banner time to render (often loaded by JS after page load)
+    await humanDelay(800);
+    const clickOpts = { timeout: 3000 } as const;
+
     const acceptBtn = await page.$('#accept-recommended-btn-handler');
     if (acceptBtn) {
       console.log(`${LOG_PREFIX} Dismissing cookie consent (Allow All)`);
-      await acceptBtn.click({ timeout: 2000 });
-      await page.waitForTimeout(500);
+      await acceptBtn.click(clickOpts);
+      await humanDelay(400);
       return;
     }
-    // Compact banner may show "I understand" instead of "Allow All"
-    try {
-      const byText = page.getByRole('button', { name: /I understand/i }).first();
-      await byText.click({ timeout: 2000 });
+    // "I Understand" – try button role first, then any clickable with that text
+    const byRole = page.getByRole('button', { name: /I\s*understand/i }).first();
+    if ((await byRole.count()) > 0) {
+      await byRole.click(clickOpts);
       console.log(`${LOG_PREFIX} Dismissing cookie consent (I understand)`);
-      await page.waitForTimeout(500);
-    } catch {
-      console.log(`${LOG_PREFIX} No cookie consent banner found`);
+      await humanDelay(400);
+      return;
     }
-  } catch {
-    console.log(`${LOG_PREFIX} Cookie consent dismiss skipped (no button or error)`);
+    const byText = page.locator('a, button, [role="button"], [class*="button"]').filter({ hasText: /I\s*understand/i }).first();
+    if ((await byText.count()) > 0) {
+      await byText.click(clickOpts);
+      console.log(`${LOG_PREFIX} Dismissing cookie consent (I understand, by text)`);
+      await humanDelay(400);
+      return;
+    }
+    console.log(`${LOG_PREFIX} No cookie consent banner found`);
+  } catch (e) {
+    console.log(`${LOG_PREFIX} Cookie consent dismiss skipped: ${(e as Error)?.message || ''}`);
   }
 }
 

@@ -18,6 +18,8 @@ function isValidDate(dateStr: string): boolean {
 export async function POST(request: NextRequest) {
   const requestStartTime = Date.now();
   const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const clientIP = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
+  const userAgent = request.headers.get('user-agent') || 'unknown';
 
   try {
     const securityResult = await security.secureRequest(request, {
@@ -120,9 +122,22 @@ export async function POST(request: NextRequest) {
     const responseTime = Date.now() - requestStartTime;
 
     if (!result.success) {
+      security.logSecurityEvent('CALENDLY_BOOKING_FAILED', {
+        endpoint: '/api/book-calendly',
+        userAgent,
+        responseTime,
+        error: result.error,
+        failedAfterStep: result.failedAfterStep,
+        missingFields: result.missingFields,
+      }, clientIP);
+
       const isSlot = result.error?.toLowerCase().includes('slot') || result.error?.toLowerCase().includes('time');
       const isDay = result.error?.toLowerCase().includes('day') || result.error?.toLowerCase().includes('month');
-      const code = isSlot ? ErrorCode.SLOT_NOT_FOUND : isDay ? ErrorCode.DAY_BUTTON_NOT_FOUND : ErrorCode.SCRAPING_FAILED;
+      const isValidation = result.error?.toLowerCase().includes('validation') || result.missingFields?.length;
+      const code = isValidation ? ErrorCode.VALIDATION_ERROR
+        : isSlot ? ErrorCode.SLOT_NOT_FOUND
+        : isDay ? ErrorCode.DAY_BUTTON_NOT_FOUND
+        : ErrorCode.SCRAPING_FAILED;
       const metadata: Record<string, unknown> = { originalError: result.error };
       if (result.failedAfterStep) metadata.failedAfterStep = result.failedAfterStep;
       if (result.missingFields?.length) metadata.missingFields = result.missingFields;
@@ -142,6 +157,14 @@ export async function POST(request: NextRequest) {
       return security.addSecurityHeaders(errRes);
     }
 
+    security.logSecurityEvent('CALENDLY_BOOKING_SUCCESS', {
+      endpoint: '/api/book-calendly',
+      userAgent,
+      responseTime,
+      date: result.date,
+      time: result.time,
+    }, clientIP);
+
     const successResponse = ErrorHandler.createSuccess(
       SuccessCode.OPERATION_SUCCESS,
       {
@@ -160,23 +183,36 @@ export async function POST(request: NextRequest) {
     console.error('Book Calendly API error:', error);
     const responseTime = Date.now() - requestStartTime;
 
-    if (error.message?.includes('timeout')) {
+    security.logSecurityEvent('CALENDLY_API_ERROR', {
+      endpoint: '/api/book-calendly',
+      userAgent,
+      responseTime,
+      error: error?.message ?? String(error),
+    }, clientIP);
+
+    if (error?.message?.includes('timeout')) {
       const errorResponse = ErrorHandler.createError(
         ErrorCode.REQUEST_TIMEOUT,
         'Booking timed out',
-        'Request timed out. Please try again.',
-        { originalError: error.message },
+        'Request timed out while waiting in queue or during execution. Please try again.',
+        {
+          queueStatus: concurrencyManager.getStatus(),
+          originalError: error?.message,
+        },
         requestId,
         responseTime
       );
       return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: 504 }));
     }
-    if (error.message?.includes('queue is full')) {
+    if (error?.message?.includes('queue is full')) {
       const errorResponse = ErrorHandler.createError(
         ErrorCode.QUEUE_FULL,
         'Request queue is full',
         'Too many requests. Please try again later.',
-        undefined,
+        {
+          queueStatus: concurrencyManager.getStatus(),
+          originalError: error?.message,
+        },
         requestId,
         responseTime
       );

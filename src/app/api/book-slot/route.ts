@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { SecurityMiddleware, ValidationSchemas } from '@/lib/security-middleware';
 import { concurrencyManager } from '@/lib/concurrency-manager';
 import { ErrorHandler, ErrorCode, SuccessCode } from '@/lib/error-handler';
@@ -7,6 +10,44 @@ import { ChiliPiperScraper } from '@/lib/scraper';
 import { browserPool } from '@/lib/browser-pool';
 
 const security = new SecurityMiddleware();
+
+const CHILI_PIPER_VIDEO_DIR = process.env.CHILI_PIPER_VIDEO_DIR || path.join(process.cwd(), '.chili-piper-videos');
+const CHILI_PIPER_VIDEO_ENABLED = process.env.CHILI_PIPER_VIDEO_ENABLED !== '0' && process.env.CHILI_PIPER_VIDEO_ENABLED !== 'false';
+
+/**
+ * Save Chili Piper failure video before context is closed (avoids "Controller is already closed").
+ * Call with the context and page that were recording. Does not close context.
+ */
+async function saveChiliPiperFailureVideo(
+  context: any,
+  page: any,
+  videoDir: string,
+  sessionId: string
+): Promise<string | null> {
+  let savedPath: string | null = null;
+  try {
+    const videoPromise = page?.video?.() ?? context?.video?.() ?? null;
+    if (page && !page.isClosed()) await page.close().catch(() => {});
+    if (videoPromise) {
+      const video = await videoPromise;
+      if (video) {
+        const srcPath = await video.path();
+        if (srcPath && fs.existsSync(srcPath)) {
+          const failedDir = path.join(CHILI_PIPER_VIDEO_DIR, 'failed');
+          fs.mkdirSync(failedDir, { recursive: true });
+          const destName = `chili-piper-${sessionId}.webm`;
+          const destPath = path.join(failedDir, destName);
+          fs.copyFileSync(srcPath, destPath);
+          savedPath = destPath;
+          console.log('[Chili Piper] Saved failure video:', destPath);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[Chili Piper] Could not save failure video:', (e as Error)?.message);
+  }
+  return savedPath;
+}
 
 /**
  * Parse date/time string like "November 13, 2025 at 1:25 PM CST"
@@ -111,17 +152,30 @@ async function createInstanceForEmail(
   firstName: string,
   lastName: string,
   phone: string
-): Promise<{ browser: any; context: any; page: any } | null> {
+): Promise<{ browser: any; context: any; page: any; videoDir?: string; sessionId?: string } | null> {
   let browser: any = null;
   let context: any = null;
   let page: any = null;
   let releaseLock: (() => void) | null = null;
-  
+  let videoDir: string | null = null;
+  const sessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
   try {
     const baseUrl = process.env.CHILI_PIPER_FORM_URL || "https://cincpro.chilipiper.com/concierge-router/link/lp-request-a-demo-agent-advice";
     const phoneFieldId = process.env.CHILI_PIPER_PHONE_FIELD_ID || 'aa1e0f82-816d-478f-bf04-64a447af86b3';
     const targetUrl = buildParameterizedUrl(firstName, lastName, email, phone, baseUrl, phoneFieldId);
-    
+
+    if (CHILI_PIPER_VIDEO_ENABLED) {
+      const recordDir = path.join(os.tmpdir(), 'chili-piper-videos', sessionId);
+      try {
+        fs.mkdirSync(recordDir, { recursive: true });
+        videoDir = recordDir;
+        console.log(`[Chili Piper] Recording enabled: ${videoDir}`);
+      } catch (e) {
+        console.warn('[Chili Piper] Video disabled (mkdir failed):', (e as Error)?.message);
+      }
+    }
+
     browser = await browserPool.getBrowser();
     
     // Acquire lock for context creation to prevent race conditions
@@ -140,10 +194,11 @@ async function createInstanceForEmail(
           browser = await browserPool.getBrowser();
           releaseLock = await browserPool.acquireContextLock(browser);
         }
-        // Create a context with US Central Time timezone
-        context = await browser.newContext({
+        const contextOptions: { timezoneId: string; recordVideo?: { dir: string; size: { width: number; height: number } } } = {
           timezoneId: 'America/Chicago',
-        });
+        };
+        if (videoDir) contextOptions.recordVideo = { dir: videoDir, size: { width: 1280, height: 720 } };
+        context = await browser.newContext(contextOptions);
         page = await context.newPage();
         break; // Success, exit retry loop
       } catch (error: any) {
@@ -226,8 +281,11 @@ async function createInstanceForEmail(
     
     // Wait for calendar
     await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 10000 });
-    
-    return { browser, context, page };
+
+    const out: { browser: any; context: any; page: any; videoDir?: string; sessionId?: string } = { browser, context, page };
+    if (videoDir) out.videoDir = videoDir;
+    if (sessionId) out.sessionId = sessionId;
+    return out;
   } catch (error) {
     console.error('Error creating instance:', error);
     
@@ -342,39 +400,43 @@ export async function POST(request: NextRequest) {
     }
 
     // Run booking through concurrency manager
-    const result = await concurrencyManager.execute(async () => {
+    const result = await concurrencyManager.execute(async (): Promise<
+      { success: true; date: string; time: string } | { success: false; error: string; videoPath?: string }
+    > => {
       const scraper = new ChiliPiperScraper();
-      
-      // Try to get existing instance
-      let instance = scraper.getExistingInstance(email);
+      let instance: { browser: any; context: any; page: any } | null = null;
       let browser: any = null;
       let context: any = null;
       let page: any = null;
-      
-      if (!instance) {
-        // Create new instance on-demand
-        console.log(`📝 No existing instance for ${email}, creating new one...`);
-        if (!firstName || !lastName || !phone) {
-          throw new Error('firstName, lastName, and phone are required when creating a new instance');
-        }
-        const newInstance = await createInstanceForEmail(email, firstName, lastName, phone);
-        if (!newInstance) {
-          throw new Error('Failed to create browser instance');
-        }
-        browser = newInstance.browser;
-        context = newInstance.context;
-        page = newInstance.page;
-        
-        // Register the instance
-        await browserInstanceManager.registerInstance(email, browser, context, page);
-      } else {
-        browser = instance.browser;
-        context = instance.context;
-        page = instance.page;
-        console.log(`✅ Using existing instance for ${email}`);
-      }
+      let videoDir: string | undefined;
+      let sessionId: string | undefined;
 
-      // Verify page is still valid
+      try {
+        instance = scraper.getExistingInstance(email);
+
+        if (!instance) {
+          console.log(`📝 No existing instance for ${email}, creating new one...`);
+          if (!firstName || !lastName || !phone) {
+            throw new Error('firstName, lastName, and phone are required when creating a new instance');
+          }
+          const newInstance = await createInstanceForEmail(email, firstName, lastName, phone);
+          if (!newInstance) {
+            throw new Error('Failed to create browser instance');
+          }
+          browser = newInstance.browser;
+          context = newInstance.context;
+          page = newInstance.page;
+          videoDir = newInstance.videoDir;
+          sessionId = newInstance.sessionId;
+          await browserInstanceManager.registerInstance(email, browser, context, page);
+        } else {
+          browser = instance.browser;
+          context = instance.context;
+          page = instance.page;
+          console.log(`✅ Using existing instance for ${email}`);
+        }
+
+        // Verify page is still valid
       if (page.isClosed()) {
         throw new Error('Browser page was closed');
       }
@@ -564,11 +626,35 @@ export async function POST(request: NextRequest) {
       // Wait a moment to ensure booking is processed
       await page.waitForTimeout(1000);
 
-      // Close instance after successful booking
-      await browserInstanceManager.cleanupInstance(email);
+        // Close instance after successful booking
+        await browserInstanceManager.cleanupInstance(email);
 
-      return { success: true, date, time };
+        return { success: true, date, time };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        let videoPath: string | undefined;
+        if (videoDir && sessionId && context && page) {
+          const saved = await saveChiliPiperFailureVideo(context, page, videoDir, sessionId);
+          if (saved) videoPath = saved;
+        }
+        await browserInstanceManager.cleanupInstance(email);
+        return { success: false, error: message, videoPath };
+      }
     }, 30000); // 30 second timeout for booking
+
+    if (!result.success) {
+      const responseTime = Date.now() - requestStartTime;
+      const errorResponse = ErrorHandler.createError(
+        ErrorCode.SCRAPING_FAILED,
+        'Booking failed',
+        result.error,
+        { videoPath: result.videoPath },
+        requestId,
+        responseTime
+      );
+      const response = NextResponse.json(errorResponse, { status: 500 });
+      return security.addSecurityHeaders(response);
+    }
 
     const responseTime = Date.now() - requestStartTime;
     const successResponse = ErrorHandler.createSuccess(

@@ -259,6 +259,42 @@ export class ErrorHandler {
         responseTime
       );
     }
+
+    // Calendly booking: stream/controller closed (e.g. video save after context close)
+    if (errorMessage.includes('Controller is already closed')) {
+      return this.createError(
+        ErrorCode.BROWSER_ERROR,
+        'Browser or stream connection closed',
+        'The booking session ended unexpectedly (e.g. video or connection closed). The booking may have completed; check your calendar.',
+        { originalError: errorMessage },
+        requestId,
+        responseTime
+      );
+    }
+
+    // Calendly: form element not clickable (overlay intercepts)
+    if (errorMessage.includes('intercepts pointer events')) {
+      return this.createError(
+        ErrorCode.SCRAPING_FAILED,
+        'Form element blocked',
+        'A page overlay blocked the booking form. This can happen when the cookie banner or another dialog is still visible. Please try again.',
+        { originalError: errorMessage },
+        requestId,
+        responseTime
+      );
+    }
+
+    // Calendly: Schedule Event button or confirmation
+    if (errorMessage.includes('Schedule Event button not found') || errorMessage.includes('Confirmation page did not load')) {
+      return this.createError(
+        ErrorCode.SCRAPING_FAILED,
+        'Booking form or confirmation failed',
+        'The booking could not be completed. The slot may no longer be available, or a required field may be missing.',
+        { originalError: errorMessage },
+        requestId,
+        responseTime
+      );
+    }
     
     // Generic scraping error
     if (errorMessage.includes('Scraping') || errorMessage.includes('scrape')) {

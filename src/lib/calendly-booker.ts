@@ -7,7 +7,29 @@ import { browserPool } from './browser-pool';
 const CALENDLY_VIDEO_DIR = process.env.CALENDLY_VIDEO_DIR || path.join(process.cwd(), '.calendly-videos');
 const CALENDLY_VIDEO_ENABLED = process.env.CALENDLY_VIDEO_ENABLED !== '0' && process.env.CALENDLY_VIDEO_ENABLED !== 'false';
 
-const CALENDLY_BASE_URL = 'https://calendly.com/agentfire-demo/30-minute-demo';
+const CALENDLY_BASE_URL_DEFAULT = 'https://calendly.com/agentfire-demo/30-minute-demo';
+
+function getCalendlyBaseUrl(): string {
+  return process.env.CALENDLY_BASE_URL || CALENDLY_BASE_URL_DEFAULT;
+}
+
+function isSimpleFormMode(): boolean {
+  const explicit = process.env.CALENDLY_SIMPLE_FORM;
+  if (explicit === '1' || explicit === 'true') return true;
+  if (explicit === '0' || explicit === 'false') return false;
+  const base = getCalendlyBaseUrl();
+  return base.includes('exclusive-referral-program-agent-advice');
+}
+
+function getConfirmationUrlRegex(): RegExp | null {
+  const raw = process.env.CALENDLY_CONFIRMATION_URL_REGEX;
+  if (!raw || raw.trim() === '') return null;
+  try {
+    return new RegExp(raw.trim());
+  } catch {
+    return null;
+  }
+}
 
 /** Realistic Chrome UA to reduce bot detection (Calendly context only). */
 const CALENDLY_USER_AGENT =
@@ -162,12 +184,25 @@ function buildCalendlyPrefillParams(
   return params.toString();
 }
 
+/** Simple form: only name (full), email, a1 (phone). */
+function buildSimplePrefillParams(opts: BookCalendlySlotOptions): string {
+  const params = new URLSearchParams();
+  params.set('name', `${opts.firstName} ${opts.lastName}`.trim());
+  params.set('email', opts.email);
+  if (opts.phone != null && opts.phone !== '') {
+    params.set('a1', opts.phone);
+  }
+  return params.toString();
+}
+
 /** Build direct Calendly URL to the booking form for a given date/time (skips calendar and time picker). Includes prefill params. */
 function buildDirectCalendlyUrl(
   date: string,
   normalizedTime: string,
   opts: BookCalendlySlotOptions,
-  normalizedAnswers: Record<string, string | string[]>
+  normalizedAnswers: Record<string, string | string[]>,
+  baseUrl: string,
+  simpleForm: boolean
 ): string {
   const match = normalizedTime.match(/^(\d{1,2}):(\d{2})(am|pm)$/);
   let hour = 0;
@@ -185,8 +220,8 @@ function buildDirectCalendlyUrl(
   const isoDateTime = `${date}T${hourStr}:${minStr}:00${tzOffset}`;
   const month = date.slice(0, 7);
   const baseQuery = `month=${month}&date=${date}`;
-  const prefill = buildCalendlyPrefillParams(opts, normalizedAnswers);
-  return `${CALENDLY_BASE_URL}/${isoDateTime}?${baseQuery}&${prefill}`;
+  const prefill = simpleForm ? buildSimplePrefillParams(opts) : buildCalendlyPrefillParams(opts, normalizedAnswers);
+  return `${baseUrl}/${isoDateTime}?${baseQuery}&${prefill}`;
 }
 
 /**
@@ -739,10 +774,19 @@ async function clickNextButton(page: Page, normalizedTime: string): Promise<void
 async function fillFormAndSubmit(
   page: Page,
   opts: BookCalendlySlotOptions,
-  normalizedAnswers: Record<string, string | string[]>
+  normalizedAnswers: Record<string, string | string[]>,
+  simpleForm: boolean,
+  confirmationRegex: RegExp | null
 ): Promise<void> {
-  console.log(`${LOG_PREFIX} [form] Waiting for questionnaire form (input[name=first_name])...`);
-  await page.waitForSelector('input[name="first_name"]', { timeout: 10000 });
+  // Wait for either full form (first_name) or simple form (name)
+  console.log(`${LOG_PREFIX} [form] Waiting for questionnaire form...`);
+  await page.waitForSelector('input[name="first_name"], input[name="name"]', { timeout: 10000 });
+
+  if (simpleForm) {
+    await fillSimpleFormAndSubmit(page, opts, confirmationRegex);
+    return;
+  }
+
   console.log(`${LOG_PREFIX} [form] Form visible; filling radio/checkbox/combobox only (text fields prefilled via URL)`);
   await humanDelay(300);
 
@@ -898,47 +942,124 @@ async function fillFormAndSubmit(
   const stopNetworkLogging = startScheduleEventNetworkLogging(page);
   console.log(`${LOG_PREFIX} [form] Clicking Schedule Event...`);
   await submitLoc.click(formClickOpts);
-  console.log(`${LOG_PREFIX} [form] Schedule Event clicked; waiting for confirmation URL...`);
+  console.log(`${LOG_PREFIX} [form] Schedule Event clicked; waiting for confirmation...`);
 
-  // After submit, a "Confirmed / You are scheduled with ..." popup may appear, then redirect to agentfire.com/thanks-for-booking/
-  // Only consider the booking complete when we reach the thank-you page.
+  await waitForConfirmation(page, confirmationRegex, false);
+  console.log(`${LOG_PREFIX} Reached confirmation; booking complete`);
+  stopNetworkLogging();
+}
+
+/** Simple form: only name, email, phone. Fills and submits, then waits for confirmation. */
+async function fillSimpleFormAndSubmit(
+  page: Page,
+  opts: BookCalendlySlotOptions,
+  confirmationRegex: RegExp | null
+): Promise<void> {
+  const formClickOpts = { force: true, timeout: 15000 } as const;
+  const fullName = `${opts.firstName} ${opts.lastName}`.trim();
+
+  // Fill name: try single "name" field first, else first_name + last_name
+  const nameInput = page.locator('input[name="name"]').first();
+  if ((await nameInput.count()) > 0) {
+    await nameInput.fill(fullName);
+    console.log(`${LOG_PREFIX} [form] Filled name (single field)`);
+  } else {
+    const firstNameLoc = page.locator('input[name="first_name"]').first();
+    const lastNameLoc = page.locator('input[name="last_name"]').first();
+    if ((await firstNameLoc.count()) > 0) await firstNameLoc.fill(opts.firstName);
+    if ((await lastNameLoc.count()) > 0) await lastNameLoc.fill(opts.lastName);
+    console.log(`${LOG_PREFIX} [form] Filled first_name, last_name`);
+  }
+
+  const emailLoc = page.locator('input[name="email"]').first();
+  if ((await emailLoc.count()) > 0) await emailLoc.fill(opts.email);
+
+  // Phone: often question_0 or a1; try common selectors
+  const phoneValue = opts.phone ?? '';
+  if (phoneValue) {
+    const phoneLoc = page.locator('input[name="question_0"], input[name="a1"], input[type="tel"]').first();
+    if ((await phoneLoc.count()) > 0) await phoneLoc.fill(phoneValue);
+  }
+
+  await humanDelay(400);
+  const submitLoc = page.locator('button[type="submit"]').filter({ hasText: 'Schedule Event' }).first();
+  if ((await submitLoc.count()) === 0) {
+    throw new Error('Schedule Event button not found');
+  }
+  const stopNetworkLogging = startScheduleEventNetworkLogging(page);
+  await submitLoc.click(formClickOpts);
+  console.log(`${LOG_PREFIX} [form] Schedule Event clicked; waiting for confirmation...`);
+
+  await waitForConfirmation(page, confirmationRegex, true);
+  console.log(`${LOG_PREFIX} Reached confirmation; booking complete`);
+  stopNetworkLogging();
+}
+
+/** Wait for booking confirmation: URL regex, or (in simple mode) body text "scheduled"/"confirmed". */
+async function waitForConfirmation(
+  page: Page,
+  confirmationRegex: RegExp | null,
+  simpleFormFallback: boolean
+): Promise<void> {
   const confirmationTimeout = 25000;
-  try {
+
+  if (confirmationRegex) {
+    await page.waitForURL(confirmationRegex, { timeout: confirmationTimeout });
+    console.log(`${LOG_PREFIX} [form] Confirmation URL reached (regex)`);
+    return;
+  }
+
+  if (simpleFormFallback) {
+    // Wait for success text on page (Calendly often shows "You're scheduled" or similar)
+    try {
+      await page.waitForFunction(
+        () => {
+          const body = document.body?.innerText?.slice(0, 2000) || '';
+          return /you'?re scheduled|you are scheduled|scheduled!|confirmed|booking confirmed/i.test(body);
+        },
+        { timeout: confirmationTimeout }
+      );
+      console.log(`${LOG_PREFIX} [form] Confirmation text found on page`);
+      return;
+    } catch {
+      // Fall through to generic error with hint
+    }
+  } else {
     try {
       await page.waitForURL(/agentfire\.com\/thanks-for-booking/, { timeout: confirmationTimeout });
-      console.log(`${LOG_PREFIX} [form] Confirmation URL reached`);
+      console.log(`${LOG_PREFIX} [form] Confirmation URL reached (agentfire)`);
+      return;
     } catch {
-      const stillOnForm = await page.$('input[name="first_name"]').then((el) => !!el);
-      let hint = '';
-      try {
-        const alert = await page.$('[role="alert"], .calendly-inline-error, [data-error], .error-message');
-        if (alert) {
-          const text = (await alert.textContent())?.trim() || '';
-          if (text.length > 0 && text.length < 300) hint = ` Page message: "${text}".`;
-        }
-        if (!hint) {
-          const bodyText = await page.evaluate(() => document.body?.innerText?.slice(0, 500) || '');
-          if (/no longer available|no longer open|already taken|slot.*taken/i.test(bodyText))
-            hint = ' Slot may no longer be available.';
-          else if (/required|please (enter|fill|select)/i.test(bodyText))
-            hint = ' A required field may be missing or invalid.';
-        }
-      } catch {
-        /* ignore when gathering hint */
-      }
-      if (stillOnForm) {
-        throw new Error(
-          `Confirmation page did not load after submitting. The booking may have failed (validation error or slot no longer available).${hint}`
-        );
-      }
-      throw new Error(
-        `Did not reach the booking confirmation page (agentfire.com/thanks-for-booking). The booking may have failed.${hint}`
-      );
+      // Fall through to generic error with hint
     }
-    console.log(`${LOG_PREFIX} Reached thanks-for-booking page; booking complete`);
-  } finally {
-    stopNetworkLogging();
   }
+
+  const stillOnForm = await page.$('input[name="first_name"], input[name="name"]').then((el) => !!el);
+  let hint = '';
+  try {
+    const alert = await page.$('[role="alert"], .calendly-inline-error, [data-error], .error-message');
+    if (alert) {
+      const text = (await alert.textContent())?.trim() || '';
+      if (text.length > 0 && text.length < 300) hint = ` Page message: "${text}".`;
+    }
+    if (!hint) {
+      const bodyText = await page.evaluate(() => document.body?.innerText?.slice(0, 500) || '');
+      if (/no longer available|no longer open|already taken|slot.*taken/i.test(bodyText))
+        hint = ' Slot may no longer be available.';
+      else if (/required|please (enter|fill|select)/i.test(bodyText))
+        hint = ' A required field may be missing or invalid.';
+    }
+  } catch {
+    /* ignore when gathering hint */
+  }
+  if (stillOnForm) {
+    throw new Error(
+      `Confirmation page did not load after submitting. The booking may have failed (validation error or slot no longer available).${hint}`
+    );
+  }
+  throw new Error(
+    `Did not reach the booking confirmation page. The booking may have failed.${hint}`
+  );
 }
 
 /**
@@ -964,13 +1085,18 @@ function buildMergedAnswers(opts: BookCalendlySlotOptions): Record<string, strin
  * Strategy: navigate directly to the slot URL (e.g. .../2026-02-05T06:00:00-06:00?month=2026-02&date=2026-02-05)
  * to land on the "Enter Details" form, skipping calendar and time picker.
  * Dynamic fields: firstName, lastName, email, phone (question_0). All other answers use defaults unless overridden in options.answers.
+ * When CALENDLY_BASE_URL and CALENDLY_SIMPLE_FORM are set, uses the simple form (name, email, phone only).
  */
 export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<BookCalendlySlotResult> {
+  const baseUrl = getCalendlyBaseUrl();
+  const simpleForm = isSimpleFormMode();
+  const confirmationRegex = getConfirmationUrlRegex();
+
   const normalizedTime = normalizeTimeForCalendly(opts.time);
   const normalizedAnswers = buildMergedAnswers(opts);
-  const directUrl = buildDirectCalendlyUrl(opts.date, normalizedTime, opts, normalizedAnswers);
+  const directUrl = buildDirectCalendlyUrl(opts.date, normalizedTime, opts, normalizedAnswers, baseUrl, simpleForm);
 
-  console.log(`${LOG_PREFIX} Starting booking: date=${opts.date} time=${opts.time} (normalized: ${normalizedTime}) email=${opts.email}`);
+  console.log(`${LOG_PREFIX} Starting booking: date=${opts.date} time=${opts.time} (normalized: ${normalizedTime}) email=${opts.email} simpleForm=${simpleForm}`);
   console.log(`${LOG_PREFIX} Using direct form URL (skip calendar/time picker)`);
 
   const { page, cleanup } = await createNewBookingPage(directUrl);
@@ -994,7 +1120,7 @@ export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<B
 
     currentStep = 'fill_form';
     console.log(`${LOG_PREFIX} [step=${currentStep}] Starting form fill and submit...`);
-    await fillFormAndSubmit(page, opts, normalizedAnswers);
+    await fillFormAndSubmit(page, opts, normalizedAnswers, simpleForm, confirmationRegex);
 
     console.log(`${LOG_PREFIX} Booking success: ${opts.date} ${opts.time}`);
     succeeded = true;

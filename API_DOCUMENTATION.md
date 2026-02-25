@@ -91,7 +91,7 @@ data: {"success":true,"streaming":false,"message":"Slot collection completed","d
 
 **Endpoint:** `POST /api/book-calendly`
 
-**Description:** Books an AgentFire demo slot on Calendly. **Dynamic data:** only `date`, `time`, `firstName`, `lastName`, `email`, and optionally `phone` are required. All other form questions use fixed default selections unless you override them via `answers`. Uses the same instance-reuse logic as the Chili Piper book-slot (one browser instance per email).
+**Description:** Books a Calendly slot. By default this uses the AgentFire demo event (full questionnaire). You can switch to a **simple event** (name, email, and phone only) by setting `CALENDLY_BASE_URL` (e.g. `https://calendly.com/pay-per-closing/exclusive-referral-program-agent-advice`) and optionally `CALENDLY_SIMPLE_FORM=1`. In simple form mode, only `date`, `time`, `firstName`, `lastName`, `email`, and `phone` are used; `answers` is ignored. Confirmation can be tuned with `CALENDLY_CONFIRMATION_URL_REGEX` (e.g. `calendly\.com.*scheduled`); when unset in simple mode, the booker detects success via on-page text (e.g. "You're scheduled"). **Dynamic data:** only `date`, `time`, `firstName`, `lastName`, `email`, and optionally `phone` are required. For the default AgentFire event, all other form questions use fixed default selections unless you override them via `answers`. Uses the same instance-reuse logic as the Chili Piper book-slot (one browser instance per email).
 
 **Minimal Request (dynamic fields only; all other answers use defaults):**
 ```json

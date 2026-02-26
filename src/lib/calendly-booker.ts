@@ -8,6 +8,7 @@ const CALENDLY_VIDEO_DIR = process.env.CALENDLY_VIDEO_DIR || path.join(process.c
 const CALENDLY_VIDEO_ENABLED = process.env.CALENDLY_VIDEO_ENABLED !== '0' && process.env.CALENDLY_VIDEO_ENABLED !== 'false';
 
 const CALENDLY_BASE_URL_DEFAULT = 'https://calendly.com/agentfire-demo/30-minute-demo';
+const CALENDLY_PAYPERCLOSE_BASE_URL = 'https://calendly.com/pay-per-closing/exclusive-referral-program-agent-advice';
 
 function getCalendlyBaseUrl(): string {
   return process.env.CALENDLY_BASE_URL || CALENDLY_BASE_URL_DEFAULT;
@@ -88,6 +89,8 @@ export interface BookCalendlySlotOptions {
   phone?: string;
   /** Optional. If omitted, defaults are used for all questions; phone from options. */
   answers?: Record<string, string | string[]>;
+  /** When set, overrides env: agentfire = full form / AgentFire URL, payperclose = simple form / pay-per-closing URL. */
+  calendlyType?: 'agentfire' | 'payperclose';
 }
 
 export interface BookCalendlySlotResult {
@@ -1085,11 +1088,21 @@ function buildMergedAnswers(opts: BookCalendlySlotOptions): Record<string, strin
  * Strategy: navigate directly to the slot URL (e.g. .../2026-02-05T06:00:00-06:00?month=2026-02&date=2026-02-05)
  * to land on the "Enter Details" form, skipping calendar and time picker.
  * Dynamic fields: firstName, lastName, email, phone (question_0). All other answers use defaults unless overridden in options.answers.
- * When CALENDLY_BASE_URL and CALENDLY_SIMPLE_FORM are set, uses the simple form (name, email, phone only).
+ * When opts.calendlyType is set, uses that event (agentfire vs payperclose); otherwise uses CALENDLY_BASE_URL and CALENDLY_SIMPLE_FORM env.
  */
 export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<BookCalendlySlotResult> {
-  const baseUrl = getCalendlyBaseUrl();
-  const simpleForm = isSimpleFormMode();
+  let baseUrl: string;
+  let simpleForm: boolean;
+  if (opts.calendlyType === 'payperclose') {
+    baseUrl = process.env.CALENDLY_REFERRAL_BASE_URL || CALENDLY_PAYPERCLOSE_BASE_URL;
+    simpleForm = true;
+  } else if (opts.calendlyType === 'agentfire') {
+    baseUrl = getCalendlyBaseUrl();
+    simpleForm = false;
+  } else {
+    baseUrl = getCalendlyBaseUrl();
+    simpleForm = isSimpleFormMode();
+  }
   const confirmationRegex = getConfirmationUrlRegex();
 
   const normalizedTime = normalizeTimeForCalendly(opts.time);

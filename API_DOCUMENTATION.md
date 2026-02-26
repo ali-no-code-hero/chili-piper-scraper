@@ -87,7 +87,61 @@ data: {"success":true,"streaming":false,"message":"Slot collection completed","d
 
 **Performance:** ~4 seconds for first data, complete in ~10-15 seconds
 
-### 3. Book Calendly Slot (AgentFire Demo)
+### 3. Book (Unified by Vendor)
+
+**Endpoint:** `POST /api/book`
+
+**Description:** Single booking API that routes to the appropriate vendor based on the `vendor` field. Use this when you want one endpoint for all booking types. Existing endpoints `POST /api/book-slot` (Chili Piper) and `POST /api/book-calendly` (Calendly) remain available for backward compatibility.
+
+| vendor       | Backend              | Required fields (besides vendor, email, firstName, lastName) | Optional |
+|-------------|----------------------|----------------------------------------------------------------|----------|
+| `cinq`      | Chili Piper          | `dateTime` (e.g. "November 13, 2025 at 1:25 PM CST")         | `phone`  |
+| `agentfire` | Calendly (AgentFire) | `date` (YYYY-MM-DD), `time` (e.g. 9:30am)                    | `phone`, `answers` |
+| `payperclose` | Calendly (Pay-per-closing) | `date`, `time`                              | `phone`  |
+
+**Request (Chili Piper – vendor cinq):**
+```json
+{
+  "vendor": "cinq",
+  "email": "jane@example.com",
+  "firstName": "Jane",
+  "lastName": "Doe",
+  "phone": "5551234567",
+  "dateTime": "November 13, 2025 at 1:25 PM CST"
+}
+```
+
+**Request (AgentFire Calendly):**
+```json
+{
+  "vendor": "agentfire",
+  "date": "2026-02-05",
+  "time": "9:30am",
+  "firstName": "Jane",
+  "lastName": "Doe",
+  "email": "jane@example.com",
+  "phone": "+15551234567"
+}
+```
+
+**Request (Pay-per-closing Calendly – payperclose):**
+```json
+{
+  "vendor": "payperclose",
+  "date": "2026-02-18",
+  "time": "1:00pm",
+  "firstName": "Ali",
+  "lastName": "Syed",
+  "email": "erige1234@gmail.com",
+  "phone": "15127673628"
+}
+```
+
+**Success Response (200):** Same shape as the underlying endpoint (e.g. `message`, `date`, `time`; for `/api/book` with Calendly vendors, `data.vendor` is also included).
+
+**Error Responses:** Same as the delegated endpoint (`/api/book-slot` or Calendly booking). Use a request timeout of at least **60 seconds** for Calendly vendors.
+
+### 4. Book Calendly Slot (AgentFire Demo)
 
 **Endpoint:** `POST /api/book-calendly`
 
@@ -169,7 +223,7 @@ data: {"success":true,"streaming":false,"message":"Slot collection completed","d
 - `500` – Slot not found, day not available, or form/booking failure.  
 - `504` – Request timeout.
 
-### 4. Health Check
+### 5. Health Check
 
 **Endpoint:** `GET /api/health`
 

@@ -1,0 +1,274 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { SecurityMiddleware } from '@/lib/security-middleware';
+import { concurrencyManager } from '@/lib/concurrency-manager';
+import { ErrorHandler, ErrorCode, SuccessCode } from '@/lib/error-handler';
+import { bookCalendlySlot, normalizeTimeForCalendly } from '@/lib/calendly-booker';
+import { POST as bookSlotPost } from '@/app/api/book-slot/route';
+
+const security = new SecurityMiddleware();
+
+const VENDORS = ['cinq', 'agentfire', 'payperclose'] as const;
+type Vendor = (typeof VENDORS)[number];
+
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+function isValidDate(dateStr: string): boolean {
+  if (!DATE_REGEX.test(dateStr)) return false;
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
+}
+
+export async function POST(request: NextRequest) {
+  const requestStartTime = Date.now();
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+  try {
+    const securityResult = await security.secureRequest(request, {
+      requireAuth: true,
+      rateLimit: { maxRequests: 100, windowMs: 15 * 60 * 1000 },
+      inputSchema: {
+        vendor: { type: 'string', required: true },
+        email: { type: 'email', required: true, maxLength: 255 },
+        firstName: { type: 'string', required: true, minLength: 1, maxLength: 155 },
+        lastName: { type: 'string', required: true, minLength: 1, maxLength: 155 },
+        phone: { type: 'string', required: false, maxLength: 30 },
+        dateTime: { type: 'string', required: false },
+        date: { type: 'string', required: false },
+        time: { type: 'string', required: false },
+        answers: { type: 'object', required: false },
+      },
+      allowedMethods: ['POST'],
+    });
+
+    if (!securityResult.allowed) {
+      const responseTime = Date.now() - requestStartTime;
+      const errorResponse = ErrorHandler.createError(
+        ErrorCode.UNAUTHORIZED,
+        'Request blocked by security middleware',
+        securityResult.response?.statusText || 'Authentication or validation failed',
+        undefined,
+        requestId,
+        responseTime
+      );
+      return security.addSecurityHeaders(
+        NextResponse.json(errorResponse, { status: ErrorHandler.getStatusCode(errorResponse.code) })
+      );
+    }
+
+    const body = securityResult.sanitizedData! as Record<string, unknown>;
+    const vendor = (body.vendor as string)?.toLowerCase();
+
+    if (!VENDORS.includes(vendor as Vendor)) {
+      const responseTime = Date.now() - requestStartTime;
+      const errorResponse = ErrorHandler.createError(
+        ErrorCode.VALIDATION_ERROR,
+        'Invalid vendor',
+        `vendor must be one of: ${VENDORS.join(', ')}`,
+        { providedValue: body.vendor },
+        requestId,
+        responseTime
+      );
+      return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: 400 }));
+    }
+
+    const email = body.email as string;
+    const firstName = body.firstName as string;
+    const lastName = body.lastName as string;
+    const phone = (body.phone as string) || undefined;
+
+    if (vendor === 'cinq') {
+      const dateTime = body.dateTime as string;
+      if (!dateTime || typeof dateTime !== 'string' || !dateTime.trim()) {
+        const responseTime = Date.now() - requestStartTime;
+        const errorResponse = ErrorHandler.createError(
+          ErrorCode.VALIDATION_ERROR,
+          'Missing dateTime',
+          'dateTime is required when vendor is cinq (Chili Piper). Format like "November 13, 2025 at 1:25 PM CST"',
+          undefined,
+          requestId,
+          responseTime
+        );
+        return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: 400 }));
+      }
+      const bookSlotUrl = request.nextUrl.origin + '/api/book-slot';
+      const bookSlotRequest = new NextRequest(bookSlotUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': request.headers.get('Authorization') || '',
+          'x-forwarded-for': request.headers.get('x-forwarded-for') || '',
+          'x-real-ip': request.headers.get('x-real-ip') || '',
+        },
+        body: JSON.stringify({
+          email,
+          firstName,
+          lastName,
+          phone: phone || '',
+          dateTime: dateTime.trim(),
+        }),
+      });
+      const bookSlotResponse = await bookSlotPost(bookSlotRequest);
+      return bookSlotResponse;
+    }
+
+    if (vendor === 'agentfire' || vendor === 'payperclose') {
+      const date = body.date as string;
+      const time = body.time as string;
+      if (!date || !time) {
+        const responseTime = Date.now() - requestStartTime;
+        const errorResponse = ErrorHandler.createError(
+          ErrorCode.VALIDATION_ERROR,
+          'Missing date or time',
+          'date and time are required when vendor is agentfire or payperclose. date: YYYY-MM-DD, time: e.g. 9:30am',
+          { date: !!date, time: !!time },
+          requestId,
+          responseTime
+        );
+        return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: 400 }));
+      }
+      if (!isValidDate(date)) {
+        const responseTime = Date.now() - requestStartTime;
+        const errorResponse = ErrorHandler.createError(
+          ErrorCode.VALIDATION_ERROR,
+          'Invalid date',
+          'date must be YYYY-MM-DD',
+          { providedValue: date },
+          requestId,
+          responseTime
+        );
+        return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: 400 }));
+      }
+      const normalizedTime = normalizeTimeForCalendly(time);
+      if (!normalizedTime || !/^\d{1,2}:\d{2}(am|pm)$/.test(normalizedTime)) {
+        const responseTime = Date.now() - requestStartTime;
+        const errorResponse = ErrorHandler.createError(
+          ErrorCode.VALIDATION_ERROR,
+          'Invalid time',
+          'time must be like 9:30am or 2:00 PM',
+          { providedValue: time },
+          requestId,
+          responseTime
+        );
+        return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: 400 }));
+      }
+
+      let answersRecord: Record<string, string | string[]> = {};
+      const answers = body.answers;
+      if (answers != null && typeof answers === 'object' && !Array.isArray(answers)) {
+        for (const [k, v] of Object.entries(answers)) {
+          if (typeof v === 'string') answersRecord[k] = v;
+          else if (Array.isArray(v)) answersRecord[k] = v.filter((x): x is string => typeof x === 'string');
+          else if (v != null) answersRecord[k] = String(v);
+        }
+      }
+
+      const calendlyType = vendor === 'payperclose' ? 'payperclose' : 'agentfire';
+      const result = await concurrencyManager.execute(
+        () =>
+          bookCalendlySlot({
+            date,
+            time,
+            firstName,
+            lastName,
+            email,
+            phone,
+            calendlyType,
+            answers: Object.keys(answersRecord).length > 0 ? answersRecord : undefined,
+          }),
+        45000
+      );
+
+      const responseTime = Date.now() - requestStartTime;
+
+      if (!result.success) {
+        const isSlot = result.error?.toLowerCase().includes('slot') || result.error?.toLowerCase().includes('time');
+        const isDay = result.error?.toLowerCase().includes('day') || result.error?.toLowerCase().includes('month');
+        const isValidation = result.error?.toLowerCase().includes('validation') || (result.missingFields?.length ?? 0) > 0;
+        const code = isValidation
+          ? ErrorCode.VALIDATION_ERROR
+          : isSlot
+            ? ErrorCode.SLOT_NOT_FOUND
+            : isDay
+              ? ErrorCode.DAY_BUTTON_NOT_FOUND
+              : ErrorCode.SCRAPING_FAILED;
+        const metadata: Record<string, unknown> = { originalError: result.error };
+        if (result.failedAfterStep) metadata.failedAfterStep = result.failedAfterStep;
+        if (result.missingFields?.length) metadata.missingFields = result.missingFields;
+        if (result.validationMessages?.length) metadata.validationMessages = result.validationMessages;
+        if (result.videoPath) metadata.videoPath = result.videoPath;
+        const errorResponse = ErrorHandler.createError(
+          code,
+          result.error || 'Booking failed',
+          result.error || 'Calendly booking failed',
+          metadata,
+          requestId,
+          responseTime
+        );
+        return security.addSecurityHeaders(
+          NextResponse.json(errorResponse, { status: ErrorHandler.getStatusCode(code) })
+        );
+      }
+
+      const successResponse = ErrorHandler.createSuccess(
+        SuccessCode.OPERATION_SUCCESS,
+        {
+          message: 'Calendly slot booked successfully',
+          vendor,
+          date: result.date,
+          time: result.time,
+        },
+        requestId,
+        responseTime
+      );
+      return security.addSecurityHeaders(
+        NextResponse.json(successResponse, { status: ErrorHandler.getSuccessStatusCode() })
+      );
+    }
+
+    const responseTime = Date.now() - requestStartTime;
+    const errorResponse = ErrorHandler.createError(
+      ErrorCode.VALIDATION_ERROR,
+      'Invalid vendor',
+      `vendor must be one of: ${VENDORS.join(', ')}`,
+      undefined,
+      requestId,
+      responseTime
+    );
+    return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: 400 }));
+  } catch (error: unknown) {
+    const err = error as { message?: string };
+    console.error('Book API error:', error);
+    const responseTime = Date.now() - requestStartTime;
+    if (err?.message?.includes('timeout')) {
+      const errorResponse = ErrorHandler.createError(
+        ErrorCode.REQUEST_TIMEOUT,
+        'Booking timed out',
+        'Request timed out. Please try again.',
+        { queueStatus: concurrencyManager.getStatus(), originalError: err.message },
+        requestId,
+        responseTime
+      );
+      return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: 504 }));
+    }
+    if (err?.message?.includes('queue is full')) {
+      const errorResponse = ErrorHandler.createError(
+        ErrorCode.QUEUE_FULL,
+        'Request queue is full',
+        'Too many requests. Please try again later.',
+        { queueStatus: concurrencyManager.getStatus(), originalError: err.message },
+        requestId,
+        responseTime
+      );
+      return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: 503 }));
+    }
+    const errorResponse = ErrorHandler.parseError(error, requestId, responseTime);
+    return security.addSecurityHeaders(
+      NextResponse.json(errorResponse, { status: ErrorHandler.getStatusCode(errorResponse.code) })
+    );
+  }
+}
+
+export async function OPTIONS(request: NextRequest) {
+  return security.configureCORS(new NextResponse(null, { status: 200 }));
+}

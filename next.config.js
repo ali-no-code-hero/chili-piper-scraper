@@ -2,6 +2,8 @@ require('dotenv').config();
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Disable image optimization (avoids sharp / LGPL libvips dependency)
+  images: { unoptimized: true },
   // Optimized for Railway/Docker
   output: 'standalone',
   // Exclude problematic packages from server-side bundling

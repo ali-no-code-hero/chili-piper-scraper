@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint src --ext .ts",
     "licenses": "node scripts/generate-licenses.js",
-    "postinstall": "npx playwright install chromium --with-deps || true",
+    "licenses:generate": "node scripts/generate-licenses.js",
+    "licenses:verify": "node scripts/verify-licenses.js",
+    "postinstall": "npx playwright install chromium --with-deps || true && node scripts/remove-sharp.js",
     "install-playwright": "npx playwright install chromium --with-deps || true"
   },
   "dependencies": {

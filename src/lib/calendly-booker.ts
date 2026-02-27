@@ -998,6 +998,28 @@ async function fillSimpleFormAndSubmit(
   stopNetworkLogging();
 }
 
+/** Pay-per-close: form is already pre-filled via URL; only click Schedule Event and wait for redirect to referralchime.com. */
+async function clickScheduleEventOnlyAndWait(
+  page: Page,
+  confirmationRegex: RegExp
+): Promise<void> {
+  const formClickOpts = { force: true, timeout: 15000 } as const;
+  console.log(`${LOG_PREFIX} [payperclose] Form pre-filled via URL; waiting for Schedule Event button...`);
+  await page.waitForSelector('button[type="submit"]', { timeout: 10000 });
+  const submitLoc = page.locator('button[type="submit"]').filter({ hasText: 'Schedule Event' }).first();
+  if ((await submitLoc.count()) === 0) {
+    throw new Error('Schedule Event button not found');
+  }
+  await humanDelay(400);
+  const stopNetworkLogging = startScheduleEventNetworkLogging(page);
+  console.log(`${LOG_PREFIX} [payperclose] Clicking Schedule Event...`);
+  await submitLoc.click(formClickOpts);
+  console.log(`${LOG_PREFIX} [payperclose] Schedule Event clicked; waiting for redirect to confirmation URL...`);
+  await page.waitForURL(confirmationRegex, { timeout: 25000 });
+  console.log(`${LOG_PREFIX} [payperclose] Confirmation URL reached`);
+  stopNetworkLogging();
+}
+
 /** Wait for booking confirmation: URL regex, or (in simple mode) body text "scheduled"/"confirmed". */
 async function waitForConfirmation(
   page: Page,
@@ -1104,6 +1126,10 @@ export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<B
     simpleForm = isSimpleFormMode();
   }
   const confirmationRegex = getConfirmationUrlRegex();
+  /** Pay-per-close redirects to referralchime.com; use that as default if env not set. */
+  const effectiveConfirmationRegex =
+    confirmationRegex ||
+    (opts.calendlyType === 'payperclose' ? /referralchime\.com/ : null);
 
   const normalizedTime = normalizeTimeForCalendly(opts.time);
   const normalizedAnswers = buildMergedAnswers(opts);
@@ -1133,7 +1159,12 @@ export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<B
 
     currentStep = 'fill_form';
     console.log(`${LOG_PREFIX} [step=${currentStep}] Starting form fill and submit...`);
-    await fillFormAndSubmit(page, opts, normalizedAnswers, simpleForm, confirmationRegex);
+    if (opts.calendlyType === 'payperclose' && effectiveConfirmationRegex) {
+      /** Pay-per-close: form is pre-filled via URL; only click Schedule Event and wait for referralchime.com redirect. */
+      await clickScheduleEventOnlyAndWait(page, effectiveConfirmationRegex);
+    } else {
+      await fillFormAndSubmit(page, opts, normalizedAnswers, simpleForm, effectiveConfirmationRegex);
+    }
 
     console.log(`${LOG_PREFIX} Booking success: ${opts.date} ${opts.time}`);
     succeeded = true;

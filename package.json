@@ -10,7 +10,7 @@
     "licenses": "node scripts/generate-licenses.js",
     "licenses:generate": "node scripts/generate-licenses.js",
     "licenses:verify": "node scripts/verify-licenses.js",
-    "postinstall": "npx playwright install chromium --with-deps || true && node scripts/remove-sharp.js",
+    "postinstall": "npx playwright install chromium --with-deps || true && ([ -f scripts/remove-sharp.js ] && node scripts/remove-sharp.js || true)",
     "install-playwright": "npx playwright install chromium --with-deps || true"
   },
   "dependencies": {

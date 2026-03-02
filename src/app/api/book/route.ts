@@ -7,7 +7,7 @@ import { POST as bookSlotPost } from '@/app/api/book-slot/route';
 
 const security = new SecurityMiddleware();
 
-const VENDORS = ['cinq', 'agentfire', 'payperclose'] as const;
+const VENDORS = ['cinq', 'agentfire', 'housejet-ppc'] as const;
 type Vendor = (typeof VENDORS)[number];
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
       return bookSlotResponse;
     }
 
-    if (vendor === 'agentfire' || vendor === 'payperclose') {
+    if (vendor === 'agentfire' || vendor === 'housejet-ppc') {
       const date = body.date as string;
       const time = body.time as string;
       if (!date || !time) {
@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
         const errorResponse = ErrorHandler.createError(
           ErrorCode.VALIDATION_ERROR,
           'Missing date or time',
-          'date and time are required when vendor is agentfire or payperclose. date: YYYY-MM-DD, time: e.g. 9:30am',
+          'date and time are required when vendor is agentfire or housejet-ppc. date: YYYY-MM-DD, time: e.g. 9:30am',
           { date: !!date, time: !!time },
           requestId,
           responseTime
@@ -163,7 +163,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const calendlyType = vendor === 'payperclose' ? 'payperclose' : 'agentfire';
+      const calendlyType = vendor === 'housejet-ppc' ? 'payperclose' : 'agentfire';
       const result = await concurrencyManager.execute(
         () =>
           bookCalendlySlot({

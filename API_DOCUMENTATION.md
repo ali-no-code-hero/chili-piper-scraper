@@ -97,7 +97,7 @@ data: {"success":true,"streaming":false,"message":"Slot collection completed","d
 |-------------|----------------------|----------------------------------------------------------------|----------|
 | `cinq`      | Chili Piper          | `dateTime` (e.g. "November 13, 2025 at 1:25 PM CST")         | `phone`  |
 | `agentfire` | Calendly (AgentFire) | `date` (YYYY-MM-DD), `time` (e.g. 9:30am)                    | `phone`, `answers` |
-| `payperclose` | Calendly (Pay-per-closing) | `date`, `time`                              | `phone`  |
+| `housejet-ppc` | Calendly (Pay-per-closing) | `date`, `time`                              | `phone`  |
 
 **Request (Chili Piper – vendor cinq):**
 ```json
@@ -124,10 +124,10 @@ data: {"success":true,"streaming":false,"message":"Slot collection completed","d
 }
 ```
 
-**Request (Pay-per-closing Calendly – payperclose):**
+**Request (Pay-per-closing Calendly – housejet-ppc):**
 ```json
 {
-  "vendor": "payperclose",
+  "vendor": "housejet-ppc",
   "date": "2026-02-18",
   "time": "1:00pm",
   "firstName": "Ali",

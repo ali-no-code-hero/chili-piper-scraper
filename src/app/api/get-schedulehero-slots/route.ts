@@ -1,0 +1,170 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { SecurityMiddleware } from '@/lib/security-middleware';
+import { concurrencyManager } from '@/lib/concurrency-manager';
+import { ErrorHandler, ErrorCode, SuccessCode } from '@/lib/error-handler';
+import { normalizeScheduleHeroSlots } from '@/lib/schedulehero-slots';
+import type { ScheduleHeroSlotPayload } from '@/lib/schedulehero-slots';
+import { browserPool } from '@/lib/browser-pool';
+
+const CAMPAIGN_URL = 'https://lofty.schedulehero.io/campaign/agent-advice-l1';
+const CAPTURE_TIMEOUT_MS = 20000;
+const CONCURRENCY_TIMEOUT_MS = 45000;
+
+const security = new SecurityMiddleware();
+
+export async function GET(request: NextRequest) {
+  return handleRequest(request);
+}
+
+export async function POST(request: NextRequest) {
+  return handleRequest(request);
+}
+
+async function handleRequest(request: NextRequest) {
+  const requestStartTime = Date.now();
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+  try {
+    const securityResult = await security.secureRequest(request, {
+      requireAuth: true,
+      rateLimit: { maxRequests: 30, windowMs: 15 * 60 * 1000 },
+      allowedMethods: ['GET', 'POST']
+    });
+
+    if (!securityResult.allowed) {
+      const responseTime = Date.now() - requestStartTime;
+      const errorResponse = ErrorHandler.createError(
+        ErrorCode.UNAUTHORIZED,
+        'Request blocked by security middleware',
+        securityResult.response?.statusText || 'Authentication or validation failed',
+        undefined,
+        requestId,
+        responseTime
+      );
+      const response = NextResponse.json(
+        errorResponse,
+        { status: ErrorHandler.getStatusCode(errorResponse.code) }
+      );
+      return security.addSecurityHeaders(response);
+    }
+
+    const result = await concurrencyManager.execute(
+      () => fetchScheduleHeroSlots(),
+      CONCURRENCY_TIMEOUT_MS
+    );
+
+    if (!result.success) {
+      const responseTime = Date.now() - requestStartTime;
+      const errorResponse = ErrorHandler.parseError(result.error, requestId, responseTime);
+      const response = NextResponse.json(
+        errorResponse,
+        { status: ErrorHandler.getStatusCode(errorResponse.code) }
+      );
+      return security.addSecurityHeaders(response);
+    }
+
+    const responseTime = Date.now() - requestStartTime;
+    const successResponse = ErrorHandler.createSuccess(
+      SuccessCode.SCRAPING_SUCCESS,
+      result.data,
+      requestId,
+      responseTime
+    );
+    const response = NextResponse.json(
+      successResponse,
+      { status: ErrorHandler.getSuccessStatusCode() }
+    );
+    return security.addSecurityHeaders(response);
+  } catch (error: unknown) {
+    const responseTime = Date.now() - requestStartTime;
+    const errorResponse = ErrorHandler.parseError(error, requestId, responseTime);
+    const response = NextResponse.json(
+      errorResponse,
+      { status: ErrorHandler.getStatusCode(errorResponse.code) }
+    );
+    return security.addSecurityHeaders(response);
+  }
+}
+
+async function fetchScheduleHeroSlots(): Promise<
+  | { success: true; data: { slots: Array<{ date: string; time: string; timeZone: string }>; total_slots: number; total_days: number; note: string } }
+  | { success: false; error: string }
+> {
+  const captured: ScheduleHeroSlotPayload[] = [];
+  let browser: Awaited<ReturnType<typeof browserPool.getBrowser>> | null = null;
+  let context: Awaited<ReturnType<Awaited<ReturnType<typeof browserPool.getBrowser>>['newContext']>> | null = null;
+  let page: Awaited<ReturnType<NonNullable<typeof context>['newPage']>> | null = null;
+
+  try {
+    browser = await browserPool.getBrowser();
+
+    context = await browser.newContext({
+      timezoneId: 'America/Chicago'
+    });
+    page = await context.newPage();
+    page.setDefaultNavigationTimeout(CAPTURE_TIMEOUT_MS);
+
+    const onResponse = async (response: { url: () => string; ok: () => boolean; json: () => Promise<unknown> }) => {
+      const url = response.url();
+      if (!url.includes('campaign_time_slots') || !response.ok()) return;
+      try {
+        const json = await response.json() as { data?: { attributes?: ScheduleHeroSlotPayload } };
+        const attrs = json?.data?.attributes;
+        if (attrs && Array.isArray(attrs.meeting_slots) && attrs.booking_date) {
+          captured.push({
+            booking_date: attrs.booking_date,
+            meeting_slots: attrs.meeting_slots,
+            time_zone: attrs.time_zone
+          });
+        }
+      } catch {
+        // ignore parse errors
+      }
+    };
+
+    page.on('response', onResponse);
+
+    try {
+      await page.goto(CAMPAIGN_URL, { waitUntil: 'networkidle' });
+      await new Promise((r) => setTimeout(r, 2000));
+    } catch {
+      // timeout or navigation error - continue with whatever was captured
+    }
+
+    if (captured.length === 0) {
+      return {
+        success: false,
+        error:
+          'No campaign_time_slots response captured within timeout. The page may not have loaded or the API may have changed.'
+      };
+    }
+
+    const { slots, total_slots, total_days } = normalizeScheduleHeroSlots(captured);
+
+    return {
+      success: true,
+      data: {
+        slots,
+        total_slots,
+        total_days,
+        note: `Found ${total_days} day(s) with ${total_slots} total slots in America/Chicago`
+      }
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, error: message };
+  } finally {
+    try {
+      if (page && !page.isClosed()) await page.close();
+      if (context) await context.close();
+      if (browser) browserPool.releaseBrowser(browser);
+    } catch {
+      // ignore cleanup errors
+    }
+  }
+}
+
+export async function OPTIONS(request: NextRequest) {
+  const response = new NextResponse(null, { status: 200 });
+  return security.configureCORS(response);
+}

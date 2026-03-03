@@ -75,6 +75,14 @@ export default function Home() {
           <p className="text-gray-600">
             Automatically scrape available meeting slots from Chili Piper
           </p>
+          <p className="mt-2">
+            <a
+              href="/schedulehero"
+              className="text-blue-600 hover:text-blue-800 underline"
+            >
+              Open Lofty scheduler (full calendar UI)
+            </a>
+          </p>
         </div>
 
         <div className="bg-white shadow rounded-lg p-6 mb-8">

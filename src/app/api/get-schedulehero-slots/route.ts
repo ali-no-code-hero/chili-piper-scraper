@@ -12,15 +12,21 @@ import { browserPool } from '@/lib/browser-pool';
 const SCHEDULEHERO_VIDEO_DIR = process.env.SCHEDULEHERO_VIDEO_DIR || path.join(process.cwd(), '.schedulehero-videos');
 const SCHEDULEHERO_VIDEO_ENABLED = process.env.SCHEDULEHERO_VIDEO_ENABLED !== '0' && process.env.SCHEDULEHERO_VIDEO_ENABLED !== 'false';
 
-/** Save ScheduleHero failure video before context is closed. */
+/** Save ScheduleHero failure video before context/page are closed. */
 async function saveScheduleHeroFailureVideo(
-  context: { video: () => Promise<{ path: () => Promise<string> } | null> },
+  context: unknown,
+  page: unknown,
   videoDir: string,
   sessionId: string
 ): Promise<string | null> {
   let savedPath: string | null = null;
   try {
-    const videoPromise = context.video();
+    const getVideoFrom = (obj: unknown): Promise<{ path: () => Promise<string> } | null> | null => {
+      if (!obj || typeof (obj as { video?: () => unknown }).video !== 'function') return null;
+      const result = (obj as { video: () => Promise<{ path: () => Promise<string> } | null> }).video();
+      return result && typeof result.then === 'function' ? result : null;
+    };
+    const videoPromise = getVideoFrom(page) ?? getVideoFrom(context);
     if (videoPromise) {
       const video = await videoPromise;
       if (video) {
@@ -218,6 +224,13 @@ async function fetchScheduleHeroSlots(): Promise<
       // waitForResponse timed out or parse failed
     } finally {
       try {
+        if (!sessionId && context && videoDir) {
+          await saveScheduleHeroFailureVideo(context, page, videoDir, sessionIdForVideo);
+        }
+      } catch {
+        // ignore
+      }
+      try {
         if (page && !page.isClosed()) await page.close();
       } catch {
         // ignore
@@ -244,7 +257,7 @@ async function fetchScheduleHeroSlots(): Promise<
       if (fallback.initialPayload) captured.push(fallback.initialPayload);
       if (!sessionId) {
         if (context && videoDir) {
-          await saveScheduleHeroFailureVideo(context, videoDir, sessionIdForVideo);
+          await saveScheduleHeroFailureVideo(context, null, videoDir, sessionIdForVideo);
         }
         try {
           if (context) await context.close();
@@ -311,7 +324,7 @@ async function fetchScheduleHeroSlots(): Promise<
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (context && videoDir) {
-      await saveScheduleHeroFailureVideo(context, videoDir, sessionIdForVideo);
+      await saveScheduleHeroFailureVideo(context, page, videoDir, sessionIdForVideo);
     }
     return { success: false, error: message };
   } finally {

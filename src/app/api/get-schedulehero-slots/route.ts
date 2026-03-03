@@ -136,7 +136,8 @@ async function fetchScheduleHeroSlots(): Promise<
     page.on('response', onResponse);
 
     const slotsResponsePromise = page.waitForResponse(
-      (r) => r.url().includes('campaign_time_slots') && r.ok(),
+      (r: { url: () => string; ok: () => boolean }) =>
+        r.url().includes('campaign_time_slots') && r.ok(),
       { timeout: WAIT_FOR_SLOTS_RESPONSE_MS }
     );
 

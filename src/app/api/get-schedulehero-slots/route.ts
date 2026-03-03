@@ -7,8 +7,9 @@ import type { ScheduleHeroSlotPayload } from '@/lib/schedulehero-slots';
 import { browserPool } from '@/lib/browser-pool';
 
 const CAMPAIGN_URL = 'https://lofty.schedulehero.io/campaign/agent-advice-l1';
-const CAPTURE_TIMEOUT_MS = 20000;
-const CONCURRENCY_TIMEOUT_MS = 45000;
+const CAPTURE_TIMEOUT_MS = 35000;
+const CONCURRENCY_TIMEOUT_MS = 60000;
+const POST_LOAD_WAIT_MS = 5000;
 
 const security = new SecurityMiddleware();
 
@@ -125,8 +126,8 @@ async function fetchScheduleHeroSlots(): Promise<
     page.on('response', onResponse);
 
     try {
-      await page.goto(CAMPAIGN_URL, { waitUntil: 'networkidle' });
-      await new Promise((r) => setTimeout(r, 2000));
+      await page.goto(CAMPAIGN_URL, { waitUntil: 'domcontentloaded' });
+      await new Promise((r) => setTimeout(r, POST_LOAD_WAIT_MS));
     } catch {
       // timeout or navigation error - continue with whatever was captured
     }

@@ -3,12 +3,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Readable } from 'stream';
 
-function isGalleryEnabled(envValue: string | undefined): boolean {
-  if (envValue == null || envValue === '') return false;
-  const v = envValue.toLowerCase().trim();
-  return v === '1' || v === 'true' || v === 'yes' || v === 'on';
-}
-
 const VIDEO_DIR =
   process.env.SCHEDULEHERO_VIDEO_DIR || path.join(process.cwd(), '.schedulehero-videos');
 const FAILED_DIR = path.join(VIDEO_DIR, 'failed');
@@ -19,10 +13,6 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ filename: string }> }
 ) {
-  if (!isGalleryEnabled(process.env.SCHEDULEHERO_VIDEO_GALLERY_ENABLED)) {
-    return NextResponse.json({ error: 'Video gallery is disabled' }, { status: 404 });
-  }
-
   const { filename } = await params;
   if (!filename || !SAFE_FILENAME.test(filename)) {
     return NextResponse.json({ error: 'Invalid filename' }, { status: 400 });

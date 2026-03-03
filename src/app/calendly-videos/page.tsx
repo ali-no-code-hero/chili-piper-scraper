@@ -158,9 +158,9 @@ export default function CalendlyVideosPage() {
         setScheduleheroData(schedulehero);
       })
       .catch(() => {
-        setCalendlyData({ enabled: false, files: [] });
-        setChiliData({ enabled: false, files: [] });
-        setScheduleheroData({ enabled: false, files: [] });
+        setCalendlyData({ enabled: true, files: [] });
+        setChiliData({ enabled: true, files: [] });
+        setScheduleheroData({ enabled: true, files: [] });
       })
       .finally(() => setLoading(false));
   }, []);
@@ -169,24 +169,6 @@ export default function CalendlyVideosPage() {
     return (
       <div style={{ padding: '2rem', fontFamily: 'system-ui, sans-serif' }}>
         <p>Loading…</p>
-      </div>
-    );
-  }
-
-  const anyEnabled = calendlyData?.enabled || chiliData?.enabled || scheduleheroData?.enabled;
-
-  if (!anyEnabled) {
-    return (
-      <div style={{ padding: '2rem', fontFamily: 'system-ui, sans-serif', maxWidth: '560px' }}>
-        <h1 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>Browser recording videos</h1>
-        <p style={{ color: '#6b7280', marginBottom: '1rem' }}>
-          Enable at least one gallery to see recordings of what happened in the browser:
-        </p>
-        <ul style={{ color: '#6b7280', fontSize: '0.9rem', paddingLeft: '1.25rem' }}>
-          <li>Calendly: <code>CALENDLY_VIDEO_GALLERY_ENABLED=1</code></li>
-          <li>Chili Piper: <code>CHILI_PIPER_VIDEO_GALLERY_ENABLED=1</code></li>
-          <li>ScheduleHero: <code>SCHEDULEHERO_VIDEO_GALLERY_ENABLED=1</code></li>
-        </ul>
       </div>
     );
   }

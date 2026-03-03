@@ -3,9 +3,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Readable } from 'stream';
 
-const GALLERY_ENABLED =
-  process.env.CHILI_PIPER_VIDEO_GALLERY_ENABLED === '1' ||
-  process.env.CHILI_PIPER_VIDEO_GALLERY_ENABLED === 'true';
+function isGalleryEnabled(envValue: string | undefined): boolean {
+  if (envValue == null || envValue === '') return false;
+  const v = envValue.toLowerCase().trim();
+  return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+}
 
 const VIDEO_DIR =
   process.env.CHILI_PIPER_VIDEO_DIR || path.join(process.cwd(), '.chili-piper-videos');
@@ -17,7 +19,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ filename: string }> }
 ) {
-  if (!GALLERY_ENABLED) {
+  if (!isGalleryEnabled(process.env.CHILI_PIPER_VIDEO_GALLERY_ENABLED)) {
     return NextResponse.json({ error: 'Video gallery is disabled' }, { status: 404 });
   }
 

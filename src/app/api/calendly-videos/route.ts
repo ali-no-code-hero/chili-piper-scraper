@@ -2,16 +2,19 @@ import { NextResponse } from 'next/server';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const GALLERY_ENABLED =
-  process.env.CALENDLY_VIDEO_GALLERY_ENABLED === '1' ||
-  process.env.CALENDLY_VIDEO_GALLERY_ENABLED === 'true';
+function isGalleryEnabled(envValue: string | undefined): boolean {
+  if (envValue == null || envValue === '') return false;
+  const v = envValue.toLowerCase().trim();
+  return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+}
 
 const VIDEO_DIR =
   process.env.CALENDLY_VIDEO_DIR || path.join(process.cwd(), '.calendly-videos');
 const FAILED_DIR = path.join(VIDEO_DIR, 'failed');
 
 export async function GET() {
-  if (!GALLERY_ENABLED) {
+  const galleryEnabled = isGalleryEnabled(process.env.CALENDLY_VIDEO_GALLERY_ENABLED);
+  if (!galleryEnabled) {
     return NextResponse.json({ enabled: false, files: [] }, { status: 200 });
   }
 

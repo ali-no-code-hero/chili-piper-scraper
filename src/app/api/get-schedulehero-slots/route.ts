@@ -9,7 +9,7 @@ import { browserPool } from '@/lib/browser-pool';
 const CAMPAIGN_URL = 'https://lofty.schedulehero.io/campaign/agent-advice-l1';
 const CAPTURE_TIMEOUT_MS = 35000;
 const CONCURRENCY_TIMEOUT_MS = 60000;
-const POST_LOAD_WAIT_MS = 8000;
+const WAIT_FOR_SLOTS_RESPONSE_MS = 25000;
 const TARGET_DAYS = 5;
 const NEXT_CLICK_WAIT_MS = 3000;
 
@@ -135,17 +135,56 @@ async function fetchScheduleHeroSlots(): Promise<
     page.on('request', onRequest);
     page.on('response', onResponse);
 
+    const slotsResponsePromise = page.waitForResponse(
+      (r) => r.url().includes('campaign_time_slots') && r.ok(),
+      { timeout: WAIT_FOR_SLOTS_RESPONSE_MS }
+    );
+
     try {
       await page.goto(CAMPAIGN_URL, { waitUntil: 'load' });
-      await new Promise((r) => setTimeout(r, POST_LOAD_WAIT_MS));
     } catch {
-      // timeout or navigation error - continue with whatever was captured
+      // timeout or navigation error
+    }
+
+    try {
+      const firstResponse = await slotsResponsePromise;
+      capturedRequestUrl = firstResponse.request().url();
+      const json = (await firstResponse.json()) as { data?: { attributes?: ScheduleHeroSlotPayload } };
+      const attrs = json?.data?.attributes;
+      if (attrs && Array.isArray(attrs.meeting_slots) && attrs.booking_date) {
+        captured.push({
+          booking_date: attrs.booking_date,
+          meeting_slots: attrs.meeting_slots,
+          time_zone: attrs.time_zone
+        });
+      }
+    } catch {
+      // waitForResponse timed out or parse failed - continue; we may have capturedRequestUrl from onRequest
     }
 
     const seenDates = new Set(captured.map((p) => p.booking_date));
 
     if (capturedRequestUrl && seenDates.size < TARGET_DAYS) {
       const baseUrl = new URL(capturedRequestUrl);
+      if (captured.length === 0) {
+        try {
+          const res = await fetch(capturedRequestUrl, { headers: { Accept: 'application/json' } });
+          if (res.ok) {
+            const json = (await res.json()) as { data?: { attributes?: ScheduleHeroSlotPayload } };
+            const attrs = json?.data?.attributes;
+            if (attrs && Array.isArray(attrs.meeting_slots) && attrs.booking_date) {
+              captured.push({
+                booking_date: attrs.booking_date,
+                meeting_slots: attrs.meeting_slots,
+                time_zone: attrs.time_zone
+              });
+              seenDates.add(attrs.booking_date);
+            }
+          }
+        } catch {
+          // skip
+        }
+      }
       const dates = getNextFiveDatesInCentral();
       for (const dateStr of dates) {
         if (seenDates.size >= TARGET_DAYS) break;

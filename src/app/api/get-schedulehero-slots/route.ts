@@ -9,7 +9,9 @@ import { browserPool } from '@/lib/browser-pool';
 const CAMPAIGN_URL = 'https://lofty.schedulehero.io/campaign/agent-advice-l1';
 const CAPTURE_TIMEOUT_MS = 35000;
 const CONCURRENCY_TIMEOUT_MS = 60000;
-const POST_LOAD_WAIT_MS = 5000;
+const POST_LOAD_WAIT_MS = 8000;
+const TARGET_DAYS = 5;
+const NEXT_CLICK_WAIT_MS = 3000;
 
 const security = new SecurityMiddleware();
 
@@ -92,6 +94,7 @@ async function fetchScheduleHeroSlots(): Promise<
   | { success: false; error: string }
 > {
   const captured: ScheduleHeroSlotPayload[] = [];
+  let capturedRequestUrl: string | null = null;
   let browser: Awaited<ReturnType<typeof browserPool.getBrowser>> | null = null;
   let context: Awaited<ReturnType<Awaited<ReturnType<typeof browserPool.getBrowser>>['newContext']>> | null = null;
   let page: Awaited<ReturnType<NonNullable<typeof context>['newPage']>> | null = null;
@@ -100,10 +103,16 @@ async function fetchScheduleHeroSlots(): Promise<
     browser = await browserPool.getBrowser();
 
     context = await browser.newContext({
-      timezoneId: 'America/Chicago'
+      timezoneId: 'America/Chicago',
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     });
     page = await context.newPage();
     page.setDefaultNavigationTimeout(CAPTURE_TIMEOUT_MS);
+
+    const onRequest = (request: { url: () => string }) => {
+      const url = request.url();
+      if (url.includes('campaign_time_slots')) capturedRequestUrl = url;
+    };
 
     const onResponse = async (response: { url: () => string; ok: () => boolean; json: () => Promise<unknown> }) => {
       const url = response.url();
@@ -123,20 +132,61 @@ async function fetchScheduleHeroSlots(): Promise<
       }
     };
 
+    page.on('request', onRequest);
     page.on('response', onResponse);
 
     try {
-      await page.goto(CAMPAIGN_URL, { waitUntil: 'domcontentloaded' });
+      await page.goto(CAMPAIGN_URL, { waitUntil: 'load' });
       await new Promise((r) => setTimeout(r, POST_LOAD_WAIT_MS));
     } catch {
       // timeout or navigation error - continue with whatever was captured
+    }
+
+    const seenDates = new Set(captured.map((p) => p.booking_date));
+
+    if (capturedRequestUrl && seenDates.size < TARGET_DAYS) {
+      const baseUrl = new URL(capturedRequestUrl);
+      const dates = getNextFiveDatesInCentral();
+      for (const dateStr of dates) {
+        if (seenDates.size >= TARGET_DAYS) break;
+        if (seenDates.has(dateStr)) continue;
+        baseUrl.searchParams.set('booking_date', dateStr);
+        try {
+          const res = await fetch(baseUrl.toString(), { headers: { Accept: 'application/json' } });
+          if (!res.ok) continue;
+          const json = (await res.json()) as { data?: { attributes?: ScheduleHeroSlotPayload } };
+          const attrs = json?.data?.attributes;
+          if (attrs && Array.isArray(attrs.meeting_slots) && attrs.booking_date) {
+            captured.push({
+              booking_date: attrs.booking_date,
+              meeting_slots: attrs.meeting_slots,
+              time_zone: attrs.time_zone
+            });
+            seenDates.add(attrs.booking_date);
+          }
+        } catch {
+          // skip this date
+        }
+      }
+    }
+
+    while (seenDates.size < TARGET_DAYS) {
+      const countBefore = seenDates.size;
+      try {
+        await page.getByRole('button', { name: /^Next$/i }).click({ timeout: 2000 });
+        await new Promise((r) => setTimeout(r, NEXT_CLICK_WAIT_MS));
+        for (const p of captured) seenDates.add(p.booking_date);
+        if (seenDates.size <= countBefore) break;
+      } catch {
+        break;
+      }
     }
 
     if (captured.length === 0) {
       return {
         success: false,
         error:
-          'No campaign_time_slots response captured within timeout. The page may not have loaded or the API may have changed.'
+          'No campaign_time_slots response captured. The page may not have loaded or the API may have changed.'
       };
     }
 
@@ -148,7 +198,7 @@ async function fetchScheduleHeroSlots(): Promise<
         slots,
         total_slots,
         total_days,
-        note: `Found ${total_days} day(s) with ${total_slots} total slots in America/Chicago`
+        note: `Found ${total_days} day(s) with ${total_slots} total slots in America/Chicago (target ${TARGET_DAYS} days)`
       }
     };
   } catch (err) {
@@ -163,6 +213,18 @@ async function fetchScheduleHeroSlots(): Promise<
       // ignore cleanup errors
     }
   }
+}
+
+function getNextFiveDatesInCentral(): string[] {
+  const dates: string[] = [];
+  const tz = 'America/Chicago';
+  for (let i = 0; i < TARGET_DAYS; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() + i);
+    const str = d.toLocaleDateString('en-CA', { timeZone: tz });
+    dates.push(str);
+  }
+  return dates;
 }
 
 export async function OPTIONS(request: NextRequest) {

@@ -143,20 +143,24 @@ function VideoSection({
 export default function CalendlyVideosPage() {
   const [calendlyData, setCalendlyData] = useState<ListResponse | null>(null);
   const [chiliData, setChiliData] = useState<ListResponse | null>(null);
+  const [scheduleheroData, setScheduleheroData] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
       fetch('/api/calendly-videos').then((r) => r.json()),
       fetch('/api/chili-piper-videos').then((r) => r.json()),
+      fetch('/api/schedulehero-videos').then((r) => r.json()),
     ])
-      .then(([calendly, chili]) => {
+      .then(([calendly, chili, schedulehero]) => {
         setCalendlyData(calendly);
         setChiliData(chili);
+        setScheduleheroData(schedulehero);
       })
       .catch(() => {
         setCalendlyData({ enabled: false, files: [] });
         setChiliData({ enabled: false, files: [] });
+        setScheduleheroData({ enabled: false, files: [] });
       })
       .finally(() => setLoading(false));
   }, []);
@@ -169,7 +173,7 @@ export default function CalendlyVideosPage() {
     );
   }
 
-  const anyEnabled = calendlyData?.enabled || chiliData?.enabled;
+  const anyEnabled = calendlyData?.enabled || chiliData?.enabled || scheduleheroData?.enabled;
 
   if (!anyEnabled) {
     return (
@@ -181,6 +185,7 @@ export default function CalendlyVideosPage() {
         <ul style={{ color: '#6b7280', fontSize: '0.9rem', paddingLeft: '1.25rem' }}>
           <li>Calendly: <code>CALENDLY_VIDEO_GALLERY_ENABLED=1</code></li>
           <li>Chili Piper: <code>CHILI_PIPER_VIDEO_GALLERY_ENABLED=1</code></li>
+          <li>ScheduleHero: <code>SCHEDULEHERO_VIDEO_GALLERY_ENABLED=1</code></li>
         </ul>
       </div>
     );
@@ -205,6 +210,13 @@ export default function CalendlyVideosPage() {
         description="Failed Chili Piper booking recordings."
         data={chiliData}
         basePath="/api/chili-piper-videos"
+      />
+
+      <VideoSection
+        title="ScheduleHero"
+        description="Failed ScheduleHero / get-schedulehero-slots API runs (campaign page load or session capture)."
+        data={scheduleheroData}
+        basePath="/api/schedulehero-videos"
       />
     </div>
   );

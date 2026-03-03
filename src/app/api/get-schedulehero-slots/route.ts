@@ -1,10 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { SecurityMiddleware } from '@/lib/security-middleware';
 import { concurrencyManager } from '@/lib/concurrency-manager';
 import { ErrorHandler, ErrorCode, SuccessCode } from '@/lib/error-handler';
 import { normalizeScheduleHeroSlots } from '@/lib/schedulehero-slots';
 import type { ScheduleHeroSlotPayload } from '@/lib/schedulehero-slots';
 import { browserPool } from '@/lib/browser-pool';
+
+const SCHEDULEHERO_VIDEO_DIR = process.env.SCHEDULEHERO_VIDEO_DIR || path.join(process.cwd(), '.schedulehero-videos');
+const SCHEDULEHERO_VIDEO_ENABLED = process.env.SCHEDULEHERO_VIDEO_ENABLED !== '0' && process.env.SCHEDULEHERO_VIDEO_ENABLED !== 'false';
+
+/** Save ScheduleHero failure video before context is closed. */
+async function saveScheduleHeroFailureVideo(
+  context: { video: () => Promise<{ path: () => Promise<string> } | null> },
+  videoDir: string,
+  sessionId: string
+): Promise<string | null> {
+  let savedPath: string | null = null;
+  try {
+    const videoPromise = context.video();
+    if (videoPromise) {
+      const video = await videoPromise;
+      if (video) {
+        const srcPath = await video.path();
+        if (srcPath && fs.existsSync(srcPath)) {
+          const failedDir = path.join(SCHEDULEHERO_VIDEO_DIR, 'failed');
+          fs.mkdirSync(failedDir, { recursive: true });
+          const destName = `schedulehero-${sessionId}.webm`;
+          const destPath = path.join(failedDir, destName);
+          fs.copyFileSync(srcPath, destPath);
+          savedPath = destPath;
+          console.log('[ScheduleHero] Saved failure video:', destPath);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[ScheduleHero] Could not save failure video:', (e as Error)?.message);
+  }
+  return savedPath;
+}
 
 const CAMPAIGN_URL = 'https://lofty.schedulehero.io/campaign/agent-advice-l1';
 const API_BASE = 'https://lofty.schedulehero.io/api/campaign_time_slots';
@@ -111,12 +147,29 @@ async function fetchScheduleHeroSlots(): Promise<
   let context: Awaited<ReturnType<Awaited<ReturnType<typeof browserPool.getBrowser>>['newContext']>> | null = null;
   let page: Awaited<ReturnType<NonNullable<typeof context>['newPage']>> | null = null;
 
+  const sessionIdForVideo = `sh_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+  let videoDir: string | null = null;
+  if (SCHEDULEHERO_VIDEO_ENABLED) {
+    try {
+      const recordDir = path.join(os.tmpdir(), 'schedulehero-videos', sessionIdForVideo);
+      fs.mkdirSync(recordDir, { recursive: true });
+      videoDir = recordDir;
+      console.log('[ScheduleHero] Recording enabled:', videoDir);
+    } catch (e) {
+      console.warn('[ScheduleHero] Video disabled (mkdir failed):', (e as Error)?.message);
+    }
+  }
+
   try {
     browser = await browserPool.getBrowser();
-    context = await browser.newContext({
+    const contextOptions: { timezoneId: string; userAgent: string; recordVideo?: { dir: string; size: { width: number; height: number } } } = {
       timezoneId: TIMEZONE,
       userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    });
+    };
+    if (videoDir) {
+      contextOptions.recordVideo = { dir: videoDir, size: { width: 1280, height: 720 } };
+    }
+    context = await browser.newContext(contextOptions);
     page = await context.newPage();
     page.setDefaultNavigationTimeout(CAPTURE_TIMEOUT_MS);
 
@@ -166,14 +219,23 @@ async function fetchScheduleHeroSlots(): Promise<
     } finally {
       try {
         if (page && !page.isClosed()) await page.close();
-        if (context) await context.close();
-        if (browser) browserPool.releaseBrowser(browser);
       } catch {
         // ignore
       }
-      browser = null;
-      context = null;
       page = null;
+      // Only close context and release browser when we got sessionId (success path for capture phase).
+      // When sessionId is null we keep context/browser so we can save failure video after fallback.
+      if (sessionId) {
+        if (videoDir) {
+          try { fs.rmSync(videoDir, { recursive: true, force: true }); } catch { /* ignore */ }
+        }
+        try {
+          if (context) await context.close();
+          if (browser) browserPool.releaseBrowser(browser);
+        } catch { /* ignore */ }
+        browser = null;
+        context = null;
+      }
     }
 
     if (!sessionId) {
@@ -181,11 +243,26 @@ async function fetchScheduleHeroSlots(): Promise<
       sessionId = fallback.sessionId;
       if (fallback.initialPayload) captured.push(fallback.initialPayload);
       if (!sessionId) {
+        if (context && videoDir) {
+          await saveScheduleHeroFailureVideo(context, videoDir, sessionIdForVideo);
+        }
+        try {
+          if (context) await context.close();
+          if (browser) browserPool.releaseBrowser(browser);
+        } catch { /* ignore */ }
         return {
           success: false,
           error: 'Could not get session_id from campaign page or API. The page may not have loaded or the API may have changed.'
         };
       }
+      // Got sessionId from fallback; close context and release (we left them open).
+      try {
+        if (videoDir) { try { fs.rmSync(videoDir, { recursive: true, force: true }); } catch { /* ignore */ } }
+        if (context) await context.close();
+        if (browser) browserPool.releaseBrowser(browser);
+      } catch { /* ignore */ }
+      browser = null;
+      context = null;
     }
 
     const seenDates = new Set(captured.map((p) => p.booking_date));
@@ -233,6 +310,9 @@ async function fetchScheduleHeroSlots(): Promise<
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    if (context && videoDir) {
+      await saveScheduleHeroFailureVideo(context, videoDir, sessionIdForVideo);
+    }
     return { success: false, error: message };
   } finally {
     try {

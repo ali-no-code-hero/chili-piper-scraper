@@ -177,10 +177,15 @@ async function fetchScheduleHeroSlots(): Promise<
     }
 
     if (!sessionId) {
-      return {
-        success: false,
-        error: 'Could not get session_id from campaign page. The page may not have loaded or the API may have changed.'
-      };
+      const fallback = await tryGetSessionFromApiDirect(captured);
+      sessionId = fallback.sessionId;
+      if (fallback.initialPayload) captured.push(fallback.initialPayload);
+      if (!sessionId) {
+        return {
+          success: false,
+          error: 'Could not get session_id from campaign page or API. The page may not have loaded or the API may have changed.'
+        };
+      }
     }
 
     const seenDates = new Set(captured.map((p) => p.booking_date));
@@ -257,6 +262,56 @@ function getNextFiveBusinessDaysInCentral(): string[] {
     }
   }
   return dates;
+}
+
+/**
+ * Fallback when Playwright does not capture session_id (e.g. on Railway).
+ * 1) Try calling the API without session_id - some APIs create and return session on first request.
+ * 2) Fetch campaign page HTML and look for session_id or campaign_time_slots URL in script/JSON.
+ */
+async function tryGetSessionFromApiDirect(
+  captured: ScheduleHeroSlotPayload[]
+): Promise<{ sessionId: string | null; initialPayload?: ScheduleHeroSlotPayload }> {
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: TIMEZONE });
+  const urlWithoutSession = `${API_BASE}?${FIELDS_QUERY}&booking_date=${today}&time_zone=${encodeURIComponent(TIMEZONE)}`;
+  try {
+    const res = await fetch(urlWithoutSession, {
+      headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (compatible; ScheduleHeroSlots/1)' }
+    });
+    if (!res.ok) return { sessionId: null };
+    const json = (await res.json()) as { data?: { attributes?: { session_id?: string } & ScheduleHeroSlotPayload } };
+    const attrs = json?.data?.attributes;
+    const sid = attrs?.session_id;
+    if (sid && typeof sid === 'string') {
+      if (attrs && Array.isArray(attrs.meeting_slots) && attrs.booking_date) {
+        return {
+          sessionId: sid,
+          initialPayload: {
+            booking_date: attrs.booking_date,
+            meeting_slots: attrs.meeting_slots,
+            time_zone: attrs.time_zone || TIMEZONE
+          }
+        };
+      }
+      return { sessionId: sid };
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    const res = await fetch(CAMPAIGN_URL, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ScheduleHeroSlots/1)' }
+    });
+    const html = await res.text();
+    const uuidMatch = html.match(/session_id["\s:=]+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+    if (uuidMatch?.[1]) return { sessionId: uuidMatch[1] };
+    const urlMatch = html.match(/campaign_time_slots\?[^"'\s]*session_id=([0-9a-f-]{36})/i);
+    if (urlMatch?.[1]) return { sessionId: urlMatch[1] };
+  } catch {
+    // ignore
+  }
+  return { sessionId: null };
 }
 
 export async function OPTIONS(request: NextRequest) {

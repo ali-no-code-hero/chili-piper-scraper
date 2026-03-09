@@ -208,10 +208,12 @@ async function fetchScheduleHeroSlots(): Promise<
       }
     };
 
-    const slotsResponsePromise = page.waitForResponse(
-      (r: { url: () => string }) => r.url().includes('campaign_time_slots'),
-      { timeout: WAIT_FOR_SLOTS_RESPONSE_MS }
-    );
+    const slotsResponsePromise = page
+      .waitForResponse(
+        (r: { url: () => string }) => r.url().includes('campaign_time_slots'),
+        { timeout: WAIT_FOR_SLOTS_RESPONSE_MS }
+      )
+      .catch(() => null as Awaited<ReturnType<typeof page.waitForResponse>> | null);
 
     page.on('request', onRequest);
 
@@ -308,23 +310,25 @@ async function fetchScheduleHeroSlots(): Promise<
 
     try {
       const firstResponse = await slotsResponsePromise;
-      if (!sessionId) {
-        const u = new URL(firstResponse.request().url());
-        sessionId = u.searchParams.get('session_id');
-      }
-      if (firstResponse.ok()) {
-        const json = (await firstResponse.json()) as { data?: { attributes?: ScheduleHeroSlotPayload } };
-        const attrs = json?.data?.attributes;
-        if (attrs && Array.isArray(attrs.meeting_slots) && attrs.booking_date) {
-          captured.push({
-            booking_date: attrs.booking_date,
-            meeting_slots: attrs.meeting_slots,
-            time_zone: attrs.time_zone || TIMEZONE
-          });
+      if (firstResponse) {
+        if (!sessionId) {
+          const u = new URL(firstResponse.request().url());
+          sessionId = u.searchParams.get('session_id');
+        }
+        if (firstResponse.ok()) {
+          const json = (await firstResponse.json()) as { data?: { attributes?: ScheduleHeroSlotPayload } };
+          const attrs = json?.data?.attributes;
+          if (attrs && Array.isArray(attrs.meeting_slots) && attrs.booking_date) {
+            captured.push({
+              booking_date: attrs.booking_date,
+              meeting_slots: attrs.meeting_slots,
+              time_zone: attrs.time_zone || TIMEZONE
+            });
+          }
         }
       }
     } catch {
-      // waitForResponse timed out or parse failed
+      // parse or other error - continue without first response body
     } finally {
       try {
         if (!sessionId && context && videoDir) {

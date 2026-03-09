@@ -8,6 +8,7 @@ import { ErrorHandler, ErrorCode, SuccessCode } from '@/lib/error-handler';
 import { normalizeScheduleHeroSlots } from '@/lib/schedulehero-slots';
 import type { ScheduleHeroSlotPayload } from '@/lib/schedulehero-slots';
 import { browserPool } from '@/lib/browser-pool';
+import type { Route } from 'playwright';
 
 const SCHEDULEHERO_VIDEO_DIR = process.env.SCHEDULEHERO_VIDEO_DIR || path.join(process.cwd(), '.schedulehero-videos');
 const SCHEDULEHERO_VIDEO_ENABLED = process.env.SCHEDULEHERO_VIDEO_ENABLED !== '0' && process.env.SCHEDULEHERO_VIDEO_ENABLED !== 'false';
@@ -183,7 +184,7 @@ async function fetchScheduleHeroSlots(): Promise<
     await page.setViewportSize({ width: 1280, height: 720 });
 
     // Intercept requests to campaign_time_slots so we always capture session_id when the page makes the call (even if response fails)
-    await page.route('**/api/campaign_time_slots*', (route) => {
+    await page.route('**/api/campaign_time_slots*', (route: Route) => {
       try {
         const url = route.request().url();
         const parsed = new URL(url);

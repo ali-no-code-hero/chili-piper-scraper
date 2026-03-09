@@ -179,6 +179,9 @@ async function fetchScheduleHeroSlots(): Promise<
     page = await context.newPage();
     page.setDefaultNavigationTimeout(CAPTURE_TIMEOUT_MS);
 
+    // Use a real viewport so the page renders fully (some sites behave differently in headless)
+    await page.setViewportSize({ width: 1280, height: 720 });
+
     const onRequest = (req: { url: () => string }) => {
       const url = req.url();
       if (!url.includes('campaign_time_slots')) return;
@@ -200,9 +203,67 @@ async function fetchScheduleHeroSlots(): Promise<
     page.on('request', onRequest);
 
     try {
-      await page.goto(CAMPAIGN_URL, { waitUntil: 'load' });
+      // Load the full page: wait for network idle so JS has run and campaign_time_slots can fire
+      await page.goto(CAMPAIGN_URL, { waitUntil: 'networkidle' });
     } catch {
-      // navigation timeout/error
+      // networkidle can timeout on busy pages; fallback to load event
+      try {
+        await page.goto(CAMPAIGN_URL, { waitUntil: 'load' });
+      } catch {
+        // navigation timeout/error
+      }
+    }
+
+    // Give the page a moment and dismiss any cookie/consent banner so API requests aren't blocked
+    try {
+      await page.waitForTimeout(2000);
+      const consentSelectors = [
+        'button:has-text("Accept")',
+        'button:has-text("Accept All")',
+        'button:has-text("Allow")',
+        'button:has-text("Allow All")',
+        'button:has-text("I agree")',
+        'button:has-text("OK")',
+        'a:has-text("Accept")',
+        '[data-testid*="accept"]',
+        '[aria-label*="Accept"]',
+        '.cookie-accept',
+        '#cookie-accept'
+      ];
+      for (const selector of consentSelectors) {
+        try {
+          const btn = page.locator(selector).first();
+          if ((await btn.count()) > 0 && (await btn.isVisible())) {
+            await btn.click();
+            await page.waitForTimeout(1000);
+            break;
+          }
+        } catch {
+          // ignore
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    // Fallback: scrape session_id from page's own network (performance entries) if we didn't get it from request listener
+    if (!sessionId) {
+      try {
+        const scraped = await page.evaluate(() => {
+          const entries = performance.getEntriesByType('resource') || [];
+          const campaign = entries.find((e: { name: string }) => (e.name || '').includes('campaign_time_slots'));
+          if (!campaign?.name) return null;
+          try {
+            const u = new URL(campaign.name);
+            return u.searchParams.get('session_id');
+          } catch {
+            return null;
+          }
+        });
+        if (scraped && typeof scraped === 'string') sessionId = scraped;
+      } catch {
+        // ignore
+      }
     }
 
     try {

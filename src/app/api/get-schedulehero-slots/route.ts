@@ -50,9 +50,9 @@ async function saveScheduleHeroFailureVideo(
 
 const CAMPAIGN_URL = 'https://lofty.schedulehero.io/campaign/agent-advice-l1';
 const API_BASE = 'https://lofty.schedulehero.io/api/campaign_time_slots';
-const CAPTURE_TIMEOUT_MS = 35000;
-const CONCURRENCY_TIMEOUT_MS = 60000;
-const WAIT_FOR_SLOTS_RESPONSE_MS = 25000;
+const CAPTURE_TIMEOUT_MS = 45000;
+const CONCURRENCY_TIMEOUT_MS = 90000;
+const WAIT_FOR_SLOTS_RESPONSE_MS = 35000;
 const TARGET_BUSINESS_DAYS = 5;
 const TIMEZONE = 'America/Chicago';
 
@@ -182,6 +182,19 @@ async function fetchScheduleHeroSlots(): Promise<
     // Use a real viewport so the page renders fully (some sites behave differently in headless)
     await page.setViewportSize({ width: 1280, height: 720 });
 
+    // Intercept requests to campaign_time_slots so we always capture session_id when the page makes the call (even if response fails)
+    await page.route('**/api/campaign_time_slots*', (route) => {
+      try {
+        const url = route.request().url();
+        const parsed = new URL(url);
+        const id = parsed.searchParams.get('session_id');
+        if (id) sessionId = id;
+      } catch {
+        // ignore
+      }
+      void route.continue();
+    });
+
     const onRequest = (req: { url: () => string }) => {
       const url = req.url();
       if (!url.includes('campaign_time_slots')) return;
@@ -195,8 +208,7 @@ async function fetchScheduleHeroSlots(): Promise<
     };
 
     const slotsResponsePromise = page.waitForResponse(
-      (r: { url: () => string; ok: () => boolean }) =>
-        r.url().includes('campaign_time_slots') && r.ok(),
+      (r: { url: () => string }) => r.url().includes('campaign_time_slots'),
       { timeout: WAIT_FOR_SLOTS_RESPONSE_MS }
     );
 
@@ -266,20 +278,49 @@ async function fetchScheduleHeroSlots(): Promise<
       }
     }
 
+    // Fallback: search window for session_id (SPA globals like __INITIAL_STATE__, __DATA__, etc.)
+    if (!sessionId) {
+      try {
+        await page.waitForTimeout(1500);
+        const fromWindow = await page.evaluate(() => {
+          const uuidRe = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+          const sources: unknown[] = [
+            (window as unknown as { __INITIAL_STATE__?: unknown }).__INITIAL_STATE__,
+            (window as unknown as { __DATA__?: unknown }).__DATA__,
+            (window as unknown as { __NUXT__?: { data?: unknown } }).__NUXT__?.data,
+            (window as unknown as { sessionId?: string }).sessionId,
+            (window as unknown as { session_id?: string }).session_id
+          ];
+          for (const s of sources) {
+            if (!s) continue;
+            const str = typeof s === 'string' ? s : JSON.stringify(s);
+            const m = str.match(uuidRe);
+            if (m?.[0]) return m[0];
+          }
+          return null;
+        });
+        if (fromWindow && typeof fromWindow === 'string') sessionId = fromWindow;
+      } catch {
+        // ignore
+      }
+    }
+
     try {
       const firstResponse = await slotsResponsePromise;
       if (!sessionId) {
         const u = new URL(firstResponse.request().url());
         sessionId = u.searchParams.get('session_id');
       }
-      const json = (await firstResponse.json()) as { data?: { attributes?: ScheduleHeroSlotPayload } };
-      const attrs = json?.data?.attributes;
-      if (attrs && Array.isArray(attrs.meeting_slots) && attrs.booking_date) {
-        captured.push({
-          booking_date: attrs.booking_date,
-          meeting_slots: attrs.meeting_slots,
-          time_zone: attrs.time_zone || TIMEZONE
-        });
+      if (firstResponse.ok()) {
+        const json = (await firstResponse.json()) as { data?: { attributes?: ScheduleHeroSlotPayload } };
+        const attrs = json?.data?.attributes;
+        if (attrs && Array.isArray(attrs.meeting_slots) && attrs.booking_date) {
+          captured.push({
+            booking_date: attrs.booking_date,
+            meeting_slots: attrs.meeting_slots,
+            time_zone: attrs.time_zone || TIMEZONE
+          });
+        }
       }
     } catch {
       // waitForResponse timed out or parse failed
@@ -423,15 +464,21 @@ function getNextFiveBusinessDaysInCentral(): string[] {
  * 1) Try calling the API without session_id - some APIs create and return session on first request.
  * 2) Fetch campaign page HTML and look for session_id or campaign_time_slots URL in script/JSON.
  */
+const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
 async function tryGetSessionFromApiDirect(
   captured: ScheduleHeroSlotPayload[]
 ): Promise<{ sessionId: string | null; initialPayload?: ScheduleHeroSlotPayload }> {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: TIMEZONE });
   const urlWithoutSession = `${API_BASE}?${FIELDS_QUERY}&booking_date=${today}&time_zone=${encodeURIComponent(TIMEZONE)}`;
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'User-Agent': BROWSER_UA,
+    Referer: CAMPAIGN_URL,
+    Origin: 'https://lofty.schedulehero.io'
+  };
   try {
-    const res = await fetch(urlWithoutSession, {
-      headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (compatible; ScheduleHeroSlots/1)' }
-    });
+    const res = await fetch(urlWithoutSession, { headers });
     if (!res.ok) return { sessionId: null };
     const json = (await res.json()) as { data?: { attributes?: { session_id?: string } & ScheduleHeroSlotPayload } };
     const attrs = json?.data?.attributes;
@@ -455,13 +502,16 @@ async function tryGetSessionFromApiDirect(
 
   try {
     const res = await fetch(CAMPAIGN_URL, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ScheduleHeroSlots/1)' }
+      headers: { 'User-Agent': BROWSER_UA, Referer: CAMPAIGN_URL }
     });
     const html = await res.text();
     const uuidMatch = html.match(/session_id["\s:=]+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
     if (uuidMatch?.[1]) return { sessionId: uuidMatch[1] };
     const urlMatch = html.match(/campaign_time_slots\?[^"'\s]*session_id=([0-9a-f-]{36})/i);
     if (urlMatch?.[1]) return { sessionId: urlMatch[1] };
+    // Embedded JSON (e.g. __NEXT_DATA__, script with config)
+    const jsonMatch = html.match(/"session_id"\s*:\s*"([0-9a-f-]{36})"/i);
+    if (jsonMatch?.[1]) return { sessionId: jsonMatch[1] };
   } catch {
     // ignore
   }

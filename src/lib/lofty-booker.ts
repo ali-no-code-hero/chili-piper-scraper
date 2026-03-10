@@ -2,6 +2,7 @@ import { browserPool } from '@/lib/browser-pool';
 import type { Route } from 'playwright';
 
 const CAMPAIGN_URL = 'https://lofty.schedulehero.io/campaign/agent-advice-l1';
+const CAMPAIGN_URL_L2 = 'https://lofty.schedulehero.io/campaign/agent-advice-l2';
 const CAMPAIGN_MEETINGS_URL = 'https://lofty.schedulehero.io/api/campaign_meetings?include=user&fields%5Buser%5D=email%2Cname%2Cimage_url%2Cintegrations';
 const TIMEZONE = 'America/Chicago';
 const CAPTURE_TIMEOUT_MS = 45000;
@@ -108,8 +109,9 @@ export function buildMeetingTime(date: string, time: string): string {
 
 /**
  * Navigate to the Lofty campaign page and capture session_id from campaign_time_slots request or fallbacks.
+ * @param campaignUrl - Campaign page URL (default: L1 agent-advice-l1). Use CAMPAIGN_URL_L2 for L2.
  */
-export async function getLoftySessionId(): Promise<string | null> {
+export async function getLoftySessionId(campaignUrl: string = CAMPAIGN_URL): Promise<string | null> {
   let sessionId: string | null = null;
   let browser: Awaited<ReturnType<typeof browserPool.getBrowser>> | null = null;
   let context: Awaited<ReturnType<Awaited<ReturnType<typeof browserPool.getBrowser>>['newContext']>> | null = null;
@@ -159,10 +161,10 @@ export async function getLoftySessionId(): Promise<string | null> {
     page.on('request', onRequest);
 
     try {
-      await page.goto(CAMPAIGN_URL, { waitUntil: 'networkidle' });
+      await page.goto(campaignUrl, { waitUntil: 'networkidle' });
     } catch {
       try {
-        await page.goto(CAMPAIGN_URL, { waitUntil: 'load' });
+        await page.goto(campaignUrl, { waitUntil: 'load' });
       } catch {
         // continue without navigation
       }
@@ -228,10 +230,10 @@ export async function getLoftySessionId(): Promise<string | null> {
 }
 
 /** Fallback: fetch campaign page HTML and try to extract session_id (e.g. when Playwright fails or is unavailable). */
-async function tryGetSessionFromPageFetch(): Promise<string | null> {
+async function tryGetSessionFromPageFetch(campaignUrl: string = CAMPAIGN_URL): Promise<string | null> {
   try {
-    const res = await fetch(CAMPAIGN_URL, {
-      headers: { 'User-Agent': BROWSER_UA, Referer: CAMPAIGN_URL },
+    const res = await fetch(campaignUrl, {
+      headers: { 'User-Agent': BROWSER_UA, Referer: campaignUrl },
     });
     const html = await res.text();
     const uuidMatch = html.match(/session_id["\s:=]+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
@@ -262,9 +264,9 @@ export async function bookLoftySlot(params: BookLoftySlotParams): Promise<BookLo
     return { success: false, error: msg };
   }
 
-  let sessionId = await getLoftySessionId();
+  let sessionId = await getLoftySessionId(CAMPAIGN_URL);
   if (!sessionId) {
-    const fallback = await tryGetSessionFromPageFetch();
+    const fallback = await tryGetSessionFromPageFetch(CAMPAIGN_URL);
     if (!fallback) {
       return {
         success: false,
@@ -305,6 +307,85 @@ export async function bookLoftySlot(params: BookLoftySlotParams): Promise<BookLo
         Accept: 'application/json',
         Origin: 'https://lofty.schedulehero.io',
         Referer: CAMPAIGN_URL,
+      },
+      body: JSON.stringify(body),
+    });
+
+    const json = (await res.json().catch(() => ({}))) as { errors?: unknown; data?: unknown };
+    if (!res.ok) {
+      const message = Array.isArray(json.errors)
+        ? json.errors.map((e: unknown) => (typeof e === 'object' && e !== null && 'detail' in e ? (e as { detail: string }).detail : String(e))).join('; ')
+        : (json as { error?: string }).error || res.statusText || `HTTP ${res.status}`;
+      return { success: false, error: message };
+    }
+
+    return { success: true, meetingTime };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Book a Lofty L2 (Schedule Hero agent-advice-l2) slot: navigate to L2 campaign to get session_id, then POST campaign_meetings.
+ * Company Name = "NA", Role = "Other". Used for vendors lofty-5-9, lofty-10-24, lofty-25.
+ */
+export async function bookLoftySlotL2(params: BookLoftySlotParams): Promise<BookLoftySlotResult> {
+  const { date, time, firstName, lastName, email, phone } = params;
+  const bookerName = `${firstName} ${lastName}`.trim() || 'Guest';
+  const phoneFormatted = phone?.trim() ? (phone.startsWith('+') ? phone : `+1${phone.replace(/\D/g, '').slice(-10)}`) : '';
+
+  let meetingTime: string;
+  try {
+    meetingTime = buildMeetingTime(date, time);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { success: false, error: msg };
+  }
+
+  let sessionId = await getLoftySessionId(CAMPAIGN_URL_L2);
+  if (!sessionId) {
+    const fallback = await tryGetSessionFromPageFetch(CAMPAIGN_URL_L2);
+    if (!fallback) {
+      return {
+        success: false,
+        error: 'Could not get session_id from Lofty L2 campaign page. The page may not have loaded or the API may have changed.',
+      };
+    }
+    sessionId = fallback;
+  }
+
+  const submittedValues = [
+    { answer: firstName, question: 'First Name', question_id: QUESTION_IDS.firstName, question_type: 'TextQuestionPage' },
+    { answer: lastName, question: 'Last Name', question_id: QUESTION_IDS.lastName, question_type: 'TextQuestionPage' },
+    { answer: email, question: 'Email', question_id: QUESTION_IDS.email, question_type: 'TextQuestionPage' },
+    { answer: phoneFormatted || '', question: 'Phone Number', question_id: QUESTION_IDS.phone, question_type: 'TextQuestionPage' },
+    { answer: 'NA', question: 'Company Name', question_id: QUESTION_IDS.companyName, question_type: 'TextQuestionPage' },
+    { answer: 'Other', question: 'Role', question_id: QUESTION_IDS.role, question_type: 'ChoiceQuestionPage' },
+  ];
+
+  const body = {
+    meeting: {
+      meeting_time: meetingTime,
+      booker_email: email,
+      booker_name: bookerName,
+      session: {
+        submitted_values: submittedValues,
+        consent: false,
+      },
+      locale: 'en-US',
+    },
+    session_id: sessionId,
+  };
+
+  try {
+    const res = await fetch(CAMPAIGN_MEETINGS_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Origin: 'https://lofty.schedulehero.io',
+        Referer: CAMPAIGN_URL_L2,
       },
       body: JSON.stringify(body),
     });

@@ -3,7 +3,7 @@ import { SecurityMiddleware } from '@/lib/security-middleware';
 import { concurrencyManager } from '@/lib/concurrency-manager';
 import { ErrorHandler, ErrorCode, SuccessCode } from '@/lib/error-handler';
 import { bookCalendlySlot, normalizeTimeForCalendly } from '@/lib/calendly-booker';
-import { bookLoftySlot } from '@/lib/lofty-booker';
+import { bookLoftySlot, bookLoftySlotL2 } from '@/lib/lofty-booker';
 import { POST as bookSlotPost } from '@/app/api/book-slot/route';
 
 const security = new SecurityMiddleware();
@@ -12,7 +12,7 @@ const security = new SecurityMiddleware();
 const STATUS_SUCCESS = 200;
 const STATUS_FAILURE = 201;
 
-const VENDORS = ['cinq', 'agentfire', 'housejet-ppc', 'lofty'] as const;
+const VENDORS = ['cinq', 'agentfire', 'housejet-ppc', 'lofty', 'lofty-5-9', 'lofty-10-24', 'lofty-25'] as const;
 type Vendor = (typeof VENDORS)[number];
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -308,6 +308,93 @@ export async function POST(request: NextRequest) {
         {
           message: 'Lofty slot booked successfully',
           vendor: 'lofty',
+          date,
+          time,
+        },
+        requestId,
+        responseTime
+      );
+      return security.addSecurityHeaders(
+        NextResponse.json(successResponse, { status: STATUS_SUCCESS })
+      );
+    }
+
+    const loftyL2Vendors = ['lofty-5-9', 'lofty-10-24', 'lofty-25'] as const;
+    if (loftyL2Vendors.includes(vendor as (typeof loftyL2Vendors)[number])) {
+      const date = body.date as string;
+      const time = body.time as string;
+      if (!date || !time) {
+        const responseTime = Date.now() - requestStartTime;
+        const errorResponse = ErrorHandler.createError(
+          ErrorCode.VALIDATION_ERROR,
+          'Missing date or time',
+          'date and time are required when vendor is lofty-5-9, lofty-10-24, or lofty-25. date: YYYY-MM-DD, time: e.g. 9:30am',
+          { date: !!date, time: !!time },
+          requestId,
+          responseTime
+        );
+        return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: STATUS_FAILURE }));
+      }
+      if (!isValidDate(date)) {
+        const responseTime = Date.now() - requestStartTime;
+        const errorResponse = ErrorHandler.createError(
+          ErrorCode.VALIDATION_ERROR,
+          'Invalid date',
+          'date must be YYYY-MM-DD',
+          { providedValue: date },
+          requestId,
+          responseTime
+        );
+        return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: STATUS_FAILURE }));
+      }
+      const normalizedTime = normalizeTimeForCalendly(time);
+      if (!normalizedTime || !/^\d{1,2}:\d{2}(am|pm)$/.test(normalizedTime)) {
+        const responseTime = Date.now() - requestStartTime;
+        const errorResponse = ErrorHandler.createError(
+          ErrorCode.VALIDATION_ERROR,
+          'Invalid time',
+          'time must be like 9:30am or 2:00 PM',
+          { providedValue: time },
+          requestId,
+          responseTime
+        );
+        return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: STATUS_FAILURE }));
+      }
+
+      const result = await concurrencyManager.execute(
+        () =>
+          bookLoftySlotL2({
+            date,
+            time,
+            firstName,
+            lastName,
+            email,
+            phone,
+          }),
+        45000
+      );
+
+      const responseTime = Date.now() - requestStartTime;
+
+      if (!result.success) {
+        const errorResponse = ErrorHandler.createError(
+          ErrorCode.SCRAPING_FAILED,
+          result.error || 'Lofty L2 booking failed',
+          result.error || 'Lofty L2 booking failed',
+          { vendor },
+          requestId,
+          responseTime
+        );
+        return security.addSecurityHeaders(
+          NextResponse.json(errorResponse, { status: STATUS_FAILURE })
+        );
+      }
+
+      const successResponse = ErrorHandler.createSuccess(
+        SuccessCode.OPERATION_SUCCESS,
+        {
+          message: 'Lofty L2 slot booked successfully',
+          vendor,
           date,
           time,
         },

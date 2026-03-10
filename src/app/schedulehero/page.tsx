@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 const CAMPAIGN_BASE = 'https://lofty.schedulehero.io/campaign';
@@ -12,7 +13,7 @@ function getCampaign(param: string | null): string {
   return DEFAULT_CAMPAIGN;
 }
 
-export default function ScheduleHeroPage() {
+function ScheduleHeroContent() {
   const searchParams = useSearchParams();
   const campaign = getCampaign(searchParams.get('campaign'));
   const campaignUrl = `${CAMPAIGN_BASE}/${campaign}`;
@@ -41,5 +42,35 @@ export default function ScheduleHeroPage() {
         />
       </div>
     </div>
+  );
+}
+
+function ScheduleHeroFallback() {
+  const campaignUrl = `${CAMPAIGN_BASE}/${DEFAULT_CAMPAIGN}`;
+  return (
+    <div className="min-h-screen flex flex-col bg-gray-50">
+      <div className="flex-none bg-white border-b border-gray-200 px-4 py-3">
+        <h1 className="text-lg font-semibold text-gray-900">Lofty – Schedule a call</h1>
+        <p className="text-sm text-gray-500 mt-0.5">Use the scheduler below to pick a time (Central Time).</p>
+        <p className="text-xs text-gray-400 mt-1">Loading...</p>
+      </div>
+      <div className="flex-1 min-h-0 w-full">
+        <iframe
+          src={campaignUrl}
+          title="Lofty Scheduler"
+          className="w-full h-full min-h-[calc(100vh-120px)] border-0"
+          allow="encrypted-media"
+          sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+        />
+      </div>
+    </div>
+  );
+}
+
+export default function ScheduleHeroPage() {
+  return (
+    <Suspense fallback={<ScheduleHeroFallback />}>
+      <ScheduleHeroContent />
+    </Suspense>
   );
 }

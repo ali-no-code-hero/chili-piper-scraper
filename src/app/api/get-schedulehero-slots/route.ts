@@ -49,7 +49,8 @@ async function saveScheduleHeroFailureVideo(
   return savedPath;
 }
 
-const CAMPAIGN_URL = 'https://lofty.schedulehero.io/campaign/agent-advice-l1';
+const CAMPAIGN_BASE = 'https://lofty.schedulehero.io/campaign';
+const DEFAULT_CAMPAIGN_SLUG = 'agent-advice-l1';
 const API_BASE = 'https://lofty.schedulehero.io/api/campaign_time_slots';
 const CAPTURE_TIMEOUT_MS = 45000;
 const CONCURRENCY_TIMEOUT_MS = 90000;
@@ -65,6 +66,23 @@ const FIELDS_QUERY =
   '&fields%5Bcampaign_router%5D=';
 
 const security = new SecurityMiddleware();
+
+/** Read campaign slug from query (GET) or body (POST). Defaults to agent-advice-l1. */
+async function getCampaignSlug(request: NextRequest): Promise<string> {
+  const url = new URL(request.url);
+  const fromQuery = url.searchParams.get('campaign');
+  if (fromQuery && /^[a-z0-9-]+$/.test(fromQuery)) return fromQuery;
+  if (request.method === 'POST') {
+    try {
+      const body = await request.json().catch(() => ({}));
+      const fromBody = body?.campaign;
+      if (typeof fromBody === 'string' && /^[a-z0-9-]+$/.test(fromBody)) return fromBody;
+    } catch {
+      // ignore
+    }
+  }
+  return DEFAULT_CAMPAIGN_SLUG;
+}
 
 export async function GET(request: NextRequest) {
   return handleRequest(request);
@@ -102,8 +120,10 @@ async function handleRequest(request: NextRequest) {
       return security.addSecurityHeaders(response);
     }
 
+    const campaignSlug = await getCampaignSlug(request);
+
     const result = await concurrencyManager.execute(
-      () => fetchScheduleHeroSlots(),
+      () => fetchScheduleHeroSlots(campaignSlug),
       CONCURRENCY_TIMEOUT_MS
     );
 
@@ -144,7 +164,7 @@ async function handleRequest(request: NextRequest) {
  * 1) Navigate to campaign page and capture the first campaign_time_slots request URL (session_id) and response (today's slots).
  * 2) Fetch the API directly for the next 5 business days using session_id + booking_date + time_zone.
  */
-async function fetchScheduleHeroSlots(): Promise<
+async function fetchScheduleHeroSlots(campaignSlug: string): Promise<
   | { success: true; data: { slots: Array<{ date: string; time: string; timeZone: string }>; total_slots: number; total_days: number; note: string } }
   | { success: false; error: string }
 > {
@@ -155,6 +175,7 @@ async function fetchScheduleHeroSlots(): Promise<
   let page: Awaited<ReturnType<NonNullable<typeof context>['newPage']>> | null = null;
 
   const sessionIdForVideo = `sh_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+  const campaignUrl = `${CAMPAIGN_BASE}/${campaignSlug}`;
   let videoDir: string | null = null;
   if (SCHEDULEHERO_VIDEO_ENABLED) {
     try {
@@ -219,11 +240,11 @@ async function fetchScheduleHeroSlots(): Promise<
 
     try {
       // Load the full page: wait for network idle so JS has run and campaign_time_slots can fire
-      await page.goto(CAMPAIGN_URL, { waitUntil: 'networkidle' });
+      await page.goto(campaignUrl, { waitUntil: 'networkidle' });
     } catch {
       // networkidle can timeout on busy pages; fallback to load event
       try {
-        await page.goto(CAMPAIGN_URL, { waitUntil: 'load' });
+        await page.goto(campaignUrl, { waitUntil: 'load' });
       } catch {
         // navigation timeout/error
       }
@@ -359,7 +380,7 @@ async function fetchScheduleHeroSlots(): Promise<
     }
 
     if (!sessionId) {
-      const fallback = await tryGetSessionFromApiDirect(captured);
+      const fallback = await tryGetSessionFromApiDirect(captured, campaignUrl);
       sessionId = fallback.sessionId;
       if (fallback.initialPayload) captured.push(fallback.initialPayload);
       if (!sessionId) {
@@ -472,14 +493,15 @@ function getNextFiveBusinessDaysInCentral(): string[] {
 const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 async function tryGetSessionFromApiDirect(
-  captured: ScheduleHeroSlotPayload[]
+  captured: ScheduleHeroSlotPayload[],
+  campaignUrl: string
 ): Promise<{ sessionId: string | null; initialPayload?: ScheduleHeroSlotPayload }> {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: TIMEZONE });
   const urlWithoutSession = `${API_BASE}?${FIELDS_QUERY}&booking_date=${today}&time_zone=${encodeURIComponent(TIMEZONE)}`;
   const headers: Record<string, string> = {
     Accept: 'application/json',
     'User-Agent': BROWSER_UA,
-    Referer: CAMPAIGN_URL,
+    Referer: campaignUrl,
     Origin: 'https://lofty.schedulehero.io'
   };
   try {
@@ -506,8 +528,8 @@ async function tryGetSessionFromApiDirect(
   }
 
   try {
-    const res = await fetch(CAMPAIGN_URL, {
-      headers: { 'User-Agent': BROWSER_UA, Referer: CAMPAIGN_URL }
+    const res = await fetch(campaignUrl, {
+      headers: { 'User-Agent': BROWSER_UA, Referer: campaignUrl }
     });
     const html = await res.text();
     const uuidMatch = html.match(/session_id["\s:=]+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);

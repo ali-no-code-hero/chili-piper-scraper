@@ -210,6 +210,8 @@ node scripts/generate-password-hash.js yourSecurePassword123
 - `POST /api/book-slot` - Book a specific time slot (requires API key, reuses existing instance if available)
 - `POST /api/get-slots-stream` - Streaming API (requires API key)
 - `POST /api/get-slots-per-day-stream` - Per-day streaming (requires API key)
+- `GET|POST /api/get-schedulehero-slots` - Schedule Hero slots (Lofty campaign; optional `?campaign=agent-advice-l2` or body `{ "campaign": "agent-advice-l2" }`)
+- `GET|POST /api/get-schedulehero-slots-l2` - Schedule Hero slots for L2 campaign (`https://lofty.schedulehero.io/campaign/agent-advice-l2`)
 - `POST /api/admin/secure` - Admin operations (requires admin token)
 
 For complete API documentation, see [API_DOCUMENTATION.md](API_DOCUMENTATION.md).

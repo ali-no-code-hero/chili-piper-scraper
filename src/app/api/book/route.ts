@@ -7,6 +7,10 @@ import { POST as bookSlotPost } from '@/app/api/book-slot/route';
 
 const security = new SecurityMiddleware();
 
+/** Status codes for Zapier pathing: success=200, failure=201 */
+const STATUS_SUCCESS = 200;
+const STATUS_FAILURE = 201;
+
 const VENDORS = ['cinq', 'agentfire', 'housejet-ppc'] as const;
 type Vendor = (typeof VENDORS)[number];
 
@@ -52,7 +56,7 @@ export async function POST(request: NextRequest) {
         responseTime
       );
       return security.addSecurityHeaders(
-        NextResponse.json(errorResponse, { status: ErrorHandler.getStatusCode(errorResponse.code) })
+        NextResponse.json(errorResponse, { status: STATUS_FAILURE })
       );
     }
 
@@ -69,7 +73,7 @@ export async function POST(request: NextRequest) {
         requestId,
         responseTime
       );
-      return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: 400 }));
+      return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: STATUS_FAILURE }));
     }
 
     const email = body.email as string;
@@ -89,7 +93,7 @@ export async function POST(request: NextRequest) {
           requestId,
           responseTime
         );
-        return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: 400 }));
+        return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: STATUS_FAILURE }));
       }
       const bookSlotUrl = request.nextUrl.origin + '/api/book-slot';
       const bookSlotRequest = new NextRequest(bookSlotUrl, {
@@ -109,7 +113,9 @@ export async function POST(request: NextRequest) {
         }),
       });
       const bookSlotResponse = await bookSlotPost(bookSlotRequest);
-      return bookSlotResponse;
+      const status = bookSlotResponse.status >= 200 && bookSlotResponse.status < 300 ? STATUS_SUCCESS : STATUS_FAILURE;
+      const json = await bookSlotResponse.json();
+      return security.addSecurityHeaders(NextResponse.json(json, { status }));
     }
 
     if (vendor === 'agentfire' || vendor === 'housejet-ppc') {
@@ -125,7 +131,7 @@ export async function POST(request: NextRequest) {
           requestId,
           responseTime
         );
-        return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: 400 }));
+        return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: STATUS_FAILURE }));
       }
       if (!isValidDate(date)) {
         const responseTime = Date.now() - requestStartTime;
@@ -137,7 +143,7 @@ export async function POST(request: NextRequest) {
           requestId,
           responseTime
         );
-        return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: 400 }));
+        return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: STATUS_FAILURE }));
       }
       const normalizedTime = normalizeTimeForCalendly(time);
       if (!normalizedTime || !/^\d{1,2}:\d{2}(am|pm)$/.test(normalizedTime)) {
@@ -150,7 +156,7 @@ export async function POST(request: NextRequest) {
           requestId,
           responseTime
         );
-        return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: 400 }));
+        return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: STATUS_FAILURE }));
       }
 
       let answersRecord: Record<string, string | string[]> = {};
@@ -206,7 +212,7 @@ export async function POST(request: NextRequest) {
           responseTime
         );
         return security.addSecurityHeaders(
-          NextResponse.json(errorResponse, { status: ErrorHandler.getStatusCode(code) })
+          NextResponse.json(errorResponse, { status: STATUS_FAILURE })
         );
       }
 
@@ -222,7 +228,7 @@ export async function POST(request: NextRequest) {
         responseTime
       );
       return security.addSecurityHeaders(
-        NextResponse.json(successResponse, { status: ErrorHandler.getSuccessStatusCode() })
+        NextResponse.json(successResponse, { status: STATUS_SUCCESS })
       );
     }
 
@@ -235,7 +241,7 @@ export async function POST(request: NextRequest) {
       requestId,
       responseTime
     );
-    return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: 400 }));
+    return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: STATUS_FAILURE }));
   } catch (error: unknown) {
     const err = error as { message?: string };
     console.error('Book API error:', error);
@@ -249,7 +255,7 @@ export async function POST(request: NextRequest) {
         requestId,
         responseTime
       );
-      return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: 504 }));
+      return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: STATUS_FAILURE }));
     }
     if (err?.message?.includes('queue is full')) {
       const errorResponse = ErrorHandler.createError(
@@ -260,11 +266,11 @@ export async function POST(request: NextRequest) {
         requestId,
         responseTime
       );
-      return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: 503 }));
+      return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: STATUS_FAILURE }));
     }
     const errorResponse = ErrorHandler.parseError(error, requestId, responseTime);
     return security.addSecurityHeaders(
-      NextResponse.json(errorResponse, { status: ErrorHandler.getStatusCode(errorResponse.code) })
+      NextResponse.json(errorResponse, { status: STATUS_FAILURE })
     );
   }
 }

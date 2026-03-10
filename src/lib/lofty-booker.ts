@@ -9,14 +9,12 @@ const CAPTURE_TIMEOUT_MS = 45000;
 const WAIT_FOR_SLOTS_MS = 35000;
 const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-/** Agent-advice-l1 question IDs (from Schedule Hero campaign). */
+/** Agent-advice question IDs (from Schedule Hero campaign). Company Name and Role no longer sent. */
 const QUESTION_IDS = {
   firstName: '66272',
   lastName: '2255',
   email: '2254',
   phone: '66273',
-  companyName: '66274',
-  role: '16189',
 } as const;
 
 export type BookLoftySlotParams = {
@@ -281,8 +279,6 @@ export async function bookLoftySlot(params: BookLoftySlotParams): Promise<BookLo
     { answer: lastName, question: 'Last Name', question_id: QUESTION_IDS.lastName, question_type: 'TextQuestionPage' },
     { answer: email, question: 'Email', question_id: QUESTION_IDS.email, question_type: 'TextQuestionPage' },
     { answer: phoneFormatted || '', question: 'Phone Number', question_id: QUESTION_IDS.phone, question_type: 'TextQuestionPage' },
-    { answer: 'NA', question: 'Company Name', question_id: QUESTION_IDS.companyName, question_type: 'TextQuestionPage' },
-    { answer: 'Solo agent', question: 'Role', question_id: QUESTION_IDS.role, question_type: 'ChoiceQuestionPage' },
   ];
 
   const body = {
@@ -328,7 +324,7 @@ export async function bookLoftySlot(params: BookLoftySlotParams): Promise<BookLo
 
 /**
  * Book a Lofty L2 (Schedule Hero agent-advice-l2) slot: navigate to L2 campaign to get session_id, then POST campaign_meetings.
- * Company Name = "NA", Role = "Other". Used for vendors lofty-5-9, lofty-10-24, lofty-25.
+ * Used for vendors lofty-5-9, lofty-10-24, lofty-25.
  */
 export async function bookLoftySlotL2(params: BookLoftySlotParams): Promise<BookLoftySlotResult> {
   const { date, time, firstName, lastName, email, phone } = params;
@@ -360,8 +356,6 @@ export async function bookLoftySlotL2(params: BookLoftySlotParams): Promise<Book
     { answer: lastName, question: 'Last Name', question_id: QUESTION_IDS.lastName, question_type: 'TextQuestionPage' },
     { answer: email, question: 'Email', question_id: QUESTION_IDS.email, question_type: 'TextQuestionPage' },
     { answer: phoneFormatted || '', question: 'Phone Number', question_id: QUESTION_IDS.phone, question_type: 'TextQuestionPage' },
-    { answer: 'NA', question: 'Company Name', question_id: QUESTION_IDS.companyName, question_type: 'TextQuestionPage' },
-    { answer: 'Other', question: 'Role', question_id: QUESTION_IDS.role, question_type: 'ChoiceQuestionPage' },
   ];
 
   const body = {

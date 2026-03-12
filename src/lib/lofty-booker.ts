@@ -308,6 +308,7 @@ export async function bookLoftySlot(params: BookLoftySlotParams): Promise<BookLo
     });
 
     const json = (await res.json().catch(() => ({}))) as { errors?: unknown; data?: unknown };
+    console.log('[Lofty API] campaign_meetings response (L1)', { status: res.status, ok: res.ok, body: json });
     if (!res.ok) {
       const message = Array.isArray(json.errors)
         ? json.errors.map((e: unknown) => (typeof e === 'object' && e !== null && 'detail' in e ? (e as { detail: string }).detail : String(e))).join('; ')
@@ -385,6 +386,7 @@ export async function bookLoftySlotL2(params: BookLoftySlotParams): Promise<Book
     });
 
     const json = (await res.json().catch(() => ({}))) as { errors?: unknown; data?: unknown };
+    console.log('[Lofty API] campaign_meetings response (L2)', { status: res.status, ok: res.ok, body: json });
     if (!res.ok) {
       const message = Array.isArray(json.errors)
         ? json.errors.map((e: unknown) => (typeof e === 'object' && e !== null && 'detail' in e ? (e as { detail: string }).detail : String(e))).join('; ')

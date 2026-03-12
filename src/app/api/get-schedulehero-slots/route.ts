@@ -338,6 +338,7 @@ async function fetchScheduleHeroSlots(campaignSlug: string): Promise<
         }
         if (firstResponse.ok()) {
           const json = (await firstResponse.json()) as { data?: { attributes?: ScheduleHeroSlotPayload } };
+          console.log('[Lofty ScheduleHero] campaign_time_slots (initial)', { ok: true, url: firstResponse.url(), body: json });
           const attrs = json?.data?.attributes;
           if (attrs && Array.isArray(attrs.meeting_slots) && attrs.booking_date) {
             captured.push({
@@ -346,6 +347,14 @@ async function fetchScheduleHeroSlots(campaignSlug: string): Promise<
               time_zone: attrs.time_zone || TIMEZONE
             });
           }
+        } else {
+          let body: unknown = null;
+          try {
+            body = await firstResponse.json();
+          } catch {
+            body = await firstResponse.text().catch(() => null);
+          }
+          console.log('[Lofty ScheduleHero] campaign_time_slots (initial)', { ok: false, status: firstResponse.status(), url: firstResponse.url(), body });
         }
       }
     } catch {
@@ -415,8 +424,14 @@ async function fetchScheduleHeroSlots(campaignSlug: string): Promise<
       const url = `${API_BASE}?session_id=${encodeURIComponent(sessionId)}&${FIELDS_QUERY}&booking_date=${dateStr}&time_zone=${encodeURIComponent(TIMEZONE)}`;
       try {
         const res = await fetch(url, { headers: { Accept: 'application/json' } });
+        let json: { data?: { attributes?: ScheduleHeroSlotPayload } } = {};
+        try {
+          json = (await res.json()) as { data?: { attributes?: ScheduleHeroSlotPayload } };
+        } catch {
+          // non-JSON response (e.g. error page)
+        }
+        console.log('[Lofty ScheduleHero] campaign_time_slots (direct)', { date: dateStr, status: res.status, ok: res.ok, body: json });
         if (!res.ok) continue;
-        const json = (await res.json()) as { data?: { attributes?: ScheduleHeroSlotPayload } };
         const attrs = json?.data?.attributes;
         if (attrs && Array.isArray(attrs.meeting_slots) && attrs.booking_date) {
           captured.push({
@@ -506,8 +521,14 @@ async function tryGetSessionFromApiDirect(
   };
   try {
     const res = await fetch(urlWithoutSession, { headers });
+    let json: { data?: { attributes?: { session_id?: string } & ScheduleHeroSlotPayload } } = {};
+    try {
+      json = (await res.json()) as { data?: { attributes?: { session_id?: string } & ScheduleHeroSlotPayload } };
+    } catch {
+      // non-JSON response
+    }
+    console.log('[Lofty ScheduleHero] campaign_time_slots (fallback, no session_id)', { status: res.status, ok: res.ok, body: json });
     if (!res.ok) return { sessionId: null };
-    const json = (await res.json()) as { data?: { attributes?: { session_id?: string } & ScheduleHeroSlotPayload } };
     const attrs = json?.data?.attributes;
     const sid = attrs?.session_id;
     if (sid && typeof sid === 'string') {

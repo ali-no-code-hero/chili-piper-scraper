@@ -58,6 +58,20 @@ async function proxyToMainApi(request: NextRequest): Promise<NextResponse> {
 
     clearTimeout(timeoutId);
 
+    const cloned = res.clone();
+    let loggedBody: unknown = null;
+    try {
+      const text = await cloned.text();
+      try {
+        loggedBody = JSON.parse(text) as unknown;
+      } catch {
+        loggedBody = text;
+      }
+    } catch {
+      // ignore
+    }
+    console.log('[Lofty ScheduleHero L2] proxy response', { status: res.status, ok: res.ok, body: loggedBody });
+
     const response = new NextResponse(res.body, {
       status: res.status,
       statusText: res.statusText,

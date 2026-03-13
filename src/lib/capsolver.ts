@@ -1,7 +1,8 @@
 /**
- * CapSolver API client for reCAPTCHA v3 Enterprise.
+ * CapSolver API client for reCAPTCHA v3 and v2 Enterprise.
  * Used to obtain gRecaptchaResponse tokens for Calendly form submission.
  * @see https://docs.capsolver.com/en/guide/captcha/ReCaptchaV3/
+ * @see https://docs.capsolver.com/guide/captcha/ReCaptchaV2/
  * @see https://docs.capsolver.com/en/guide/api-how-to-use-proxy/
  */
 
@@ -35,18 +36,11 @@ export interface SolveRecaptchaV3EnterpriseResult {
 
 // --- API request/response types ---
 
+type TaskPayload = Record<string, unknown>;
+
 interface CreateTaskRequest {
   clientKey: string;
-  task: {
-    type: 'ReCaptchaV3EnterpriseTask' | 'ReCaptchaV3EnterpriseTaskProxyLess';
-    websiteURL: string;
-    websiteKey: string;
-    proxy?: string;
-    pageAction?: string;
-    enterprisePayload?: { s: string };
-    isSession?: boolean;
-    apiDomain?: string;
-  };
+  task: TaskPayload;
 }
 
 interface CreateTaskResponse {
@@ -104,7 +98,7 @@ export function formatProxyForCapSolver(proxy: CapSolverProxyOptions): string {
 
 async function createTask(
   clientKey: string,
-  task: CreateTaskRequest['task']
+  task: TaskPayload
 ): Promise<CreateTaskResponse> {
   const res = await fetch(CAPSOLVER_CREATE_TASK_URL, {
     method: 'POST',
@@ -147,7 +141,7 @@ export async function solveRecaptchaV3Enterprise(
   const useProxy = options.proxy?.server != null && options.proxy.server.trim() !== '';
   const taskType = useProxy ? 'ReCaptchaV3EnterpriseTask' : 'ReCaptchaV3EnterpriseTaskProxyLess';
 
-  const task: CreateTaskRequest['task'] = {
+  const task: TaskPayload = {
     type: taskType,
     websiteURL: options.websiteURL,
     websiteKey: options.websiteKey,
@@ -197,4 +191,78 @@ export async function solveRecaptchaV3Enterprise(
   }
 
   throw new Error('CapSolver solve timed out');
+}
+
+// --- reCAPTCHA v2 Enterprise (used when Calendly shows v2 fallback after v3) ---
+
+export interface SolveRecaptchaV2EnterpriseOptions {
+  websiteURL: string;
+  websiteKey: string;
+  proxy?: CapSolverProxyOptions;
+  enterprisePayload?: { s: string };
+  apiDomain?: string;
+  isInvisible?: boolean;
+}
+
+/**
+ * Solve reCAPTCHA v2 Enterprise via CapSolver.
+ * Use when Calendly shows a v2 Normal challenge (checkbox/image grid) after v3.
+ * @see https://docs.capsolver.com/guide/captcha/ReCaptchaV2/
+ */
+export async function solveRecaptchaV2Enterprise(
+  options: SolveRecaptchaV2EnterpriseOptions
+): Promise<{ gRecaptchaResponse: string }> {
+  const apiKey = process.env.CAPSOLVER_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error('CAPSOLVER_API_KEY is not set');
+  }
+
+  const useProxy = options.proxy?.server != null && options.proxy.server.trim() !== '';
+  const taskType = useProxy ? 'ReCaptchaV2EnterpriseTask' : 'ReCaptchaV2EnterpriseTaskProxyLess';
+
+  const task: TaskPayload = {
+    type: taskType,
+    websiteURL: options.websiteURL,
+    websiteKey: options.websiteKey,
+    enterprisePayload: options.enterprisePayload,
+    apiDomain: options.apiDomain,
+    isInvisible: options.isInvisible ?? false,
+  };
+
+  if (useProxy && options.proxy) {
+    task.proxy = formatProxyForCapSolver(options.proxy);
+    if (!task.proxy) {
+      throw new Error('Invalid proxy format for CapSolver');
+    }
+  }
+
+  const createRes = await createTask(apiKey, task);
+  if (createRes.errorId !== 0 || !createRes.taskId) {
+    const msg = createRes.errorDescription || createRes.errorCode || 'Unknown error';
+    throw new Error(`CapSolver v2 createTask failed: ${msg}`);
+  }
+
+  const taskId = createRes.taskId;
+  const deadline = Date.now() + MAX_WAIT_MS;
+
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    const resultRes = await getTaskResult(apiKey, taskId);
+
+    if (resultRes.errorId !== 0) {
+      const msg = resultRes.errorDescription || resultRes.errorCode || 'Unknown error';
+      throw new Error(`CapSolver v2 getTaskResult error: ${msg}`);
+    }
+
+    if (resultRes.status === 'ready' && resultRes.solution?.gRecaptchaResponse) {
+      return { gRecaptchaResponse: resultRes.solution.gRecaptchaResponse };
+    }
+
+    if (resultRes.status === 'failed') {
+      const msg = resultRes.errorDescription || resultRes.errorCode || 'Task failed';
+      throw new Error(`CapSolver v2 task failed: ${msg}`);
+    }
+  }
+
+  throw new Error('CapSolver v2 solve timed out');
 }

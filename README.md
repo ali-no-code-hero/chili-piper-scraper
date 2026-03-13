@@ -189,6 +189,7 @@ curl -X POST http://your-domain.com/api/book-slot \
 | `CALENDLY_RECAPTCHA_WEBSITE_KEY` | reCAPTCHA site key for the Calendly page (required when CapSolver is used) | No | - |
 | `CALENDLY_RECAPTCHA_PAGE_ACTION` | Optional reCAPTCHA v3 action (e.g. `scheduling`) | No | - |
 | `CALENDLY_RECAPTCHA_API_DOMAIN` | Optional reCAPTCHA API domain (e.g. `www.recaptcha.net`) | No | - |
+| `CALENDLY_RECAPTCHA_V2_WEBSITE_KEY` | V2 site key when Calendly shows v2 (checkbox) after v3 | No | - |
 | `CALENDLY_RECAPTCHA_ENTERPRISE_S` | Optional Enterprise `s` parameter for CapSolver | No | - |
 
 ### Generate Secrets

@@ -374,6 +374,7 @@ When Calendly uses reCAPTCHA v3 Enterprise, the app can solve it via [CapSolver]
 | `CALENDLY_RECAPTCHA_WEBSITE_KEY` | reCAPTCHA site key for the Calendly page. Required when CapSolver is used. Find via page source or [CapSolver extension](https://docs.capsolver.com/en/blog/show-to-get-recaptcha-version/). | When using CapSolver |
 | `CALENDLY_RECAPTCHA_PAGE_ACTION` | Optional. reCAPTCHA v3 action name (e.g. `scheduling`). Find via `grecaptcha.execute` on the page or CapSolver extension. | No |
 | `CALENDLY_RECAPTCHA_API_DOMAIN` | Optional. Domain for loading reCAPTCHA (e.g. `www.recaptcha.net`). Can improve token acceptance. | No |
+| `CALENDLY_RECAPTCHA_V2_WEBSITE_KEY` | When Calendly shows reCAPTCHA v2 (normal) after v3, set this to the v2 site key (e.g. `6LconfUd...`). Enables solving the v2 fallback via CapSolver. | No |
 | `CALENDLY_RECAPTCHA_ENTERPRISE_S` | Optional. Enterprise `s` parameter from `grecaptcha.enterprise.render`, for `enterprisePayload.s`. | No |
 
 If `CAPSOLVER_API_KEY` is set but `CALENDLY_RECAPTCHA_WEBSITE_KEY` is not, a warning is logged and the booking continues without solving (no hard failure).

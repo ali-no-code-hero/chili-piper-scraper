@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { Page, Request, Response } from 'playwright';
 import { browserPool } from './browser-pool';
+import { capsolverBrowserPool } from './capsolver-browser-pool';
 import { getCentralOffsetForDate } from './central-timezone';
 import { waitForAndSolveRecaptchaIfPresent } from './recaptcha-solver';
 
@@ -229,11 +230,22 @@ function buildDirectCalendlyUrl(
   return `${baseUrl}/${isoDateTime}?${baseQuery}&${prefill}`;
 }
 
+/** Pool interface used by createNewBookingPage (main pool or CapSolver pool for payperclose). */
+type BrowserPoolLike = {
+  getBrowser: () => Promise<unknown>;
+  releaseBrowser: (browser: unknown) => void;
+  acquireContextLock: (browser: unknown) => Promise<() => void>;
+};
+
 /**
  * Create a new browser session for a single Calendly booking. Caller must call cleanup(outcome) when done.
  * When outcome is 'failure', cleanup saves the recorded video and returns its path.
+ * For payperclose (housejet-ppc), uses the CapSolver extension pool when configured.
  */
-async function createNewBookingPage(calendlyUrl: string): Promise<{
+async function createNewBookingPage(
+  calendlyUrl: string,
+  opts: BookCalendlySlotOptions
+): Promise<{
   page: Page;
   cleanup: (outcome: 'success' | 'failure') => Promise<string | null>;
 }> {
@@ -242,10 +254,20 @@ async function createNewBookingPage(calendlyUrl: string): Promise<{
   let page: any = null;
   let releaseLock: (() => void) | null = null;
 
+  const useCapsolverPool =
+    opts.calendlyType === 'payperclose' && capsolverBrowserPool.isAvailable();
+  const pool: BrowserPoolLike = useCapsolverPool ? capsolverBrowserPool : browserPool;
+  const persistContext = useCapsolverPool;
+
+  if (useCapsolverPool) {
+    console.log(`${LOG_PREFIX} [create] Using CapSolver extension pool (housejet-ppc)`);
+  }
+
   const sessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   let videoDir: string | null = null;
-  if (CALENDLY_VIDEO_ENABLED) {
+  if (CALENDLY_VIDEO_ENABLED && !persistContext) {
     // Use OS temp dir for recording so it works on read-only app dirs (e.g. Railway).
+    // Video recording not supported with persistent context (CapSolver pool).
     const recordDir = path.join(os.tmpdir(), 'calendly-videos', sessionId);
     try {
       fs.mkdirSync(recordDir, { recursive: true });
@@ -258,8 +280,8 @@ async function createNewBookingPage(calendlyUrl: string): Promise<{
   }
 
   console.log(`${LOG_PREFIX} [create] Acquiring browser and context lock...`);
-  browser = await browserPool.getBrowser();
-  releaseLock = await browserPool.acquireContextLock(browser);
+  browser = await pool.getBrowser();
+  releaseLock = await pool.acquireContextLock(browser);
   console.log(`${LOG_PREFIX} [create] Creating new context and page...`);
 
   const contextOptions: {
@@ -279,11 +301,11 @@ async function createNewBookingPage(calendlyUrl: string): Promise<{
   let retries = 3;
   while (retries > 0) {
     try {
-      if (!browser.isConnected()) {
+      if (typeof browser.isConnected === 'function' && !browser.isConnected()) {
         if (releaseLock) releaseLock();
-        browserPool.releaseBrowser(browser);
-        browser = await browserPool.getBrowser();
-        releaseLock = await browserPool.acquireContextLock(browser);
+        pool.releaseBrowser(browser);
+        browser = await pool.getBrowser();
+        releaseLock = await pool.acquireContextLock(browser);
       }
       context = await browser.newContext(contextOptions);
       page = await context.newPage();
@@ -292,13 +314,13 @@ async function createNewBookingPage(calendlyUrl: string): Promise<{
       retries--;
       if (error.message?.includes('has been closed') && retries > 0) {
         if (releaseLock) releaseLock();
-        browserPool.releaseBrowser(browser);
-        browser = await browserPool.getBrowser();
-        releaseLock = await browserPool.acquireContextLock(browser);
+        pool.releaseBrowser(browser);
+        browser = await pool.getBrowser();
+        releaseLock = await pool.acquireContextLock(browser);
         await new Promise((r) => setTimeout(r, 100));
       } else {
         if (releaseLock) releaseLock();
-        browserPool.releaseBrowser(browser);
+        pool.releaseBrowser(browser);
         throw error;
       }
     }
@@ -308,7 +330,7 @@ async function createNewBookingPage(calendlyUrl: string): Promise<{
     releaseLock();
   }
   if (!page) {
-    if (browser) browserPool.releaseBrowser(browser);
+    if (browser) pool.releaseBrowser(browser);
     throw new Error('Failed to create browser context');
   }
   console.log(`${LOG_PREFIX} [create] Context and page ready`);
@@ -363,7 +385,7 @@ async function createNewBookingPage(calendlyUrl: string): Promise<{
           console.warn(`${LOG_PREFIX} Could not save video:`, (e as Error)?.message);
         }
       }
-      if (context) await context.close().catch(() => {});
+      if (context && !persistContext) await context.close().catch(() => {});
       await new Promise((r) => setTimeout(r, 200));
       if (outcome === 'success' && videoDir) {
         try {
@@ -373,7 +395,7 @@ async function createNewBookingPage(calendlyUrl: string): Promise<{
         }
       }
     } finally {
-      if (browser) browserPool.releaseBrowser(browser);
+      if (browser) pool.releaseBrowser(browser);
     }
     return savedVideoPath;
   };
@@ -1139,7 +1161,7 @@ export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<B
   console.log(`${LOG_PREFIX} Starting booking: date=${opts.date} time=${opts.time} (normalized: ${normalizedTime}) email=${opts.email} simpleForm=${simpleForm}`);
   console.log(`${LOG_PREFIX} Using direct form URL (skip calendar/time picker)`);
 
-  const { page, cleanup } = await createNewBookingPage(directUrl);
+  const { page, cleanup } = await createNewBookingPage(directUrl, opts);
   let succeeded = false;
   let currentStep = 'create_page';
   try {

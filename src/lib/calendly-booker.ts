@@ -1014,57 +1014,63 @@ async function clickNextButton(page: Page, normalizedTime: string): Promise<void
 }
 
 /**
- * Inject reCAPTCHA v3 token: find promise-callback in ___grecaptcha_cfg.clients and call it; set g-recaptcha-response if present.
- * Returns true if callback was called or textarea was set.
+ * Stub grecaptcha.enterprise.execute so that when the page calls it (on Schedule Event click),
+ * it immediately receives our token instead of triggering a popup. Calendly only calls execute()
+ * on click, so pre-calling the promise-callback does nothing; we must intercept execute().
+ * Returns true if stub was installed.
  */
-async function injectRecaptchaV3TokenInFrame(frame: Page | import('playwright').Frame, token: string): Promise<boolean> {
+async function stubRecaptchaEnterpriseExecuteInFrame(
+  frame: Page | import('playwright').Frame,
+  token: string
+): Promise<boolean> {
   return frame.evaluate((gRecaptchaResponse: string) => {
-    const cfg = (window as unknown as { ___grecaptcha_cfg?: { clients: Record<string, unknown> } }).___grecaptcha_cfg;
-    if (!cfg?.clients || typeof cfg.clients !== 'object') return false;
-    let injected = false;
-    for (const [, client] of Object.entries(cfg.clients)) {
-      const c = client as Record<string, unknown>;
-      if (!c?.l || typeof c.l !== 'object') continue;
-      const inner = (c.l as Record<string, unknown>).l as Record<string, unknown> | undefined;
-      if (!inner || typeof inner !== 'object') continue;
-      const callback = inner['promise-callback'] as ((t: string) => void) | undefined;
-      if (typeof callback === 'function') {
-        try {
-          callback(gRecaptchaResponse);
-          injected = true;
-        } catch {
-          /* ignore */
-        }
-        break;
-      }
+    const w = window as unknown as { grecaptcha?: { enterprise?: { execute: unknown } }; __capSolverRecaptchaToken?: string };
+    w.__capSolverRecaptchaToken = gRecaptchaResponse;
+    if (w.grecaptcha?.enterprise?.execute) {
+      w.grecaptcha.enterprise.execute = function () {
+        return Promise.resolve(w.__capSolverRecaptchaToken || gRecaptchaResponse);
+      };
+      return true;
     }
-    const textarea = document.querySelector('textarea[name="g-recaptcha-response"]') as HTMLTextAreaElement | null;
-    if (textarea) {
-      textarea.value = gRecaptchaResponse;
-      injected = true;
-    }
-    return injected;
+    return false;
   }, token);
 }
 
 /**
- * Inject reCAPTCHA v3 token into the page and all frames. Calendly often embeds the form (and reCAPTCHA) in an iframe,
- * so the promise-callback may live in a child frame. We inject in every frame so the token is accepted before submit.
- * After injection, waits briefly so the page can process the callback before we click Schedule Event.
+ * Poll for grecaptcha.enterprise and stub execute() when it appears (script may load after our first run).
  */
-async function injectRecaptchaV3TokenInAllFrames(page: Page, token: string): Promise<void> {
+async function stubRecaptchaEnterpriseExecuteWhenReady(
+  frame: Page | import('playwright').Frame,
+  token: string,
+  maxWaitMs: number
+): Promise<boolean> {
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    const stubbed = await stubRecaptchaEnterpriseExecuteInFrame(frame, token);
+    if (stubbed) return true;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  return false;
+}
+
+/**
+ * Stub grecaptcha.enterprise.execute in the page and all frames so that when Calendly calls it
+ * on Schedule Event click, it gets our token and no popup is shown. Also store token on window
+ * for late-loaded scripts. Waits briefly for grecaptcha to exist, then a short delay before click.
+ */
+async function stubRecaptchaExecuteInAllFrames(page: Page, token: string): Promise<void> {
   const frames = [page, ...page.frames()];
-  let anyInjected = false;
+  let anyStubbed = false;
   for (const frame of frames) {
     try {
-      const injected = await injectRecaptchaV3TokenInFrame(frame, token);
-      if (injected) anyInjected = true;
+      const stubbed = await stubRecaptchaEnterpriseExecuteWhenReady(frame, token, 3000);
+      if (stubbed) anyStubbed = true;
     } catch {
       // Cross-origin or detached frame; skip
     }
   }
-  if (anyInjected) {
-    await humanDelay(600);
+  if (anyStubbed) {
+    await humanDelay(400);
   }
 }
 
@@ -1106,7 +1112,8 @@ async function ensureRecaptchaTokenAndInject(page: Page, opts: BookCalendlySlotO
       apiDomain: process.env.CALENDLY_RECAPTCHA_API_DOMAIN?.trim() || undefined,
     });
 
-    await injectRecaptchaV3TokenInAllFrames(page, result.gRecaptchaResponse);
+    // Stub execute() so when the page calls it on Schedule Event click, it gets our token (no popup).
+    await stubRecaptchaExecuteInAllFrames(page, result.gRecaptchaResponse);
 
     if (result.recaptchaCaT ?? result.recaptchaCaE) {
       const u = new URL(pageUrl);
@@ -1116,7 +1123,7 @@ async function ensureRecaptchaTokenAndInject(page: Page, opts: BookCalendlySlotO
       if (cookies.length) await page.context().addCookies(cookies);
     }
 
-    console.log(`${LOG_PREFIX} reCAPTCHA token injected`);
+    console.log(`${LOG_PREFIX} reCAPTCHA enterprise.execute() stubbed (token will be used when page calls it on click)`);
   } catch (e) {
     console.warn(`${LOG_PREFIX} CapSolver/inject failed (continuing without token):`, (e as Error)?.message ?? e);
   }

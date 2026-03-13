@@ -24,9 +24,16 @@ const RECAPTCHA_CHECKBOX_SELECTORS = [
 ];
 const CONTINUE_BUTTON_SELECTORS = [
   'button:has-text("Continue")',
+  'button >> span:has-text("Continue")',
   'input[type="button"][value="Continue"]',
   '[role="button"]:has-text("Continue")',
   '.rc-button-default:has-text("Continue")',
+];
+/** "Confirm you're human" popup container (e.g. Calendly) – must contain both heading and #recaptcha-challenge iframe. */
+const CONFIRM_POPUP_SELECTORS = [
+  'div:has(h1:has-text("Confirm you\'re human"))',
+  '#recaptcha-challenge',
+  '[data-size="normal"][id="recaptcha-challenge"]',
 ];
 const GRID_TABLE_33 = 'table.rc-imageselect-table-33';
 const GRID_TABLE_44 = 'table.rc-imageselect-table-44';
@@ -70,30 +77,63 @@ function findAnchorFrame(page: Page): Frame | null {
 async function clickCheckboxAndContinue(page: Page, challengeFrame: Frame): Promise<void> {
   const timeout = 5000;
   try {
-    const anchorFrame = findAnchorFrame(page);
-    if (!anchorFrame) {
-      console.log('[reCAPTCHA] No anchor frame found for checkbox.');
-    } else {
-      let checkboxClicked = false;
-      for (const sel of RECAPTCHA_CHECKBOX_SELECTORS) {
-        try {
-          const checkbox = anchorFrame.locator(sel).first();
-          await checkbox.waitFor({ state: 'visible', timeout: 2000 });
-          await checkbox.scrollIntoViewIfNeeded();
-          await new Promise((r) => setTimeout(r, 200));
-          await checkbox.click({ timeout: 3000, force: true });
-          console.log('[reCAPTCHA] Clicked "I\'m not a robot" checkbox:', sel);
-          checkboxClicked = true;
-          await new Promise((r) => setTimeout(r, 800));
-          break;
-        } catch {
-          continue;
+    // 1) Prefer "Confirm you're human" popup (e.g. Calendly): wait for it, then get anchor iframe inside it
+    let checkboxClicked = false;
+    for (const popupSel of CONFIRM_POPUP_SELECTORS) {
+      try {
+        const popup = page.locator(popupSel).first();
+        await popup.waitFor({ state: 'visible', timeout: 3000 });
+        const iframeInPopup = popup.locator('iframe[title="reCAPTCHA"], iframe[src*="anchor"]').first();
+        await iframeInPopup.waitFor({ state: 'attached', timeout: 2000 });
+        const handle = await iframeInPopup.elementHandle();
+        const frame = await handle?.contentFrame();
+        if (frame) {
+          for (const sel of RECAPTCHA_CHECKBOX_SELECTORS) {
+            try {
+              const checkbox = frame.locator(sel).first();
+              await checkbox.waitFor({ state: 'visible', timeout: 2000 });
+              await checkbox.scrollIntoViewIfNeeded();
+              await new Promise((r) => setTimeout(r, 200));
+              await checkbox.click({ timeout: 3000, force: true });
+              console.log('[reCAPTCHA] Clicked checkbox in Confirm popup:', sel);
+              checkboxClicked = true;
+              await new Promise((r) => setTimeout(r, 800));
+              break;
+            } catch {
+              continue;
+            }
+          }
+          if (checkboxClicked) break;
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    if (!checkboxClicked) {
+      const anchorFrame = findAnchorFrame(page);
+      if (!anchorFrame) {
+        console.log('[reCAPTCHA] No anchor frame found for checkbox.');
+      } else {
+        for (const sel of RECAPTCHA_CHECKBOX_SELECTORS) {
+          try {
+            const checkbox = anchorFrame.locator(sel).first();
+            await checkbox.waitFor({ state: 'visible', timeout: 2000 });
+            await checkbox.scrollIntoViewIfNeeded();
+            await new Promise((r) => setTimeout(r, 200));
+            await checkbox.click({ timeout: 3000, force: true });
+            console.log('[reCAPTCHA] Clicked "I\'m not a robot" checkbox:', sel);
+            checkboxClicked = true;
+            await new Promise((r) => setTimeout(r, 800));
+            break;
+          } catch {
+            continue;
+          }
         }
       }
       if (!checkboxClicked) {
-        // Fallback: try main-page iframe (anchor may be in different frame tree)
         try {
-          const anchorIframe = page.frameLocator('iframe[src*="recaptcha"][src*="anchor"]').first();
+          const anchorIframe = page.frameLocator('iframe[src*="recaptcha"][src*="anchor"], iframe[title="reCAPTCHA"][src*="anchor"]').first();
           for (const sel of RECAPTCHA_CHECKBOX_SELECTORS) {
             try {
               const cb = anchorIframe.locator(sel).first();
@@ -113,6 +153,7 @@ async function clickCheckboxAndContinue(page: Page, challengeFrame: Frame): Prom
         }
       }
     }
+
     for (const sel of CONTINUE_BUTTON_SELECTORS) {
       try {
         const inFrame = challengeFrame.locator(sel).first();

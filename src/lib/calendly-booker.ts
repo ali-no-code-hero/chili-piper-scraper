@@ -406,7 +406,8 @@ async function createNewBookingPage(
         name: err.name,
       };
       if (err.stack) errDetail.stack = err.stack;
-      if (err.cause) errDetail.cause = err.cause instanceof Error ? { message: err.cause.message, stack: err.cause.stack } : err.cause;
+      const cause = 'cause' in err ? (err as Error & { cause?: unknown }).cause : undefined;
+      if (cause !== undefined) errDetail.cause = cause instanceof Error ? { message: cause.message, stack: cause.stack } : cause;
       console.warn(
         `${LOG_PREFIX} Proxy connection failed. Server: ${options.proxy.server} (user: ${options.proxy.username ? 'set' : 'not set'}).`,
         'Full error:',

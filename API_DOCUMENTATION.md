@@ -137,6 +137,8 @@ data: {"success":true,"streaming":false,"message":"Slot collection completed","d
 }
 ```
 
+**Optional (server env):** To rotate IP for housejet-ppc bookings only, set `HOUSEJET_PPC_PROXY_SERVER` (e.g. Smartproxy `http://gate.smartproxy.com:7000`) and optionally `HOUSEJET_PPC_PROXY_USERNAME` / `HOUSEJET_PPC_PROXY_PASSWORD`. Only the booking context uses the proxy; other vendors are unchanged.
+
 **Success Response (200):** Same shape as the underlying endpoint (e.g. `message`, `date`, `time`; for `/api/book` with Calendly vendors, `data.vendor` is also included).
 
 **Error Responses:** Same as the delegated endpoint (`/api/book-slot` or Calendly booking). Use a request timeout of at least **60 seconds** for Calendly vendors.

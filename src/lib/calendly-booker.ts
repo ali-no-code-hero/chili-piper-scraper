@@ -3,9 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { Page, Request, Response } from 'playwright';
 import { browserPool } from './browser-pool';
-import { capsolverBrowserPool } from './capsolver-browser-pool';
 import { getCentralOffsetForDate } from './central-timezone';
-import { waitForAndSolveRecaptchaIfPresent } from './recaptcha-solver';
 
 const CALENDLY_VIDEO_DIR = process.env.CALENDLY_VIDEO_DIR || path.join(process.cwd(), '.calendly-videos');
 const CALENDLY_VIDEO_ENABLED = process.env.CALENDLY_VIDEO_ENABLED !== '0' && process.env.CALENDLY_VIDEO_ENABLED !== 'false';
@@ -234,21 +232,26 @@ function buildDirectCalendlyUrl(
   return `${baseUrl}/${isoDateTime}?${baseQuery}&${prefill}`;
 }
 
-/** Pool interface used by createNewBookingPage (main pool or CapSolver pool for payperclose). */
-type BrowserPoolLike = {
-  getBrowser: () => Promise<unknown>;
-  releaseBrowser: (browser: unknown) => void;
-  acquireContextLock: (browser: unknown) => Promise<() => void>;
-};
+/** Optional proxy for the booking context (e.g. Smartproxy for housejet-ppc IP rotation). */
+export interface CreateBookingPageProxyOptions {
+  server: string;
+  username?: string;
+  password?: string;
+}
+
+/** Options for createNewBookingPage (e.g. proxy for housejet-ppc). */
+export interface CreateNewBookingPageOptions {
+  proxy?: CreateBookingPageProxyOptions;
+}
 
 /**
  * Create a new browser session for a single Calendly booking. Caller must call cleanup(outcome) when done.
  * When outcome is 'failure', cleanup saves the recorded video and returns its path.
- * For payperclose (housejet-ppc), uses the CapSolver extension pool when configured.
+ * When options.proxy is set, the context uses that proxy (e.g. Smartproxy for housejet-ppc).
  */
 async function createNewBookingPage(
   calendlyUrl: string,
-  opts: BookCalendlySlotOptions
+  options?: CreateNewBookingPageOptions
 ): Promise<{
   page: Page;
   cleanup: (outcome: 'success' | 'failure') => Promise<string | null>;
@@ -258,20 +261,10 @@ async function createNewBookingPage(
   let page: any = null;
   let releaseLock: (() => void) | null = null;
 
-  const useCapsolverPool =
-    opts.calendlyType === 'payperclose' && capsolverBrowserPool.isAvailable();
-  const pool: BrowserPoolLike = useCapsolverPool ? capsolverBrowserPool : browserPool;
-  const persistContext = useCapsolverPool;
-
-  if (useCapsolverPool) {
-    console.log(`${LOG_PREFIX} [create] Using CapSolver extension pool (housejet-ppc)`);
-  }
-
   const sessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   let videoDir: string | null = null;
-  if (CALENDLY_VIDEO_ENABLED && !persistContext) {
+  if (CALENDLY_VIDEO_ENABLED) {
     // Use OS temp dir for recording so it works on read-only app dirs (e.g. Railway).
-    // Video recording not supported with persistent context (CapSolver pool).
     const recordDir = path.join(os.tmpdir(), 'calendly-videos', sessionId);
     try {
       fs.mkdirSync(recordDir, { recursive: true });
@@ -284,8 +277,8 @@ async function createNewBookingPage(
   }
 
   console.log(`${LOG_PREFIX} [create] Acquiring browser and context lock...`);
-  browser = await pool.getBrowser();
-  releaseLock = await pool.acquireContextLock(browser);
+  browser = await browserPool.getBrowser();
+  releaseLock = await browserPool.acquireContextLock(browser);
   console.log(`${LOG_PREFIX} [create] Creating new context and page...`);
 
   const contextOptions: {
@@ -294,6 +287,7 @@ async function createNewBookingPage(
     userAgent: string;
     viewport: { width: number; height: number };
     recordVideo?: { dir: string; size: { width: number; height: number } };
+    proxy?: { server: string; username?: string; password?: string };
   } = {
     timezoneId: 'America/Chicago',
     locale: 'en-US',
@@ -301,15 +295,23 @@ async function createNewBookingPage(
     viewport: { width: 1280, height: 720 },
   };
   if (videoDir) contextOptions.recordVideo = { dir: videoDir, size: { width: 1280, height: 720 } };
+  if (options?.proxy?.server) {
+    contextOptions.proxy = {
+      server: options.proxy.server,
+      username: options.proxy.username,
+      password: options.proxy.password,
+    };
+    console.log(`${LOG_PREFIX} [create] Using proxy for this context: ${options.proxy.server}`);
+  }
 
   let retries = 3;
   while (retries > 0) {
     try {
       if (typeof browser.isConnected === 'function' && !browser.isConnected()) {
         if (releaseLock) releaseLock();
-        pool.releaseBrowser(browser);
-        browser = await pool.getBrowser();
-        releaseLock = await pool.acquireContextLock(browser);
+        browserPool.releaseBrowser(browser);
+        browser = await browserPool.getBrowser();
+        releaseLock = await browserPool.acquireContextLock(browser);
       }
       context = await browser.newContext(contextOptions);
       page = await context.newPage();
@@ -318,13 +320,13 @@ async function createNewBookingPage(
       retries--;
       if (error.message?.includes('has been closed') && retries > 0) {
         if (releaseLock) releaseLock();
-        pool.releaseBrowser(browser);
-        browser = await pool.getBrowser();
-        releaseLock = await pool.acquireContextLock(browser);
+        browserPool.releaseBrowser(browser);
+        browser = await browserPool.getBrowser();
+        releaseLock = await browserPool.acquireContextLock(browser);
         await new Promise((r) => setTimeout(r, 100));
       } else {
         if (releaseLock) releaseLock();
-        pool.releaseBrowser(browser);
+        browserPool.releaseBrowser(browser);
         throw error;
       }
     }
@@ -334,7 +336,7 @@ async function createNewBookingPage(
     releaseLock();
   }
   if (!page) {
-    if (browser) pool.releaseBrowser(browser);
+    if (browser) browserPool.releaseBrowser(browser);
     throw new Error('Failed to create browser context');
   }
   console.log(`${LOG_PREFIX} [create] Context and page ready`);
@@ -389,7 +391,7 @@ async function createNewBookingPage(
           console.warn(`${LOG_PREFIX} Could not save video:`, (e as Error)?.message);
         }
       }
-      if (context && !persistContext) await context.close().catch(() => {});
+      if (context) await context.close().catch(() => {});
       await new Promise((r) => setTimeout(r, 200));
       if (outcome === 'success' && videoDir) {
         try {
@@ -399,7 +401,7 @@ async function createNewBookingPage(
         }
       }
     } finally {
-      if (browser) pool.releaseBrowser(browser);
+      if (browser) browserPool.releaseBrowser(browser);
     }
     return savedVideoPath;
   };
@@ -799,15 +801,14 @@ async function fillFormAndSubmit(
   opts: BookCalendlySlotOptions,
   normalizedAnswers: Record<string, string | string[]>,
   simpleForm: boolean,
-  confirmationRegex: RegExp | null,
-  useCapsolverExtension: boolean
+  confirmationRegex: RegExp | null
 ): Promise<void> {
   // Wait for either full form (first_name) or simple form (name)
   console.log(`${LOG_PREFIX} [form] Waiting for questionnaire form...`);
   await page.waitForSelector('input[name="first_name"], input[name="name"]', { timeout: 10000 });
 
   if (simpleForm) {
-    await fillSimpleFormAndSubmit(page, opts, confirmationRegex, useCapsolverExtension);
+    await fillSimpleFormAndSubmit(page, opts, confirmationRegex);
     return;
   }
 
@@ -967,9 +968,6 @@ async function fillFormAndSubmit(
   console.log(`${LOG_PREFIX} [form] Clicking Schedule Event...`);
   await submitLoc.click(formClickOpts);
   console.log(`${LOG_PREFIX} [form] Schedule Event clicked; waiting for confirmation...`);
-  if (process.env.CAPSOLVER_API_KEY) {
-    await waitForAndSolveRecaptchaIfPresent(page, { maxRounds: 5, useExtension: useCapsolverExtension });
-  }
   await waitForConfirmation(page, confirmationRegex, false);
   console.log(`${LOG_PREFIX} Reached confirmation; booking complete`);
   stopNetworkLogging();
@@ -979,8 +977,7 @@ async function fillFormAndSubmit(
 async function fillSimpleFormAndSubmit(
   page: Page,
   opts: BookCalendlySlotOptions,
-  confirmationRegex: RegExp | null,
-  useCapsolverExtension: boolean
+  confirmationRegex: RegExp | null
 ): Promise<void> {
   const formClickOpts = { force: true, timeout: 15000 } as const;
   const fullName = `${opts.firstName} ${opts.lastName}`.trim();
@@ -1016,9 +1013,6 @@ async function fillSimpleFormAndSubmit(
   const stopNetworkLogging = startScheduleEventNetworkLogging(page);
   await submitLoc.click(formClickOpts);
   console.log(`${LOG_PREFIX} [form] Schedule Event clicked; waiting for confirmation...`);
-  if (process.env.CAPSOLVER_API_KEY) {
-    await waitForAndSolveRecaptchaIfPresent(page, { maxRounds: 5, useExtension: useCapsolverExtension });
-  }
   await waitForConfirmation(page, confirmationRegex, true);
   console.log(`${LOG_PREFIX} Reached confirmation; booking complete`);
   stopNetworkLogging();
@@ -1027,8 +1021,7 @@ async function fillSimpleFormAndSubmit(
 /** Pay-per-close: form is already pre-filled via URL; only click Schedule Event and wait for redirect to referralchime.com. */
 async function clickScheduleEventOnlyAndWait(
   page: Page,
-  confirmationRegex: RegExp,
-  useCapsolverExtension: boolean
+  confirmationRegex: RegExp
 ): Promise<void> {
   const formClickOpts = { force: true, timeout: 15000 } as const;
   console.log(`${LOG_PREFIX} [payperclose] Form pre-filled via URL; waiting for Schedule Event button...`);
@@ -1042,9 +1035,6 @@ async function clickScheduleEventOnlyAndWait(
   console.log(`${LOG_PREFIX} [payperclose] Clicking Schedule Event...`);
   await submitLoc.click(formClickOpts);
   console.log(`${LOG_PREFIX} [payperclose] Schedule Event clicked; waiting for redirect to confirmation URL...`);
-  if (process.env.CAPSOLVER_API_KEY) {
-    await waitForAndSolveRecaptchaIfPresent(page, { maxRounds: 5, useExtension: useCapsolverExtension });
-  }
   await page.waitForURL(confirmationRegex, { timeout: 25000 });
   console.log(`${LOG_PREFIX} [payperclose] Confirmation URL reached`);
   stopNetworkLogging();
@@ -1168,9 +1158,22 @@ export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<B
   console.log(`${LOG_PREFIX} Starting booking: date=${opts.date} time=${opts.time} (normalized: ${normalizedTime}) email=${opts.email} simpleForm=${simpleForm}`);
   console.log(`${LOG_PREFIX} Using direct form URL (skip calendar/time picker)`);
 
-  const { page, cleanup } = await createNewBookingPage(directUrl, opts);
-  const useCapsolverExtension =
-    opts.calendlyType === 'payperclose' && capsolverBrowserPool.isAvailable();
+  // Optional rotating proxy for housejet-ppc (e.g. Smartproxy) – only this booking context uses it
+  let createPageOptions: CreateNewBookingPageOptions | undefined;
+  if (opts.calendlyType === 'payperclose') {
+    const proxyServer = process.env.HOUSEJET_PPC_PROXY_SERVER?.trim();
+    if (proxyServer) {
+      createPageOptions = {
+        proxy: {
+          server: proxyServer,
+          username: process.env.HOUSEJET_PPC_PROXY_USERNAME?.trim() || undefined,
+          password: process.env.HOUSEJET_PPC_PROXY_PASSWORD?.trim() || undefined,
+        },
+      };
+    }
+  }
+
+  const { page, cleanup } = await createNewBookingPage(directUrl, createPageOptions);
   let succeeded = false;
   let currentStep = 'create_page';
   try {
@@ -1193,9 +1196,9 @@ export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<B
     console.log(`${LOG_PREFIX} [step=${currentStep}] Starting form fill and submit...`);
     if (opts.calendlyType === 'payperclose' && effectiveConfirmationRegex) {
       /** Pay-per-close: form is pre-filled via URL; only click Schedule Event and wait for referralchime.com redirect. */
-      await clickScheduleEventOnlyAndWait(page, effectiveConfirmationRegex, useCapsolverExtension);
+      await clickScheduleEventOnlyAndWait(page, effectiveConfirmationRegex);
     } else {
-      await fillFormAndSubmit(page, opts, normalizedAnswers, simpleForm, effectiveConfirmationRegex, useCapsolverExtension);
+      await fillFormAndSubmit(page, opts, normalizedAnswers, simpleForm, effectiveConfirmationRegex);
     }
 
     console.log(`${LOG_PREFIX} Booking success: ${opts.date} ${opts.time}`);

@@ -3,7 +3,6 @@ import { browserPool } from './browser-pool';
 import { getCalendarContextPool } from './calendar-context-pool';
 import { getCentralGmtLabelForDate } from './central-timezone';
 import { browserInstanceManager } from './browser-instance-manager';
-import { waitForAndSolveRecaptchaIfPresent } from './recaptcha-solver';
 
 export interface SlotData {
   date: string;
@@ -309,7 +308,7 @@ export class ChiliPiperScraper {
         }
       }
       page.setDefaultNavigationTimeout(10000); // Reduced from 20s to 10s for speed
-      // Aggressive resource blocking (allow recaptcha so CapSolver can solve challenges)
+      // Block tracking/ads; allow recaptcha so challenge iframes can load
       await page.route("**/*", (route: any) => {
         const url = route.request().url();
         if (url.includes('recaptcha') || url.includes('google.com/recaptcha')) {
@@ -333,12 +332,6 @@ export class ChiliPiperScraper {
       } else if (useParameterizedUrl) {
         console.log(`🚀 Navigating directly to parameterized URL (skipping form)`);
         await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
-      }
-
-      if (process.env.CAPSOLVER_API_KEY) {
-        console.log('[reCAPTCHA] Running reCAPTCHA check (after page load)...');
-        await waitForAndSolveRecaptchaIfPresent(page, { maxRounds: 5 });
-        console.log('[reCAPTCHA] Check complete (after page load).');
       }
 
       // Skip all waits - form is pre-filled via URL params, just click Submit
@@ -384,12 +377,6 @@ export class ChiliPiperScraper {
       } else {
         console.log("✅ Form submitted (fields were pre-filled via URL)");
         // Skip wait - page should transition immediately
-      }
-
-      if (process.env.CAPSOLVER_API_KEY) {
-        console.log('[reCAPTCHA] Running reCAPTCHA check (after submit)...');
-        await waitForAndSolveRecaptchaIfPresent(page, { maxRounds: 5 });
-        console.log('[reCAPTCHA] Check complete (after submit).');
       }
 
       // Skip wait - page should already be on calendar or schedule choice

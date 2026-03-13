@@ -178,8 +178,11 @@ async function injectRecaptchaV3Token(page: Page, token: string): Promise<void> 
         if (!rt) continue;
         const inner = Object.values(rt as object).find(Boolean) as { callback?: unknown } | undefined;
         if (!inner?.callback) continue;
-        let cb = inner.callback;
-        if (typeof cb === 'string') cb = (window as Record<string, unknown>)[cb];
+        const rawCb = inner.callback;
+        const cb =
+          typeof rawCb === 'string'
+            ? (window as unknown as Record<string, unknown>)[rawCb]
+            : rawCb;
         if (typeof cb === 'function') {
           (cb as (token: string) => void)(t);
           return;

@@ -1252,7 +1252,44 @@ async function ensureRecaptchaV2SolvedIfPresent(
 }
 
 /**
- * Click the reCAPTCHA v2 "Verify" button that appears after the token is injected (before "Continue").
+ * Click the "I am not a robot" / "I'm not a robot" checkbox that appears in the v3 recaptcha popup after Schedule Event.
+ * This must run first; after it is clicked, the v2 challenge appears. Do not click Continue here.
+ */
+async function clickRecaptchaCheckboxIfPresent(page: Page, waitMs: number): Promise<boolean> {
+  const deadline = Date.now() + waitMs;
+  const frames = [page, ...page.frames()];
+  const checkboxTexts = [/I'?\s*m not a robot/i, /I am not a robot/i];
+
+  while (Date.now() < deadline) {
+    for (const frame of frames) {
+      try {
+        for (const textRe of checkboxTexts) {
+          const el = frame.locator('[role="checkbox"], .rc-anchor, [title*="recaptcha"]').filter({ hasText: textRe }).first();
+          if ((await el.count()) > 0 && (await el.isVisible().catch(() => false))) {
+            await el.click({ force: true, timeout: 3000 });
+            console.log(`${LOG_PREFIX} [recaptcha] Clicked "I am not a robot" checkbox`);
+            await humanDelay(800);
+            return true;
+          }
+        }
+        const anchor = frame.locator('.rc-anchor-checkbox-holder, .rc-anchor').first();
+        if ((await anchor.count()) > 0 && (await anchor.isVisible().catch(() => false))) {
+          await anchor.click({ force: true, timeout: 3000 });
+          console.log(`${LOG_PREFIX} [recaptcha] Clicked recaptcha checkbox area`);
+          await humanDelay(800);
+          return true;
+        }
+      } catch {
+        /* cross-origin or detached */
+      }
+    }
+    await humanDelay(300);
+  }
+  return false;
+}
+
+/**
+ * Click the reCAPTCHA v2 "Verify" button that appears after the v2 token is injected (before "Continue").
  * Waits for the button to appear then clicks it so the v2 challenge can complete.
  */
 async function clickRecaptchaV2VerifyButtonIfPresent(page: Page, waitMs: number): Promise<boolean> {
@@ -1454,6 +1491,7 @@ async function fillFormAndSubmit(
   const stopNetworkLogging = startScheduleEventNetworkLogging(page);
   console.log(`${LOG_PREFIX} [form] Clicking Schedule Event...`);
   await submitLoc.click(formClickOpts);
+  await clickRecaptchaCheckboxIfPresent(page, 5000);
   await ensureRecaptchaV2SolvedIfPresent(page, opts, page.url());
   await clickRecaptchaV2VerifyButtonIfPresent(page, 5000);
   await clickRecaptchaContinuePopupIfPresent(page, 5000);
@@ -1521,6 +1559,7 @@ async function fillSimpleFormAndSubmit(
   }
   const stopNetworkLogging = startScheduleEventNetworkLogging(page);
   await submitLoc.click(formClickOpts);
+  await clickRecaptchaCheckboxIfPresent(page, 5000);
   await ensureRecaptchaV2SolvedIfPresent(page, opts, page.url());
   await clickRecaptchaV2VerifyButtonIfPresent(page, 5000);
   await clickRecaptchaContinuePopupIfPresent(page, 5000);
@@ -1578,6 +1617,7 @@ async function clickScheduleEventOnlyAndWait(
   const stopNetworkLogging = startScheduleEventNetworkLogging(page);
   console.log(`${LOG_PREFIX} [payperclose] Clicking Schedule Event...`);
   await submitLoc.click(formClickOpts);
+  await clickRecaptchaCheckboxIfPresent(page, 5000);
   await ensureRecaptchaV2SolvedIfPresent(page, opts, page.url());
   await clickRecaptchaV2VerifyButtonIfPresent(page, 5000);
   await clickRecaptchaContinuePopupIfPresent(page, 5000);

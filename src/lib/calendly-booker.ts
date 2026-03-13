@@ -1014,63 +1014,57 @@ async function clickNextButton(page: Page, normalizedTime: string): Promise<void
 }
 
 /**
- * Stub grecaptcha.enterprise.execute so that when the page calls it (on Schedule Event click),
- * it immediately receives our token instead of triggering a popup. Calendly only calls execute()
- * on click, so pre-calling the promise-callback does nothing; we must intercept execute().
- * Returns true if stub was installed.
+ * Inject reCAPTCHA v3 token: find promise-callback in ___grecaptcha_cfg.clients and call it; set g-recaptcha-response if present.
+ * Returns true if callback was called or textarea was set.
  */
-async function stubRecaptchaEnterpriseExecuteInFrame(
-  frame: Page | import('playwright').Frame,
-  token: string
-): Promise<boolean> {
+async function injectRecaptchaV3TokenInFrame(frame: Page | import('playwright').Frame, token: string): Promise<boolean> {
   return frame.evaluate((gRecaptchaResponse: string) => {
-    const w = window as unknown as { grecaptcha?: { enterprise?: { execute: unknown } }; __capSolverRecaptchaToken?: string };
-    w.__capSolverRecaptchaToken = gRecaptchaResponse;
-    if (w.grecaptcha?.enterprise?.execute) {
-      w.grecaptcha.enterprise.execute = function () {
-        return Promise.resolve(w.__capSolverRecaptchaToken || gRecaptchaResponse);
-      };
-      return true;
+    const cfg = (window as unknown as { ___grecaptcha_cfg?: { clients: Record<string, unknown> } }).___grecaptcha_cfg;
+    if (!cfg?.clients || typeof cfg.clients !== 'object') return false;
+    let injected = false;
+    for (const [, client] of Object.entries(cfg.clients)) {
+      const c = client as Record<string, unknown>;
+      if (!c?.l || typeof c.l !== 'object') continue;
+      const inner = (c.l as Record<string, unknown>).l as Record<string, unknown> | undefined;
+      if (!inner || typeof inner !== 'object') continue;
+      const callback = inner['promise-callback'] as ((t: string) => void) | undefined;
+      if (typeof callback === 'function') {
+        try {
+          callback(gRecaptchaResponse);
+          injected = true;
+        } catch {
+          /* ignore */
+        }
+        break;
+      }
     }
-    return false;
+    const textarea = document.querySelector('textarea[name="g-recaptcha-response"]') as HTMLTextAreaElement | null;
+    if (textarea) {
+      textarea.value = gRecaptchaResponse;
+      injected = true;
+    }
+    return injected;
   }, token);
 }
 
 /**
- * Poll for grecaptcha.enterprise and stub execute() when it appears (script may load after our first run).
+ * Inject reCAPTCHA v3 token into the page and all frames. Calendly often embeds the form (and reCAPTCHA) in an iframe,
+ * so the promise-callback may live in a child frame. We inject in every frame so the token is accepted before submit.
+ * After injection, waits briefly so the page can process the callback before we click Schedule Event.
  */
-async function stubRecaptchaEnterpriseExecuteWhenReady(
-  frame: Page | import('playwright').Frame,
-  token: string,
-  maxWaitMs: number
-): Promise<boolean> {
-  const deadline = Date.now() + maxWaitMs;
-  while (Date.now() < deadline) {
-    const stubbed = await stubRecaptchaEnterpriseExecuteInFrame(frame, token);
-    if (stubbed) return true;
-    await new Promise((r) => setTimeout(r, 150));
-  }
-  return false;
-}
-
-/**
- * Stub grecaptcha.enterprise.execute in the page and all frames so that when Calendly calls it
- * on Schedule Event click, it gets our token and no popup is shown. Also store token on window
- * for late-loaded scripts. Waits briefly for grecaptcha to exist, then a short delay before click.
- */
-async function stubRecaptchaExecuteInAllFrames(page: Page, token: string): Promise<void> {
+async function injectRecaptchaV3TokenInAllFrames(page: Page, token: string): Promise<void> {
   const frames = [page, ...page.frames()];
-  let anyStubbed = false;
+  let anyInjected = false;
   for (const frame of frames) {
     try {
-      const stubbed = await stubRecaptchaEnterpriseExecuteWhenReady(frame, token, 3000);
-      if (stubbed) anyStubbed = true;
+      const injected = await injectRecaptchaV3TokenInFrame(frame, token);
+      if (injected) anyInjected = true;
     } catch {
       // Cross-origin or detached frame; skip
     }
   }
-  if (anyStubbed) {
-    await humanDelay(400);
+  if (anyInjected) {
+    await humanDelay(600);
   }
 }
 
@@ -1112,8 +1106,7 @@ async function ensureRecaptchaTokenAndInject(page: Page, opts: BookCalendlySlotO
       apiDomain: process.env.CALENDLY_RECAPTCHA_API_DOMAIN?.trim() || undefined,
     });
 
-    // Stub execute() so when the page calls it on Schedule Event click, it gets our token (no popup).
-    await stubRecaptchaExecuteInAllFrames(page, result.gRecaptchaResponse);
+    await injectRecaptchaV3TokenInAllFrames(page, result.gRecaptchaResponse);
 
     if (result.recaptchaCaT ?? result.recaptchaCaE) {
       const u = new URL(pageUrl);
@@ -1123,7 +1116,7 @@ async function ensureRecaptchaTokenAndInject(page: Page, opts: BookCalendlySlotO
       if (cookies.length) await page.context().addCookies(cookies);
     }
 
-    console.log(`${LOG_PREFIX} reCAPTCHA enterprise.execute() stubbed (token will be used when page calls it on click)`);
+    console.log(`${LOG_PREFIX} reCAPTCHA token injected`);
   } catch (e) {
     console.warn(`${LOG_PREFIX} CapSolver/inject failed (continuing without token):`, (e as Error)?.message ?? e);
   }
@@ -1301,6 +1294,7 @@ async function fillFormAndSubmit(
   const stopNetworkLogging = startScheduleEventNetworkLogging(page);
   console.log(`${LOG_PREFIX} [form] Clicking Schedule Event...`);
   await submitLoc.click(formClickOpts);
+  await clickRecaptchaContinuePopupIfPresent(page, 5000);
   console.log(`${LOG_PREFIX} [form] Schedule Event clicked; waiting for confirmation...`);
   await waitForConfirmation(page, confirmationRegex, false);
   console.log(`${LOG_PREFIX} Reached confirmation; booking complete`);
@@ -1359,6 +1353,7 @@ async function fillSimpleFormAndSubmit(
   }
   const stopNetworkLogging = startScheduleEventNetworkLogging(page);
   await submitLoc.click(formClickOpts);
+  await clickRecaptchaContinuePopupIfPresent(page, 5000);
   console.log(`${LOG_PREFIX} [form] Schedule Event clicked; waiting for confirmation...`);
   await waitForConfirmation(page, confirmationRegex, true);
   console.log(`${LOG_PREFIX} Reached confirmation; booking complete`);
@@ -1407,10 +1402,48 @@ async function clickScheduleEventOnlyAndWait(
   const stopNetworkLogging = startScheduleEventNetworkLogging(page);
   console.log(`${LOG_PREFIX} [payperclose] Clicking Schedule Event...`);
   await submitLoc.click(formClickOpts);
+  await clickRecaptchaContinuePopupIfPresent(page, 5000);
   console.log(`${LOG_PREFIX} [payperclose] Schedule Event clicked; waiting for redirect to confirmation URL...`);
   await page.waitForURL(confirmationRegex, { timeout: 25000 });
   console.log(`${LOG_PREFIX} [payperclose] Confirmation URL reached`);
   stopNetworkLogging();
+}
+
+/**
+ * If a reCAPTCHA popup with a "Continue" or "Verify" button appears after Schedule Event (v3 no-checkbox style),
+ * click it so the flow can proceed. Tries main page and all frames. Returns true if a button was clicked.
+ */
+async function clickRecaptchaContinuePopupIfPresent(page: Page, waitMs: number): Promise<boolean> {
+  const deadline = Date.now() + waitMs;
+  const buttonTexts = [/^\s*continue\s*$/i, /^\s*verify\s*$/i, /^\s*submit\s*$/i];
+  const frames = [page, ...page.frames()];
+
+  while (Date.now() < deadline) {
+    for (const frame of frames) {
+      try {
+        for (const textRe of buttonTexts) {
+          const btn = frame.locator('button, input[type="submit"], [role="button"]').filter({ hasText: textRe }).first();
+          if ((await btn.count()) > 0) {
+            const visible = await btn.isVisible().catch(() => false);
+            if (visible) {
+              const tag = await btn.evaluate((el) => el.tagName);
+              const isScheduleEvent =
+                tag === 'BUTTON' && (await btn.textContent())?.toLowerCase().includes('schedule event');
+              if (isScheduleEvent) continue;
+              await btn.click({ force: true, timeout: 3000 });
+              console.log(`${LOG_PREFIX} [recaptcha] Clicked Continue/Verify in popup`);
+              await humanDelay(500);
+              return true;
+            }
+          }
+        }
+      } catch {
+        /* cross-origin or detached frame */
+      }
+    }
+    await humanDelay(300);
+  }
+  return false;
 }
 
 /** Wait for booking confirmation: URL regex, or (in simple mode) body text "scheduled"/"confirmed". */

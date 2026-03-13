@@ -362,7 +362,42 @@ async function createNewBookingPage(
   });
 
   console.log(`${LOG_PREFIX} Navigating to ${calendlyUrl}`);
-  await page.goto(calendlyUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+  try {
+    await page.goto(calendlyUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+  } catch (navError: unknown) {
+    const msg = navError instanceof Error ? navError.message : String(navError);
+    const isProxyFailure = /ERR_PROXY|proxy.*(fail|connection|refused)/i.test(msg);
+    if (options?.proxy?.server && isProxyFailure) {
+      console.warn(`${LOG_PREFIX} Proxy connection failed (${msg}), retrying without proxy...`);
+      await page.close().catch(() => {});
+      await context.close().catch(() => {});
+      const noProxyOptions = { ...contextOptions };
+      delete (noProxyOptions as { proxy?: unknown }).proxy;
+      context = await browser.newContext(noProxyOptions);
+      page = await context.newPage();
+      page.setDefaultNavigationTimeout(15000);
+      await page.route('**/*', (route: any) => {
+        const url = route.request().url();
+        if (
+          url.includes('google-analytics') ||
+          url.includes('googletagmanager') ||
+          url.includes('facebook.net') ||
+          url.includes('doubleclick') ||
+          url.includes('/ads/') ||
+          url.includes('tracking') ||
+          url.includes('pixel') ||
+          url.includes('beacon')
+        ) {
+          route.abort();
+          return;
+        }
+        route.continue();
+      });
+      await page.goto(calendlyUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    } else {
+      throw navError;
+    }
+  }
   const finalUrl = page.url();
   console.log(`${LOG_PREFIX} Page loaded: ${finalUrl}`);
 

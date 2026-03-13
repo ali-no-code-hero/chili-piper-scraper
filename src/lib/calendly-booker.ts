@@ -131,16 +131,20 @@ const NETWORK_LOG_PREFIX = '[Calendly API]';
 
 /** Start logging API requests/responses after Schedule Event click. Returns cleanup to remove listeners. */
 function startScheduleEventNetworkLogging(page: Page): () => void {
+  const isExtensionUrl = (url: string) => url.startsWith('chrome-extension://');
   const onRequest = (request: Request) => {
     const type = request.resourceType();
     if (type !== 'xhr' && type !== 'fetch') return;
-    console.log(`${NETWORK_LOG_PREFIX} REQ ${request.method()} ${request.url()}`);
+    const url = request.url();
+    if (isExtensionUrl(url)) return;
+    console.log(`${NETWORK_LOG_PREFIX} REQ ${request.method()} ${url}`);
   };
   const onResponse = (response: Response) => {
     const type = response.request().resourceType();
     if (type !== 'xhr' && type !== 'fetch') return;
-    const status = response.status();
     const url = response.url();
+    if (isExtensionUrl(url)) return;
+    const status = response.status();
     console.log(`${NETWORK_LOG_PREFIX} RES ${status} ${url}`);
     if (!response.ok()) {
       response.text().then((body) => {
@@ -795,14 +799,15 @@ async function fillFormAndSubmit(
   opts: BookCalendlySlotOptions,
   normalizedAnswers: Record<string, string | string[]>,
   simpleForm: boolean,
-  confirmationRegex: RegExp | null
+  confirmationRegex: RegExp | null,
+  useCapsolverExtension: boolean
 ): Promise<void> {
   // Wait for either full form (first_name) or simple form (name)
   console.log(`${LOG_PREFIX} [form] Waiting for questionnaire form...`);
   await page.waitForSelector('input[name="first_name"], input[name="name"]', { timeout: 10000 });
 
   if (simpleForm) {
-    await fillSimpleFormAndSubmit(page, opts, confirmationRegex);
+    await fillSimpleFormAndSubmit(page, opts, confirmationRegex, useCapsolverExtension);
     return;
   }
 
@@ -963,7 +968,7 @@ async function fillFormAndSubmit(
   await submitLoc.click(formClickOpts);
   console.log(`${LOG_PREFIX} [form] Schedule Event clicked; waiting for confirmation...`);
   if (process.env.CAPSOLVER_API_KEY) {
-    await waitForAndSolveRecaptchaIfPresent(page, { maxRounds: 5 });
+    await waitForAndSolveRecaptchaIfPresent(page, { maxRounds: 5, useExtension: useCapsolverExtension });
   }
   await waitForConfirmation(page, confirmationRegex, false);
   console.log(`${LOG_PREFIX} Reached confirmation; booking complete`);
@@ -974,7 +979,8 @@ async function fillFormAndSubmit(
 async function fillSimpleFormAndSubmit(
   page: Page,
   opts: BookCalendlySlotOptions,
-  confirmationRegex: RegExp | null
+  confirmationRegex: RegExp | null,
+  useCapsolverExtension: boolean
 ): Promise<void> {
   const formClickOpts = { force: true, timeout: 15000 } as const;
   const fullName = `${opts.firstName} ${opts.lastName}`.trim();
@@ -1011,7 +1017,7 @@ async function fillSimpleFormAndSubmit(
   await submitLoc.click(formClickOpts);
   console.log(`${LOG_PREFIX} [form] Schedule Event clicked; waiting for confirmation...`);
   if (process.env.CAPSOLVER_API_KEY) {
-    await waitForAndSolveRecaptchaIfPresent(page, { maxRounds: 5 });
+    await waitForAndSolveRecaptchaIfPresent(page, { maxRounds: 5, useExtension: useCapsolverExtension });
   }
   await waitForConfirmation(page, confirmationRegex, true);
   console.log(`${LOG_PREFIX} Reached confirmation; booking complete`);
@@ -1021,7 +1027,8 @@ async function fillSimpleFormAndSubmit(
 /** Pay-per-close: form is already pre-filled via URL; only click Schedule Event and wait for redirect to referralchime.com. */
 async function clickScheduleEventOnlyAndWait(
   page: Page,
-  confirmationRegex: RegExp
+  confirmationRegex: RegExp,
+  useCapsolverExtension: boolean
 ): Promise<void> {
   const formClickOpts = { force: true, timeout: 15000 } as const;
   console.log(`${LOG_PREFIX} [payperclose] Form pre-filled via URL; waiting for Schedule Event button...`);
@@ -1036,7 +1043,7 @@ async function clickScheduleEventOnlyAndWait(
   await submitLoc.click(formClickOpts);
   console.log(`${LOG_PREFIX} [payperclose] Schedule Event clicked; waiting for redirect to confirmation URL...`);
   if (process.env.CAPSOLVER_API_KEY) {
-    await waitForAndSolveRecaptchaIfPresent(page, { maxRounds: 5 });
+    await waitForAndSolveRecaptchaIfPresent(page, { maxRounds: 5, useExtension: useCapsolverExtension });
   }
   await page.waitForURL(confirmationRegex, { timeout: 25000 });
   console.log(`${LOG_PREFIX} [payperclose] Confirmation URL reached`);
@@ -1162,6 +1169,8 @@ export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<B
   console.log(`${LOG_PREFIX} Using direct form URL (skip calendar/time picker)`);
 
   const { page, cleanup } = await createNewBookingPage(directUrl, opts);
+  const useCapsolverExtension =
+    opts.calendlyType === 'payperclose' && capsolverBrowserPool.isAvailable();
   let succeeded = false;
   let currentStep = 'create_page';
   try {
@@ -1184,9 +1193,9 @@ export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<B
     console.log(`${LOG_PREFIX} [step=${currentStep}] Starting form fill and submit...`);
     if (opts.calendlyType === 'payperclose' && effectiveConfirmationRegex) {
       /** Pay-per-close: form is pre-filled via URL; only click Schedule Event and wait for referralchime.com redirect. */
-      await clickScheduleEventOnlyAndWait(page, effectiveConfirmationRegex);
+      await clickScheduleEventOnlyAndWait(page, effectiveConfirmationRegex, useCapsolverExtension);
     } else {
-      await fillFormAndSubmit(page, opts, normalizedAnswers, simpleForm, effectiveConfirmationRegex);
+      await fillFormAndSubmit(page, opts, normalizedAnswers, simpleForm, effectiveConfirmationRegex, useCapsolverExtension);
     }
 
     console.log(`${LOG_PREFIX} Booking success: ${opts.date} ${opts.time}`);

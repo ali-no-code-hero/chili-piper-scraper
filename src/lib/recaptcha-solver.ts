@@ -44,13 +44,21 @@ const VERIFY_BUTTON = '#recaptcha-verify-button';
 const DEFAULT_MAX_ROUNDS = 5;
 const ROUND_WAIT_MS = 1500;
 const ELEMENT_TIMEOUT_MS = 10000;
-const SCREENSHOT_TIMEOUT_MS = 20000;
+const SCREENSHOT_TIMEOUT_MS = 25000;
+const GRID_STABILIZE_MS = 800;
 const FRAME_DETECT_TIMEOUT_MS = 3000;
 const ROUND_STABILIZE_MS = 2000;
+/** When using the extension to solve (no API), max time to wait for extension to finish. */
+const DEFAULT_EXTENSION_SOLVE_TIMEOUT_MS = 90000;
+const EXTENSION_POLL_INTERVAL_MS = 2000;
 
 export interface WaitForAndSolveRecaptchaOptions {
   maxRounds?: number;
   websiteKey?: string;
+  /** When true, rely on CapSolver extension to solve in-page; do not call CapSolver API. */
+  useExtension?: boolean;
+  /** Max ms to wait for extension to solve (only when useExtension is true). Default 90000. */
+  extensionSolveTimeoutMs?: number;
 }
 
 function findChallengeFrame(page: Page): Frame | null {
@@ -73,6 +81,60 @@ function findAnchorFrame(page: Page): Frame | null {
     if (!url.includes(BFRAME_SUBSTR)) fallback = frame;
   }
   return fallback;
+}
+
+/**
+ * Click only the "I'm not a robot" checkbox (no Continue). Used when extension will solve and we wait.
+ */
+async function clickConfirmPopupCheckboxOnly(page: Page): Promise<boolean> {
+  try {
+    for (const popupSel of CONFIRM_POPUP_SELECTORS) {
+      try {
+        const popup = page.locator(popupSel).first();
+        await popup.waitFor({ state: 'visible', timeout: 3000 });
+        const iframeInPopup = popup.locator('iframe[title="reCAPTCHA"], iframe[src*="anchor"]').first();
+        await iframeInPopup.waitFor({ state: 'attached', timeout: 2000 });
+        const handle = await iframeInPopup.elementHandle();
+        const frame = await handle?.contentFrame();
+        if (frame) {
+          for (const sel of RECAPTCHA_CHECKBOX_SELECTORS) {
+            try {
+              const checkbox = frame.locator(sel).first();
+              await checkbox.waitFor({ state: 'visible', timeout: 2000 });
+              await checkbox.scrollIntoViewIfNeeded();
+              await new Promise((r) => setTimeout(r, 200));
+              await checkbox.click({ timeout: 3000, force: true });
+              console.log('[reCAPTCHA] Clicked checkbox (extension will solve):', sel);
+              return true;
+            } catch {
+              continue;
+            }
+          }
+        }
+      } catch {
+        continue;
+      }
+    }
+    const anchorFrame = findAnchorFrame(page);
+    if (anchorFrame) {
+      for (const sel of RECAPTCHA_CHECKBOX_SELECTORS) {
+        try {
+          const checkbox = anchorFrame.locator(sel).first();
+          await checkbox.waitFor({ state: 'visible', timeout: 2000 });
+          await checkbox.scrollIntoViewIfNeeded();
+          await new Promise((r) => setTimeout(r, 200));
+          await checkbox.click({ timeout: 3000, force: true });
+          console.log('[reCAPTCHA] Clicked checkbox in anchor frame (extension will solve):', sel);
+          return true;
+        } catch {
+          continue;
+        }
+      }
+    }
+  } catch {
+    // non-fatal
+  }
+  return false;
 }
 
 /**
@@ -197,6 +259,7 @@ async function getChallengeImageBase64(frame: Frame, gridSize: 3 | 4): Promise<s
   const tableSelector = gridSize === 3 ? GRID_TABLE_33 : GRID_TABLE_44;
   const locator = frame.locator(tableSelector).first();
   await locator.waitFor({ state: 'visible', timeout: ELEMENT_TIMEOUT_MS });
+  await new Promise((r) => setTimeout(r, GRID_STABILIZE_MS));
   const buffer = await locator.screenshot({ type: 'png', timeout: SCREENSHOT_TIMEOUT_MS });
   return buffer.toString('base64');
 }
@@ -312,6 +375,69 @@ async function isChallengeStillVisible(frame: Frame): Promise<boolean> {
   }
 }
 
+/**
+ * Wait for the CapSolver extension to solve the v2 image challenge (poll until challenge not visible).
+ * Returns true if solved before timeout; false on timeout.
+ */
+async function waitForExtensionToSolveV2(
+  page: Page,
+  frame: Frame,
+  timeoutMs: number
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const stillVisible = await isChallengeStillVisible(frame);
+      if (!stillVisible) {
+        console.log('[reCAPTCHA] Extension solved v2 challenge (challenge closed).');
+        return true;
+      }
+    } catch {
+      // Frame may have been detached (challenge closed)
+      if (!findChallengeFrame(page)) {
+        console.log('[reCAPTCHA] Extension solved v2 challenge (frame gone).');
+        return true;
+      }
+    }
+    await new Promise((r) => setTimeout(r, EXTENSION_POLL_INTERVAL_MS));
+  }
+  console.warn('[reCAPTCHA] Extension did not solve v2 within timeout.');
+  return false;
+}
+
+/**
+ * For v3 with extension: click checkbox only, wait for extension to solve (token injected), then click Continue.
+ * Waits up to timeoutMs for success (anchor checked or Continue clickable).
+ */
+async function waitForExtensionToSolveV3(
+  page: Page,
+  timeoutMs: number
+): Promise<boolean> {
+  const clicked = await clickConfirmPopupCheckboxOnly(page);
+  if (!clicked) {
+    console.log('[reCAPTCHA] Could not click checkbox for v3; assuming no v3 challenge.');
+    return false;
+  }
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, EXTENSION_POLL_INTERVAL_MS));
+    // Try to click Continue; if it works, extension has solved (or challenge was skipped).
+    for (const sel of CONTINUE_BUTTON_SELECTORS) {
+      try {
+        const btn = page.locator(sel).first();
+        await btn.waitFor({ state: 'visible', timeout: 500 });
+        await btn.click({ timeout: 2000 });
+        console.log('[reCAPTCHA] Extension v3 flow: clicked Continue.');
+        return true;
+      } catch {
+        continue;
+      }
+    }
+  }
+  console.warn('[reCAPTCHA] Extension did not solve v3 within timeout (Continue not clicked).');
+  return false;
+}
+
 /** Try to get reCAPTCHA v3 site key from the page (data-sitekey or script src). */
 async function getRecaptchaV3SiteKey(page: Page): Promise<string | null> {
   const key = await page.evaluate(() => {
@@ -400,8 +526,8 @@ async function trySolveRecaptchaV3(page: Page, options: WaitForAndSolveRecaptcha
 }
 
 /**
- * If a reCAPTCHA v2 image challenge is present in the page, solve it using CapSolver.
- * Call only when CAPSOLVER_API_KEY is set.
+ * If a reCAPTCHA v2 image challenge is present in the page, solve it using CapSolver (API or extension).
+ * Call only when CAPSOLVER_API_KEY is set (or useExtension is true with extension loaded).
  * Returns true if no challenge was present or at least one round was solved; throws on unsupported question or API error.
  */
 export async function waitForAndSolveRecaptchaIfPresent(
@@ -409,7 +535,14 @@ export async function waitForAndSolveRecaptchaIfPresent(
   options: WaitForAndSolveRecaptchaOptions = {}
 ): Promise<boolean> {
   const maxRounds = options.maxRounds ?? DEFAULT_MAX_ROUNDS;
-  console.log('[reCAPTCHA] Checking for reCAPTCHA challenge iframe...');
+  const useExtension = options.useExtension === true;
+  const extensionTimeoutMs = options.extensionSolveTimeoutMs ?? DEFAULT_EXTENSION_SOLVE_TIMEOUT_MS;
+
+  if (useExtension) {
+    console.log('[reCAPTCHA] Using CapSolver extension to solve (no API calls).');
+  } else {
+    console.log('[reCAPTCHA] Checking for reCAPTCHA challenge iframe...');
+  }
 
   for (let round = 0; round < maxRounds; round++) {
     let frame = findChallengeFrame(page);
@@ -420,15 +553,25 @@ export async function waitForAndSolveRecaptchaIfPresent(
     }
     if (!frame) {
       if (round === 0) {
-        const v3Attempted = await trySolveRecaptchaV3(page, options);
-        if (!v3Attempted) {
-          console.log('[reCAPTCHA] No reCAPTCHA v2 or v3 detected; continuing.');
-          return true;
+        if (useExtension) {
+          // v3 with extension: click checkbox, wait for extension, then click Continue
+          const v3Solved = await waitForExtensionToSolveV3(page, extensionTimeoutMs);
+          if (v3Solved) {
+            return true;
+          }
+          // No checkbox found or timeout; check again for v2 frame (e.g. after popup)
+          await new Promise((r) => setTimeout(r, 3000));
+          frame = findChallengeFrame(page);
+        } else {
+          const v3Attempted = await trySolveRecaptchaV3(page, options);
+          if (!v3Attempted) {
+            console.log('[reCAPTCHA] No reCAPTCHA v2 or v3 detected; continuing.');
+            return true;
+          }
+          console.log('[reCAPTCHA] Waiting for v2 image challenge after v3 popup...');
+          await new Promise((r) => setTimeout(r, 3000));
+          frame = findChallengeFrame(page);
         }
-        // v3 done (token + popup); v2 image challenge often appears after – wait and recheck
-        console.log('[reCAPTCHA] Waiting for v2 image challenge after v3 popup...');
-        await new Promise((r) => setTimeout(r, 3000));
-        frame = findChallengeFrame(page);
       }
       if (!frame) return true;
     }
@@ -437,6 +580,18 @@ export async function waitForAndSolveRecaptchaIfPresent(
     if (!stillVisible) {
       console.log('[reCAPTCHA] Challenge no longer visible; continuing.');
       return true;
+    }
+
+    if (useExtension) {
+      console.log(`[reCAPTCHA] v2 challenge detected (round ${round + 1}/${maxRounds}); waiting for extension to solve...`);
+      const solved = await waitForExtensionToSolveV2(page, frame, extensionTimeoutMs);
+      if (solved) {
+        await clickCheckboxAndContinue(page, frame);
+        await new Promise((r) => setTimeout(r, ROUND_WAIT_MS));
+        continue;
+      }
+      console.log('[reCAPTCHA] Extension timeout; falling back to API solve.');
+      // Fall through to API solve
     }
 
     console.log(`[reCAPTCHA] Challenge detected (round ${round + 1}/${maxRounds}), solving...`);

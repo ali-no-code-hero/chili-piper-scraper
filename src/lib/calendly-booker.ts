@@ -65,13 +65,41 @@ async function simulateHumanMovement(page: Page): Promise<void> {
 
 /** Focus field, clear it, and type text with variable per-key delay (more human-like). */
 async function typeLikeHuman(page: Page, locator: Locator, text: string): Promise<void> {
+  await locator.scrollIntoViewIfNeeded();
+  await humanDelay(150, 80);
   await locator.click();
   await humanDelay(120, 80);
   await locator.clear();
-  await humanDelay(100, 60);
+  await humanDelay(500, 200); // pause so empty field is visible in recording
   const baseDelay = 60 + Math.floor(Math.random() * 80);
   await page.keyboard.type(text, { delay: baseDelay });
   await humanDelay(80, 40);
+}
+
+/** Find name field(s) in main frame or any iframe (Calendly often embeds form in iframe). */
+async function findNameFieldInPageOrFrames(page: Page): Promise<
+  | { type: 'single'; locator: Locator }
+  | { type: 'split'; first: Locator; last: Locator }
+  | null
+> {
+  const tryInFrame = async (ctx: { locator(selector: string): Locator }): Promise<
+    { type: 'single'; locator: Locator } | { type: 'split'; first: Locator; last: Locator } | null
+  > => {
+    const nameOne = ctx.locator('input[name="name"]').first();
+    if ((await nameOne.count()) > 0) return { type: 'single', locator: nameOne };
+    const first = ctx.locator('input[name="first_name"]').first();
+    const last = ctx.locator('input[name="last_name"]').first();
+    if ((await first.count()) > 0 && (await last.count()) > 0) return { type: 'split', first, last };
+    return null;
+  };
+  const fromMain = await tryInFrame(page);
+  if (fromMain) return fromMain;
+  for (const frame of page.frames()) {
+    if (frame === page.mainFrame()) continue;
+    const fromFrame = await tryInFrame(frame);
+    if (fromFrame) return fromFrame;
+  }
+  return null;
 }
 
 /** Label-based keys for answers; maps to question_0 .. question_9 */
@@ -1201,15 +1229,17 @@ async function clickScheduleEventOnlyAndWait(
   await humanDelay(300);
 
   const fullName = `${opts.firstName} ${opts.lastName}`.trim();
-  const nameInput = page.locator('input[name="name"]').first();
-  if ((await nameInput.count()) > 0) {
+  const nameField = await findNameFieldInPageOrFrames(page);
+  if (nameField) {
     console.log(`${LOG_PREFIX} [payperclose] Wiping and re-entering name (human-like)...`);
-    await typeLikeHuman(page, nameInput, fullName);
+    if (nameField.type === 'single') {
+      await typeLikeHuman(page, nameField.locator, fullName);
+    } else {
+      await typeLikeHuman(page, nameField.first, opts.firstName);
+      await typeLikeHuman(page, nameField.last, opts.lastName);
+    }
   } else {
-    const firstNameLoc = page.locator('input[name="first_name"]').first();
-    const lastNameLoc = page.locator('input[name="last_name"]').first();
-    if ((await firstNameLoc.count()) > 0) await typeLikeHuman(page, firstNameLoc, opts.firstName);
-    if ((await lastNameLoc.count()) > 0) await typeLikeHuman(page, lastNameLoc, opts.lastName);
+    console.log(`${LOG_PREFIX} [payperclose] No name field found in page or iframes; skipping wipe/re-enter`);
   }
   await humanDelay(400);
 

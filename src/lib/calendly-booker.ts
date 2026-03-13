@@ -1135,9 +1135,13 @@ const RECAPTCHA_KEYS = ['g_recaptcha_response', 'recaptcha_response', 'recaptcha
 /**
  * Injects current reCAPTCHA token (v3 then v2 when solved) into Calendly API POST bodies.
  * getToken is called on each request so after ensureRecaptchaV2SolvedIfPresent updates the token, subsequent requests get the v2 token.
- * Also intercepts dfp.calendly.com/submit and injects the same token (JSON or form body).
+ * getKind should return the current token type for logging. Also intercepts dfp.calendly.com/submit and injects the same token (JSON or form body).
  */
-function addRecaptchaTokenToCalendlyApiRequests(page: Page, getToken: () => string): () => void {
+function addRecaptchaTokenToCalendlyApiRequests(
+  page: Page,
+  getToken: () => string,
+  getKind: () => 'v3' | 'v2'
+): () => void {
   const injectIntoJson = (postData: string, token: string): string | null => {
     try {
       const body = JSON.parse(postData) as Record<string, unknown>;
@@ -1173,15 +1177,18 @@ function addRecaptchaTokenToCalendlyApiRequests(page: Page, getToken: () => stri
     }
     const url = request.url();
     const token = getToken();
-    if (!token) {
-      route.continue();
-      return;
-    }
-
     const isDfpSubmit = url.includes('dfp.calendly.com/submit');
     const isBookingApi =
       url.includes('calendly.com/api/booking/') &&
       (url.includes('invitees') || url.includes('analytics/track'));
+
+    if (!token) {
+      if (isDfpSubmit || isBookingApi) {
+        console.log(`${LOG_PREFIX} [recaptcha] Skipped ${url.split('?')[0]}: no token`);
+      }
+      route.continue();
+      return;
+    }
 
     if (!isDfpSubmit && !isBookingApi) {
       route.continue();
@@ -1190,18 +1197,26 @@ function addRecaptchaTokenToCalendlyApiRequests(page: Page, getToken: () => stri
 
     let postData = request.postData();
     if (!postData) {
+      console.log(`${LOG_PREFIX} [recaptcha] Skipped ${url.split('?')[0]}: no post body`);
       route.continue();
       return;
     }
 
     let newPostData: string | null = injectIntoJson(postData, token);
-    if (newPostData === null && isDfpSubmit) {
+    const usedForm = newPostData === null && isDfpSubmit;
+    if (usedForm) {
       newPostData = injectIntoForm(postData, token);
     }
     if (newPostData) {
-      console.log(`${LOG_PREFIX} [recaptcha] Injected token into API request: ${url.split('?')[0]}`);
+      const kind = getKind();
+      const shortUrl = url.split('?')[0];
+      const dfpNote = isDfpSubmit ? ` (dfp, ${usedForm ? 'form' : 'JSON'} body)` : '';
+      console.log(
+        `${LOG_PREFIX} [recaptcha] Injected token (${kind}) into API request: ${shortUrl} length=${token.length}${dfpNote}`
+      );
       route.continue({ postData: newPostData });
     } else {
+      console.log(`${LOG_PREFIX} [recaptcha] Skipped ${url.split('?')[0]}: body not JSON`);
       route.continue();
     }
   };
@@ -1285,7 +1300,10 @@ async function ensureRecaptchaV2SolvedIfPresent(
       if (ta) ta.value = token;
     }, result.gRecaptchaResponse);
 
-    onV2Token?.(result.gRecaptchaResponse);
+    if (onV2Token) {
+      console.log(`${LOG_PREFIX} [recaptcha] v2 token obtained; subsequent API requests will use v2`);
+      onV2Token(result.gRecaptchaResponse);
+    }
     console.log(`${LOG_PREFIX} reCAPTCHA v2 token injected`);
     await humanDelay(500);
   } catch (e) {
@@ -1527,10 +1545,10 @@ async function fillFormAndSubmit(
   }
 
   const recaptchaToken = await ensureRecaptchaTokenAndInject(page, opts, page.url());
-  const tokenRef = { current: recaptchaToken ?? '' };
+  const tokenRef = { current: recaptchaToken ?? '', kind: 'v3' as const };
   const unrouteRecaptcha =
     tokenRef.current
-      ? addRecaptchaTokenToCalendlyApiRequests(page, () => tokenRef.current)
+      ? addRecaptchaTokenToCalendlyApiRequests(page, () => tokenRef.current, () => tokenRef.kind)
       : undefined;
   await humanDelay(400); // Brief pause before submit (more human-like)
   const stopNetworkLogging = startScheduleEventNetworkLogging(page);
@@ -1539,6 +1557,7 @@ async function fillFormAndSubmit(
   await clickRecaptchaCheckboxIfPresent(page, 5000);
   await ensureRecaptchaV2SolvedIfPresent(page, opts, page.url(), (t) => {
     tokenRef.current = t;
+    tokenRef.kind = 'v2';
   });
   await clickRecaptchaV2VerifyButtonIfPresent(page, 5000);
   await clickRecaptchaContinuePopupIfPresent(page, 5000);
@@ -1597,10 +1616,10 @@ async function fillSimpleFormAndSubmit(
     throw new Error('Schedule Event button not found');
   }
   const recaptchaToken = await ensureRecaptchaTokenAndInject(page, opts, page.url());
-  const tokenRef = { current: recaptchaToken ?? '' };
+  const tokenRef = { current: recaptchaToken ?? '', kind: 'v3' as const };
   const unrouteRecaptcha =
     tokenRef.current
-      ? addRecaptchaTokenToCalendlyApiRequests(page, () => tokenRef.current)
+      ? addRecaptchaTokenToCalendlyApiRequests(page, () => tokenRef.current, () => tokenRef.kind)
       : undefined;
   const box = await submitLoc.boundingBox();
   if (box) {
@@ -1612,6 +1631,7 @@ async function fillSimpleFormAndSubmit(
   await clickRecaptchaCheckboxIfPresent(page, 5000);
   await ensureRecaptchaV2SolvedIfPresent(page, opts, page.url(), (t) => {
     tokenRef.current = t;
+    tokenRef.kind = 'v2';
   });
   await clickRecaptchaV2VerifyButtonIfPresent(page, 5000);
   await clickRecaptchaContinuePopupIfPresent(page, 5000);
@@ -1659,10 +1679,10 @@ async function clickScheduleEventOnlyAndWait(
     throw new Error('Schedule Event button not found');
   }
   const recaptchaToken = await ensureRecaptchaTokenAndInject(page, opts, page.url());
-  const tokenRef = { current: recaptchaToken ?? '' };
+  const tokenRef = { current: recaptchaToken ?? '', kind: 'v3' as const };
   const unrouteRecaptcha =
     tokenRef.current
-      ? addRecaptchaTokenToCalendlyApiRequests(page, () => tokenRef.current)
+      ? addRecaptchaTokenToCalendlyApiRequests(page, () => tokenRef.current, () => tokenRef.kind)
       : undefined;
   const box = await submitLoc.boundingBox();
   if (box) {
@@ -1675,6 +1695,7 @@ async function clickScheduleEventOnlyAndWait(
   await clickRecaptchaCheckboxIfPresent(page, 5000);
   await ensureRecaptchaV2SolvedIfPresent(page, opts, page.url(), (t) => {
     tokenRef.current = t;
+    tokenRef.kind = 'v2';
   });
   await clickRecaptchaV2VerifyButtonIfPresent(page, 5000);
   await clickRecaptchaContinuePopupIfPresent(page, 5000);

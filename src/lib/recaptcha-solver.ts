@@ -144,7 +144,7 @@ async function getRecaptchaV3SiteKey(page: Page): Promise<string | null> {
   const key = await page.evaluate(() => {
     const el = document.querySelector('[data-sitekey]');
     if (el && el.getAttribute('data-sitekey')) return el.getAttribute('data-sitekey');
-    const scripts = document.querySelectorAll('script[src*="recaptcha"]');
+    const scripts = Array.from(document.querySelectorAll('script[src*="recaptcha"]'));
     for (const s of scripts) {
       const src = s.getAttribute('src') || '';
       const m = src.match(/[?&]render=([^&]+)/);

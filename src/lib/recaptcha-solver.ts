@@ -44,7 +44,9 @@ const VERIFY_BUTTON = '#recaptcha-verify-button';
 const DEFAULT_MAX_ROUNDS = 5;
 const ROUND_WAIT_MS = 1500;
 const ELEMENT_TIMEOUT_MS = 10000;
+const SCREENSHOT_TIMEOUT_MS = 20000;
 const FRAME_DETECT_TIMEOUT_MS = 3000;
+const ROUND_STABILIZE_MS = 2000;
 
 export interface WaitForAndSolveRecaptchaOptions {
   maxRounds?: number;
@@ -195,7 +197,7 @@ async function getChallengeImageBase64(frame: Frame, gridSize: 3 | 4): Promise<s
   const tableSelector = gridSize === 3 ? GRID_TABLE_33 : GRID_TABLE_44;
   const locator = frame.locator(tableSelector).first();
   await locator.waitFor({ state: 'visible', timeout: ELEMENT_TIMEOUT_MS });
-  const buffer = await locator.screenshot({ type: 'png', timeout: ELEMENT_TIMEOUT_MS });
+  const buffer = await locator.screenshot({ type: 'png', timeout: SCREENSHOT_TIMEOUT_MS });
   return buffer.toString('base64');
 }
 
@@ -244,6 +246,9 @@ async function solveOneRound(
   options: WaitForAndSolveRecaptchaOptions,
   round: number
 ): Promise<boolean> {
+  if (round > 0) {
+    await new Promise((r) => setTimeout(r, ROUND_STABILIZE_MS));
+  }
   const gridSize = await detectGridSize(frame);
   const questionText = await getQuestionText(frame);
   const questionId = mapChallengeTextToQuestionId(questionText);
@@ -253,13 +258,24 @@ async function solveOneRound(
   }
 
   console.log(`[reCAPTCHA] Round ${round + 1}: question="${questionText.slice(0, 50)}..." grid=${gridSize}x${gridSize}, calling CapSolver...`);
-  const imageBase64 = await getChallengeImageBase64(frame, gridSize);
-  const solution = await solveReCaptchaV2Classification(imageBase64, questionId, {
+  let imageBase64 = await getChallengeImageBase64(frame, gridSize);
+  let solution = await solveReCaptchaV2Classification(imageBase64, questionId, {
     websiteURL: page.url(),
     websiteKey: options.websiteKey,
   });
 
-  if (solution.type === 'multi') {
+  const noTilesSelected =
+    (solution.type === 'multi' && solution.objects.length === 0) ||
+    (solution.type === 'single' && !solution.hasObject);
+  if (noTilesSelected) {
+    console.log('[reCAPTCHA] CapSolver returned no tiles; retrying once...');
+    solution = await solveReCaptchaV2Classification(imageBase64, questionId, {
+      websiteURL: page.url(),
+      websiteKey: options.websiteKey,
+    });
+  }
+
+  if (solution.type === 'multi' && solution.objects.length > 0) {
     console.log(`[reCAPTCHA] CapSolver returned multi: clicking ${solution.objects.length} tiles (indices: ${solution.objects.join(', ')})`);
     await clickTilesByIndices(frame, solution.objects, gridSize as 3 | 4);
   } else if (solution.type === 'single' && solution.hasObject) {
@@ -267,8 +283,12 @@ async function solveOneRound(
     const cellSelector = gridSize === 3 ? TILE_CELLS_33 : TILE_CELLS_44;
     const first = frame.locator(cellSelector).first();
     await first.click({ timeout: 2000 });
+  } else if (
+    (solution.type === 'multi' && solution.objects.length === 0) ||
+    (solution.type === 'single' && !solution.hasObject)
+  ) {
+    console.log('[reCAPTCHA] CapSolver still returned no tiles after retry; clicking Verify (may fail).');
   }
-  // If single and !hasObject, we could click Skip/Next if present; for now we still click Verify
 
   const verifyBtn = frame.locator(VERIFY_BUTTON);
   await verifyBtn.waitFor({ state: 'visible', timeout: 5000 });

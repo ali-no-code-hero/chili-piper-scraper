@@ -1,13 +1,14 @@
 /**
- * Playwright integration for solving reCAPTCHA v2 image challenges via CapSolver.
- * Finds the challenge iframe, captures the grid image and question, calls CapSolver,
- * then clicks the correct tiles and Verify.
+ * Playwright integration for solving reCAPTCHA v2 (image challenge) and v3 (token) via CapSolver.
+ * v2: finds bframe, captures grid + question, calls CapSolver, clicks tiles and Verify.
+ * v3: extracts site key from page, gets token from CapSolver, injects via callback.
  */
 
 import type { Page, Frame } from 'playwright';
 import {
   solveReCaptchaV2Classification,
   mapChallengeTextToQuestionId,
+  solveReCaptchaV3,
 } from './capsolver';
 
 const CHALLENGE_FRAME_URL_SUBSTR = 'recaptcha';
@@ -138,6 +139,87 @@ async function isChallengeStillVisible(frame: Frame): Promise<boolean> {
   }
 }
 
+/** Try to get reCAPTCHA v3 site key from the page (data-sitekey or script src). */
+async function getRecaptchaV3SiteKey(page: Page): Promise<string | null> {
+  const key = await page.evaluate(() => {
+    const el = document.querySelector('[data-sitekey]');
+    if (el && el.getAttribute('data-sitekey')) return el.getAttribute('data-sitekey');
+    const scripts = document.querySelectorAll('script[src*="recaptcha"]');
+    for (const s of scripts) {
+      const src = s.getAttribute('src') || '';
+      const m = src.match(/[?&]render=([^&]+)/);
+      if (m) return m[1];
+    }
+    return null;
+  });
+  return key;
+}
+
+/**
+ * Inject reCAPTCHA v3 token by calling the callback stored in ___grecaptcha_cfg.
+ * See e.g. puppeteer-extra recaptcha callback injection.
+ */
+async function injectRecaptchaV3Token(page: Page, token: string): Promise<void> {
+  await page.evaluate((t) => {
+    const w = window as Window & { ___grecaptcha_cfg?: { clients: unknown[] } };
+    if (typeof w.___grecaptcha_cfg === 'undefined' || !w.___grecaptcha_cfg.clients?.length) {
+      const textarea = document.querySelector('textarea[name="g-recaptcha-response"]');
+      if (textarea) {
+        (textarea as HTMLTextAreaElement).value = t;
+        textarea.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      return;
+    }
+    try {
+      const clients = w.___grecaptcha_cfg.clients;
+      for (const client of clients) {
+        const arr = Object.values(client as object);
+        const rt = arr.find((k: unknown) => k && (k as { constructor?: { name?: string } }).constructor?.name === 'RT');
+        if (!rt) continue;
+        const inner = Object.values(rt as object).find(Boolean) as { callback?: unknown } | undefined;
+        if (!inner?.callback) continue;
+        let cb = inner.callback;
+        if (typeof cb === 'string') cb = (window as Record<string, unknown>)[cb];
+        if (typeof cb === 'function') {
+          (cb as (token: string) => void)(t);
+          return;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    const textarea = document.querySelector('textarea[name="g-recaptcha-response"]');
+    if (textarea) {
+      (textarea as HTMLTextAreaElement).value = t;
+      textarea.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  }, token);
+}
+
+/**
+ * If reCAPTCHA v3 is on the page, get site key, solve via CapSolver, and inject the token.
+ * Returns true if we attempted (and completed) v3 solve; false if no v3 site key found.
+ */
+async function trySolveRecaptchaV3(page: Page, options: WaitForAndSolveRecaptchaOptions): Promise<boolean> {
+  const websiteKey = options.websiteKey ?? (await getRecaptchaV3SiteKey(page));
+  if (!websiteKey) return false;
+
+  console.log('[reCAPTCHA] reCAPTCHA v3 detected; getting token from CapSolver...');
+  const { gRecaptchaResponse, recaptchaCaT } = await solveReCaptchaV3(page.url(), websiteKey, {
+    pageAction: 'submit',
+  });
+  if (recaptchaCaT) {
+    await page.context().addCookies([
+      { name: 'recaptcha-ca-t', value: recaptchaCaT, domain: new URL(page.url()).hostname, path: '/' },
+    ]);
+    console.log('[reCAPTCHA] Set recaptcha-ca-t cookie (session mode).');
+  }
+  console.log('[reCAPTCHA] Injecting v3 token into page...');
+  await injectRecaptchaV3Token(page, gRecaptchaResponse);
+  console.log('[reCAPTCHA] reCAPTCHA v3 token injected.');
+  return true;
+}
+
 /**
  * If a reCAPTCHA v2 image challenge is present in the page, solve it using CapSolver.
  * Call only when CAPSOLVER_API_KEY is set.
@@ -153,13 +235,16 @@ export async function waitForAndSolveRecaptchaIfPresent(
   for (let round = 0; round < maxRounds; round++) {
     let frame = findChallengeFrame(page);
     if (!frame && round === 0) {
-      console.log('[reCAPTCHA] No challenge frame yet, waiting 2s for it to load...');
+      console.log('[reCAPTCHA] No v2 challenge frame yet, waiting 2s for it to load...');
       await new Promise((r) => setTimeout(r, 2000));
       frame = findChallengeFrame(page);
     }
     if (!frame) {
       if (round === 0) {
-        console.log('[reCAPTCHA] No reCAPTCHA challenge present; continuing.');
+        const v3Attempted = await trySolveRecaptchaV3(page, options);
+        if (!v3Attempted) {
+          console.log('[reCAPTCHA] No reCAPTCHA v2 or v3 detected; continuing.');
+        }
       }
       return true;
     }

@@ -1,10 +1,12 @@
 /**
- * CapSolver API client for reCAPTCHA v2 image classification (ReCaptchaV2Classification).
+ * CapSolver API client for reCAPTCHA v2 (image classification) and v3 (token).
  * @see https://docs.capsolver.com/en/guide/recognition/ReCaptchaClassification/
+ * @see https://docs.capsolver.com/en/guide/captcha/ReCaptchaV3/
  * @see https://docs.capsolver.com/en/guide/api-createtask/
  */
 
 const CAPSOLVER_CREATE_TASK_URL = 'https://api.capsolver.com/createTask';
+const CAPSOLVER_GET_TASK_RESULT_URL = 'https://api.capsolver.com/getTaskResult';
 
 /** Official question ID -> label map from CapSolver docs */
 export const RECAPTCHA_V2_QUESTION_MAP: Record<string, string> = {
@@ -147,4 +149,94 @@ export async function solveReCaptchaV2Classification(
   }
 
   throw new Error('CapSolver returned an unexpected solution format');
+}
+
+/** Options for reCAPTCHA v3 (token-based). */
+export interface SolveReCaptchaV3Options {
+  pageAction?: string;
+}
+
+/**
+ * Solves reCAPTCHA v3 via CapSolver: createTask (ReCaptchaV3TaskProxyLess) then poll getTaskResult.
+ * Returns the gRecaptchaResponse token and optional recaptcha-ca-t for session.
+ * @see https://docs.capsolver.com/en/guide/captcha/ReCaptchaV3/
+ */
+export async function solveReCaptchaV3(
+  websiteURL: string,
+  websiteKey: string,
+  options?: SolveReCaptchaV3Options
+): Promise<{ gRecaptchaResponse: string; recaptchaCaT?: string }> {
+  const clientKey = getApiKey();
+  if (!clientKey) {
+    throw new CapSolverNotConfiguredError();
+  }
+
+  const task: Record<string, unknown> = {
+    type: 'ReCaptchaV3TaskProxyLess',
+    websiteURL,
+    websiteKey,
+  };
+  if (options?.pageAction) task.pageAction = options.pageAction;
+
+  const createRes = await fetch(CAPSOLVER_CREATE_TASK_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clientKey, task }),
+  });
+
+  const createData = (await createRes.json()) as {
+    errorId?: number;
+    errorCode?: string;
+    errorDescription?: string;
+    taskId?: string;
+  };
+
+  if (createData.errorId !== 0) {
+    const msg =
+      createData.errorDescription || createData.errorCode || `CapSolver errorId ${createData.errorId}`;
+    throw new Error(`CapSolver API error: ${msg}`);
+  }
+
+  const taskId = createData.taskId;
+  if (!taskId) {
+    throw new Error('CapSolver did not return a taskId');
+  }
+
+  const maxAttempts = 30;
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((r) => setTimeout(r, 1000));
+
+    const resultRes = await fetch(CAPSOLVER_GET_TASK_RESULT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientKey, taskId }),
+    });
+
+    const resultData = (await resultRes.json()) as {
+      errorId?: number;
+      errorCode?: string;
+      errorDescription?: string;
+      status?: string;
+      solution?: { gRecaptchaResponse?: string; 'recaptcha-ca-t'?: string };
+    };
+
+    if (resultData.errorId !== 0) {
+      const msg =
+        resultData.errorDescription || resultData.errorCode || `CapSolver getTaskResult error`;
+      throw new Error(`CapSolver API error: ${msg}`);
+    }
+
+    if (resultData.status === 'ready' && resultData.solution?.gRecaptchaResponse) {
+      return {
+        gRecaptchaResponse: resultData.solution.gRecaptchaResponse,
+        recaptchaCaT: resultData.solution['recaptcha-ca-t'],
+      };
+    }
+
+    if (resultData.status === 'failed') {
+      throw new Error('CapSolver task failed');
+    }
+  }
+
+  throw new Error('CapSolver getTaskResult timeout');
 }

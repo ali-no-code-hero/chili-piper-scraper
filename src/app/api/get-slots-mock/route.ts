@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getCentralGmtLabelForDate } from '@/lib/central-timezone';
 import { SecurityMiddleware } from '@/lib/security-middleware';
 
 const security = new SecurityMiddleware();
@@ -58,14 +59,18 @@ export async function POST(request: NextRequest) {
     console.log('🔍 Simulating scraping process...');
     
     // Simulate scraping with mock data
-    const mockSlots = [
-      { date: '2025-10-28', time: '8:00 AM', gmt: 'GMT-05:00 America/Chicago (CDT)' },
-      { date: '2025-10-28', time: '8:35 AM', gmt: 'GMT-05:00 America/Chicago (CDT)' },
-      { date: '2025-10-28', time: '9:00 AM', gmt: 'GMT-05:00 America/Chicago (CDT)' },
-      { date: '2025-10-29', time: '8:00 AM', gmt: 'GMT-05:00 America/Chicago (CDT)' },
-      { date: '2025-10-29', time: '8:35 AM', gmt: 'GMT-05:00 America/Chicago (CDT)' },
-      { date: '2025-10-30', time: '9:00 AM', gmt: 'GMT-05:00 America/Chicago (CDT)' }
+    const mockSlotsRaw = [
+      { date: '2025-10-28', time: '8:00 AM' },
+      { date: '2025-10-28', time: '8:35 AM' },
+      { date: '2025-10-28', time: '9:00 AM' },
+      { date: '2025-10-29', time: '8:00 AM' },
+      { date: '2025-10-29', time: '8:35 AM' },
+      { date: '2025-10-30', time: '9:00 AM' }
     ];
+    const mockSlots = mockSlotsRaw.map(slot => ({
+      ...slot,
+      gmt: getCentralGmtLabelForDate(slot.date)
+    }));
     
     const result = {
       success: true,

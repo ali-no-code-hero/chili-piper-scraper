@@ -1,6 +1,7 @@
 import { chromium, Browser } from 'playwright';
 import { browserPool } from './browser-pool';
 import { getCalendarContextPool } from './calendar-context-pool';
+import { getCentralGmtLabelForDate } from './central-timezone';
 import { browserInstanceManager } from './browser-instance-manager';
 import { waitForAndSolveRecaptchaIfPresent } from './recaptcha-solver';
 
@@ -622,7 +623,7 @@ export class ChiliPiperScraper {
           flattenedSlots.push({
             date: formattedDate,
             time: timeSlot,
-            gmt: 'GMT-05:00 America/Chicago (CDT)'
+            gmt: getCentralGmtLabelForDate(formattedDate)
           });
         }
       }

@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { Page, Request, Response } from 'playwright';
 import { browserPool } from './browser-pool';
+import { getCentralOffsetForDate } from './central-timezone';
 import { waitForAndSolveRecaptchaIfPresent } from './recaptcha-solver';
 
 const CALENDLY_VIDEO_DIR = process.env.CALENDLY_VIDEO_DIR || path.join(process.cwd(), '.calendly-videos');
@@ -220,7 +221,7 @@ function buildDirectCalendlyUrl(
   }
   const hourStr = String(hour).padStart(2, '0');
   const minStr = String(min).padStart(2, '0');
-  const tzOffset = '-06:00'; // America/Chicago (CST)
+  const tzOffset = getCentralOffsetForDate(date);
   const isoDateTime = `${date}T${hourStr}:${minStr}:00${tzOffset}`;
   const month = date.slice(0, 7);
   const baseQuery = `month=${month}&date=${date}`;

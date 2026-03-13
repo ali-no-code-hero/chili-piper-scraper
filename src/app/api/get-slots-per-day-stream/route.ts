@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { SecurityMiddleware, ValidationSchemas } from '@/lib/security-middleware';
+import { getCentralGmtLabelForDate } from '@/lib/central-timezone';
 import { ErrorHandler, ErrorCode, SuccessCode } from '@/lib/error-handler';
+import { SecurityMiddleware, ValidationSchemas } from '@/lib/security-middleware';
 // Dynamic import to avoid bundling Playwright during build
 
 const security = new SecurityMiddleware();
@@ -83,7 +84,7 @@ export async function POST(request: NextRequest) {
             const daySlots = dayData.slots.map(slot => ({
               date: dayData.date, // Already formatted as YYYY-MM-DD
               time: slot,
-              gmt: "GMT-05:00 America/Chicago (CDT)"
+              gmt: getCentralGmtLabelForDate(dayData.date)
             }));
             
             const responseTime = Date.now() - requestStartTime;

@@ -1,4 +1,5 @@
 import { browserPool } from '@/lib/browser-pool';
+import { getCentralOffsetForDate } from '@/lib/central-timezone';
 import type { Route } from 'playwright';
 
 const CAMPAIGN_URL = 'https://lofty.schedulehero.io/campaign/agent-advice-l1';
@@ -42,46 +43,6 @@ function normalizeTime(time: string): string {
   }
   if (/^\d{1,2}:\d{2}(am|pm)$/.test(cleaned)) return cleaned;
   return time.replace(/\s+/g, '').toLowerCase();
-}
-
-/**
- * Return offset string for America/Chicago on the given date (YYYY-MM-DD).
- * DST: 2nd Sunday March - 1st Sunday November -> -05:00, else -06:00.
- */
-function getCentralOffsetForDate(dateStr: string): string {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const year = y!;
-  const month = m!;
-  const day = d!;
-
-  const isDST = (): boolean => {
-    if (month < 3 || month > 11) return false;
-    if (month > 3 && month < 11) return true;
-    if (month === 3) {
-      let sundays = 0;
-      for (let i = 1; i <= 31; i++) {
-        const date = new Date(year, 2, i);
-        if (date.getDay() === 0) {
-          sundays++;
-          if (sundays === 2) return day >= i;
-        }
-      }
-      return false;
-    }
-    if (month === 11) {
-      let sundays = 0;
-      for (let i = 1; i <= 30; i++) {
-        const date = new Date(year, 10, i);
-        if (date.getDay() === 0) {
-          sundays++;
-          if (sundays === 1) return day < i;
-        }
-      }
-      return true;
-    }
-    return false;
-  };
-  return isDST() ? '-05:00' : '-06:00';
 }
 
 /**

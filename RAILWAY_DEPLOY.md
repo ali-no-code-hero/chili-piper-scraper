@@ -25,7 +25,10 @@ ADMIN_USERNAME=<your-admin-username>
 ADMIN_PASSWORD_HASH=<generate-with-node-scripts-generate-password-hash.js>
 MAX_SCRAPING_TIMEOUT=30000
 MAX_DAYS_TO_COLLECT=7
+CAPSOLVER_API_KEY=<optional-your-capsolver-api-key>
 ```
+
+**Optional – reCAPTCHA v2 solving:** If the form shows reCAPTCHA v2 image challenges, set `CAPSOLVER_API_KEY` to your [CapSolver](https://capsolver.com) API key. The scraper will then solve image challenges automatically using [ReCaptcha Images Recognize](https://docs.capsolver.com/en/guide/recognition/ReCaptchaClassification/). If unset, captcha challenges are not solved.
 
 ## How It Works
 

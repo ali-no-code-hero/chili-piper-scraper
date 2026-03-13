@@ -2,6 +2,7 @@ import { chromium, Browser } from 'playwright';
 import { browserPool } from './browser-pool';
 import { getCalendarContextPool } from './calendar-context-pool';
 import { browserInstanceManager } from './browser-instance-manager';
+import { waitForAndSolveRecaptchaIfPresent } from './recaptcha-solver';
 
 export interface SlotData {
   date: string;
@@ -307,9 +308,13 @@ export class ChiliPiperScraper {
         }
       }
       page.setDefaultNavigationTimeout(10000); // Reduced from 20s to 10s for speed
-      // Aggressive resource blocking
+      // Aggressive resource blocking (allow recaptcha so CapSolver can solve challenges)
       await page.route("**/*", (route: any) => {
         const url = route.request().url();
+        if (url.includes('recaptcha') || url.includes('google.com/recaptcha')) {
+          route.continue();
+          return;
+        }
         const rt = route.request().resourceType();
         if (rt === 'image' || rt === 'stylesheet' || rt === 'font' || rt === 'media' ||
             url.includes('google-analytics') || url.includes('googletagmanager') || url.includes('analytics') ||
@@ -328,7 +333,11 @@ export class ChiliPiperScraper {
         console.log(`🚀 Navigating directly to parameterized URL (skipping form)`);
         await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
       }
-      
+
+      if (process.env.CAPSOLVER_API_KEY) {
+        await waitForAndSolveRecaptchaIfPresent(page, { maxRounds: 5 });
+      }
+
       // Skip all waits - form is pre-filled via URL params, just click Submit
       console.log("⚡ Using prefill URL - form fields are already filled!");
       
@@ -373,7 +382,11 @@ export class ChiliPiperScraper {
         console.log("✅ Form submitted (fields were pre-filled via URL)");
         // Skip wait - page should transition immediately
       }
-      
+
+      if (process.env.CAPSOLVER_API_KEY) {
+        await waitForAndSolveRecaptchaIfPresent(page, { maxRounds: 5 });
+      }
+
       // Skip wait - page should already be on calendar or schedule choice
       console.log("⏳ Checking for calendar/schedule page...");
       

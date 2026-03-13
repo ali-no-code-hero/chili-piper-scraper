@@ -26,9 +26,12 @@ A production-ready web scraping service that automatically extracts available me
    DEFAULT_API_KEY=<your-api-key-here>
    ADMIN_USERNAME=<your-admin-username>
    ADMIN_PASSWORD_HASH=<generate-with-node-scripts-generate-password-hash.js>
-   MAX_SCRAPING_TIMEOUT=30000
-   MAX_DAYS_TO_COLLECT=7
+MAX_SCRAPING_TIMEOUT=30000
+MAX_DAYS_TO_COLLECT=7
+CAPSOLVER_API_KEY=<optional-for-recaptcha-v2-solving>
    ```
+
+   **Optional:** Set `CAPSOLVER_API_KEY` to automatically solve reCAPTCHA v2 image challenges via [CapSolver](https://docs.capsolver.com/en/guide/recognition/ReCaptchaClassification/) and [createTask API](https://docs.capsolver.com/en/guide/api-createtask/). If unset, the scraper does not attempt to solve captchas.
 
 4. **Deploy**: Click "Create Resources" and your app will deploy automatically.
 
@@ -178,6 +181,7 @@ curl -X POST http://your-domain.com/api/book-slot \
 | `ADMIN_PASSWORD_HASH` | Bcrypt hash of admin password | Yes | - |
 | `MAX_SCRAPING_TIMEOUT` | Scraping timeout (ms) | No | 30000 |
 | `MAX_DAYS_TO_COLLECT` | Max days to scrape | No | 7 |
+| `CAPSOLVER_API_KEY` | CapSolver API key for reCAPTCHA v2 image solving | No | - |
 | `MAX_CONCURRENT_REQUESTS` | Maximum concurrent operations (scraping + booking) | No | 15 |
 | `MAX_BROWSER_POOL_SIZE` | Maximum browser instances in pool | No | 2 |
 | `MAX_BROWSER_INSTANCES` | Maximum persistent browser instances (per email) | No | 50 |

@@ -126,7 +126,9 @@ export async function solveReCaptchaV2Classification(
     solution?: {
       type?: string;
       objects?: number[];
+      objectIndices?: number[];
       size?: number;
+      gridSize?: number;
       hasObject?: boolean;
     };
   };
@@ -140,15 +142,29 @@ export async function solveReCaptchaV2Classification(
     throw new Error('CapSolver did not return a ready solution');
   }
 
-  const sol = data.solution;
-  if (sol.type === 'multi' && Array.isArray(sol.objects) && typeof sol.size === 'number') {
-    return { type: 'multi', objects: sol.objects, size: sol.size };
+  const sol = data.solution as {
+    type?: string;
+    objects?: number[];
+    objectIndices?: number[];
+    size?: number;
+    gridSize?: number;
+    hasObject?: boolean;
+  };
+  const size = typeof sol.size === 'number' ? sol.size : typeof sol.gridSize === 'number' ? sol.gridSize : undefined;
+  const objectsArray = Array.isArray(sol.objects) ? sol.objects : Array.isArray(sol.objectIndices) ? sol.objectIndices : undefined;
+
+  if ((sol.type === 'multi' || objectsArray) && objectsArray && objectsArray.length > 0) {
+    const inferredSize = size ?? (objectsArray.length <= 9 ? 3 : 4);
+    return { type: 'multi', objects: objectsArray, size: inferredSize };
   }
-  if (sol.type === 'single' && typeof sol.hasObject === 'boolean' && typeof sol.size === 'number') {
-    return { type: 'single', hasObject: sol.hasObject, size: sol.size };
+  if (sol.type === 'single' && typeof sol.hasObject === 'boolean') {
+    return { type: 'single', hasObject: sol.hasObject, size: size ?? 3 };
+  }
+  if (sol.type === 'single' && size !== undefined) {
+    return { type: 'single', hasObject: true, size };
   }
 
-  throw new Error('CapSolver returned an unexpected solution format');
+  throw new Error(`CapSolver returned an unexpected solution format: ${JSON.stringify(sol)}`);
 }
 
 /** Options for reCAPTCHA v3 (token-based). */

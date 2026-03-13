@@ -335,7 +335,9 @@ export class ChiliPiperScraper {
       }
 
       if (process.env.CAPSOLVER_API_KEY) {
+        console.log('[reCAPTCHA] Running reCAPTCHA check (after page load)...');
         await waitForAndSolveRecaptchaIfPresent(page, { maxRounds: 5 });
+        console.log('[reCAPTCHA] Check complete (after page load).');
       }
 
       // Skip all waits - form is pre-filled via URL params, just click Submit
@@ -384,7 +386,9 @@ export class ChiliPiperScraper {
       }
 
       if (process.env.CAPSOLVER_API_KEY) {
+        console.log('[reCAPTCHA] Running reCAPTCHA check (after submit)...');
         await waitForAndSolveRecaptchaIfPresent(page, { maxRounds: 5 });
+        console.log('[reCAPTCHA] Check complete (after submit).');
       }
 
       // Skip wait - page should already be on calendar or schedule choice

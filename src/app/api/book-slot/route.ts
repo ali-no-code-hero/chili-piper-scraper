@@ -353,6 +353,7 @@ export async function POST(request: NextRequest) {
 
     const body = securityResult.sanitizedData!;
     const { email, dateTime, firstName, lastName, phone } = body;
+    console.log('[book-slot] API called', { email, dateTime, requestId });
 
     // Parse date/time
     const parsed = parseDateTime(dateTime);

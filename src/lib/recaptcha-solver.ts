@@ -88,15 +88,18 @@ async function clickTilesByIndices(
 async function solveOneRound(
   page: Page,
   frame: Frame,
-  options: WaitForAndSolveRecaptchaOptions
+  options: WaitForAndSolveRecaptchaOptions,
+  round: number
 ): Promise<boolean> {
   const gridSize = await detectGridSize(frame);
   const questionText = await getQuestionText(frame);
   const questionId = mapChallengeTextToQuestionId(questionText);
   if (!questionId) {
+    console.error('[reCAPTCHA] Unsupported challenge question:', questionText);
     throw new Error(`Unsupported reCAPTCHA challenge question: "${questionText}"`);
   }
 
+  console.log(`[reCAPTCHA] Round ${round + 1}: question="${questionText.slice(0, 50)}..." grid=${gridSize}x${gridSize}, calling CapSolver...`);
   const imageBase64 = await getChallengeImageBase64(frame, gridSize);
   const solution = await solveReCaptchaV2Classification(imageBase64, questionId, {
     websiteURL: page.url(),
@@ -104,8 +107,10 @@ async function solveOneRound(
   });
 
   if (solution.type === 'multi') {
+    console.log(`[reCAPTCHA] CapSolver returned multi: clicking ${solution.objects.length} tiles (indices: ${solution.objects.join(', ')})`);
     await clickTilesByIndices(frame, solution.objects, gridSize as 3 | 4);
   } else if (solution.type === 'single' && solution.hasObject) {
+    console.log('[reCAPTCHA] CapSolver returned single: hasObject=true, clicking tile');
     const cellSelector = gridSize === 3 ? TILE_CELLS_33 : TILE_CELLS_44;
     const first = frame.locator(cellSelector).first();
     await first.click({ timeout: 2000 });
@@ -115,6 +120,7 @@ async function solveOneRound(
   const verifyBtn = frame.locator(VERIFY_BUTTON);
   await verifyBtn.waitFor({ state: 'visible', timeout: 5000 });
   await verifyBtn.click({ timeout: 2000 });
+  console.log(`[reCAPTCHA] Round ${round + 1}: clicked Verify`);
   return true;
 }
 
@@ -142,21 +148,39 @@ export async function waitForAndSolveRecaptchaIfPresent(
   options: WaitForAndSolveRecaptchaOptions = {}
 ): Promise<boolean> {
   const maxRounds = options.maxRounds ?? DEFAULT_MAX_ROUNDS;
+  console.log('[reCAPTCHA] Checking for reCAPTCHA challenge iframe...');
 
   for (let round = 0; round < maxRounds; round++) {
     let frame = findChallengeFrame(page);
     if (!frame && round === 0) {
+      console.log('[reCAPTCHA] No challenge frame yet, waiting 2s for it to load...');
       await new Promise((r) => setTimeout(r, 2000));
       frame = findChallengeFrame(page);
     }
-    if (!frame) return true;
+    if (!frame) {
+      if (round === 0) {
+        console.log('[reCAPTCHA] No reCAPTCHA challenge present; continuing.');
+      }
+      return true;
+    }
 
     const stillVisible = await isChallengeStillVisible(frame);
-    if (!stillVisible) return true;
+    if (!stillVisible) {
+      console.log('[reCAPTCHA] Challenge no longer visible; continuing.');
+      return true;
+    }
 
-    await solveOneRound(page, frame, options);
+    console.log(`[reCAPTCHA] Challenge detected (round ${round + 1}/${maxRounds}), solving...`);
+    try {
+      await solveOneRound(page, frame, options, round);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[reCAPTCHA] Solve failed:', msg);
+      throw err;
+    }
     await new Promise((r) => setTimeout(r, ROUND_WAIT_MS));
   }
 
+  console.log('[reCAPTCHA] Completed max rounds; continuing.');
   return true;
 }

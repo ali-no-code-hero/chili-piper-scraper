@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = securityResult.sanitizedData!;
+    console.log('[get-slots] API called', { vendor: body.vendor, email: body.email });
     console.log(`✅ Parsed and validated data:`, body);
     
     // Record API usage

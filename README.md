@@ -185,6 +185,10 @@ curl -X POST http://your-domain.com/api/book-slot \
 | `HOUSEJET_PPC_PROXY_SERVER` | Rotating proxy for housejet-ppc only (e.g. Smartproxy `http://gate.smartproxy.com:7000`) | No | - |
 | `HOUSEJET_PPC_PROXY_USERNAME` | Proxy username (Smartproxy dashboard) | No | - |
 | `HOUSEJET_PPC_PROXY_PASSWORD` | Proxy password (Smartproxy dashboard) | No | - |
+| `CAPSOLVER_API_KEY` | CapSolver API key for solving reCAPTCHA v3 Enterprise on Calendly | No | - |
+| `CALENDLY_RECAPTCHA_WEBSITE_KEY` | reCAPTCHA site key for the Calendly page (required when CapSolver is used) | No | - |
+| `CALENDLY_RECAPTCHA_PAGE_ACTION` | Optional reCAPTCHA v3 action (e.g. `submit`) | No | - |
+| `CALENDLY_RECAPTCHA_ENTERPRISE_S` | Optional Enterprise `s` parameter for CapSolver | No | - |
 
 ### Generate Secrets
 

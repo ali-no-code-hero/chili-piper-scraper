@@ -364,6 +364,19 @@ The scraper can be configured via environment variables:
 - `MAX_DAYS_TO_COLLECT`: Maximum days to scrape (default: 7)
 - `MAX_SCRAPING_TIMEOUT`: Timeout in milliseconds (default: 30000)
 
+### CapSolver / Calendly reCAPTCHA v3 Enterprise
+
+When Calendly uses reCAPTCHA v3 Enterprise, the app can solve it via [CapSolver](https://docs.capsolver.com/en/guide/captcha/ReCaptchaV3/) before submitting the booking form. The same proxy used for the booking context (e.g. `HOUSEJET_PPC_PROXY_*` for pay-per-close) is sent to CapSolver when present so the token is solved from the same IP that submits the form.
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `CAPSOLVER_API_KEY` | CapSolver API key. If set, reCAPTCHA solving is attempted before clicking Schedule Event. | No (skip solve if unset) |
+| `CALENDLY_RECAPTCHA_WEBSITE_KEY` | reCAPTCHA site key for the Calendly page. Required when CapSolver is used. Find via page source or [CapSolver extension](https://docs.capsolver.com/en/blog/show-to-get-recaptcha-version/). | When using CapSolver |
+| `CALENDLY_RECAPTCHA_PAGE_ACTION` | Optional. reCAPTCHA v3 action name (e.g. `submit`). Find via `grecaptcha.execute` on the page. | No |
+| `CALENDLY_RECAPTCHA_ENTERPRISE_S` | Optional. Enterprise `s` parameter from `grecaptcha.enterprise.render`, for `enterprisePayload.s`. | No |
+
+If `CAPSOLVER_API_KEY` is set but `CALENDLY_RECAPTCHA_WEBSITE_KEY` is not, a warning is logged and the booking continues without solving (no hard failure).
+
 ## Examples
 
 ### JavaScript/Node.js

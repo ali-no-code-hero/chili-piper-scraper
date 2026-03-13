@@ -6,6 +6,10 @@ import { Page, Request, Response } from 'playwright';
 import type { Locator } from 'playwright';
 import { browserPool } from './browser-pool';
 import { getCentralOffsetForDate } from './central-timezone';
+import {
+  solveRecaptchaV3Enterprise,
+  type CapSolverProxyOptions,
+} from './capsolver';
 
 const CALENDLY_VIDEO_DIR = process.env.CALENDLY_VIDEO_DIR || path.join(process.cwd(), '.calendly-videos');
 const CALENDLY_VIDEO_ENABLED = process.env.CALENDLY_VIDEO_ENABLED !== '0' && process.env.CALENDLY_VIDEO_ENABLED !== 'false';
@@ -1009,6 +1013,87 @@ async function clickNextButton(page: Page, normalizedTime: string): Promise<void
   throw new Error('Next button not found after selecting time slot');
 }
 
+/**
+ * Inject reCAPTCHA v3 token into the page: find promise-callback in ___grecaptcha_cfg.clients
+ * and call it with the token; optionally set g-recaptcha-response textarea.
+ */
+async function injectRecaptchaV3Token(page: Page, token: string): Promise<void> {
+  await page.evaluate((gRecaptchaResponse) => {
+    const cfg = (window as unknown as { ___grecaptcha_cfg?: { clients: Record<string, unknown> } }).___grecaptcha_cfg;
+    if (!cfg?.clients || typeof cfg.clients !== 'object') return;
+
+    for (const [, client] of Object.entries(cfg.clients)) {
+      const c = client as Record<string, unknown>;
+      if (!c || typeof c !== 'object') continue;
+      const l = c.l as Record<string, unknown> | undefined;
+      if (!l || typeof l !== 'object') continue;
+      const inner = l.l as Record<string, unknown> | undefined;
+      if (!inner || typeof inner !== 'object') continue;
+      const callback = inner['promise-callback'] as ((t: string) => void) | undefined;
+      if (typeof callback === 'function') {
+        callback(gRecaptchaResponse);
+        break;
+      }
+    }
+
+    const textarea = document.querySelector('textarea[name="g-recaptcha-response"]') as HTMLTextAreaElement | null;
+    if (textarea) textarea.value = gRecaptchaResponse;
+  }, token);
+}
+
+/**
+ * If CapSolver is configured, solve reCAPTCHA v3 Enterprise and inject token (and optional cookies) into the page.
+ * Uses same proxy as booking context when calendlyType === 'payperclose' and HOUSEJET_PPC_PROXY_* are set.
+ */
+async function ensureRecaptchaTokenAndInject(page: Page, opts: BookCalendlySlotOptions, pageUrl: string): Promise<void> {
+  const apiKey = process.env.CAPSOLVER_API_KEY?.trim();
+  const websiteKey = process.env.CALENDLY_RECAPTCHA_WEBSITE_KEY?.trim();
+  if (!apiKey) return;
+  if (!websiteKey) {
+    console.warn(`${LOG_PREFIX} CAPSOLVER_API_KEY set but CALENDLY_RECAPTCHA_WEBSITE_KEY missing; skipping reCAPTCHA solve`);
+    return;
+  }
+
+  try {
+    let proxy: CapSolverProxyOptions | undefined;
+    if (opts.calendlyType === 'payperclose') {
+      const server = process.env.HOUSEJET_PPC_PROXY_SERVER?.trim();
+      if (server) {
+        proxy = {
+          server,
+          username: process.env.HOUSEJET_PPC_PROXY_USERNAME?.trim() || undefined,
+          password: process.env.HOUSEJET_PPC_PROXY_PASSWORD?.trim() || undefined,
+        };
+      }
+    }
+
+    console.log(`${LOG_PREFIX} Solving reCAPTCHA v3 Enterprise via CapSolver...`);
+    const result = await solveRecaptchaV3Enterprise({
+      websiteURL: pageUrl,
+      websiteKey,
+      proxy,
+      pageAction: process.env.CALENDLY_RECAPTCHA_PAGE_ACTION?.trim() || undefined,
+      enterprisePayload: process.env.CALENDLY_RECAPTCHA_ENTERPRISE_S
+        ? { s: process.env.CALENDLY_RECAPTCHA_ENTERPRISE_S }
+        : undefined,
+    });
+
+    await injectRecaptchaV3Token(page, result.gRecaptchaResponse);
+
+    if (result.recaptchaCaT ?? result.recaptchaCaE) {
+      const u = new URL(pageUrl);
+      const cookies: { name: string; value: string; domain: string; path: string }[] = [];
+      if (result.recaptchaCaT) cookies.push({ name: 'recaptcha-ca-t', value: result.recaptchaCaT, domain: u.hostname, path: '/' });
+      if (result.recaptchaCaE) cookies.push({ name: 'recaptcha-ca-e', value: result.recaptchaCaE, domain: u.hostname, path: '/' });
+      if (cookies.length) await page.context().addCookies(cookies);
+    }
+
+    console.log(`${LOG_PREFIX} reCAPTCHA token injected`);
+  } catch (e) {
+    console.warn(`${LOG_PREFIX} CapSolver/inject failed (continuing without token):`, (e as Error)?.message ?? e);
+  }
+}
+
 async function fillFormAndSubmit(
   page: Page,
   opts: BookCalendlySlotOptions,
@@ -1176,6 +1261,7 @@ async function fillFormAndSubmit(
     throw new Error('Schedule Event button not found');
   }
 
+  await ensureRecaptchaTokenAndInject(page, opts, page.url());
   await humanDelay(400); // Brief pause before submit (more human-like)
   const stopNetworkLogging = startScheduleEventNetworkLogging(page);
   console.log(`${LOG_PREFIX} [form] Clicking Schedule Event...`);
@@ -1230,6 +1316,7 @@ async function fillSimpleFormAndSubmit(
   if ((await submitLoc.count()) === 0) {
     throw new Error('Schedule Event button not found');
   }
+  await ensureRecaptchaTokenAndInject(page, opts, page.url());
   const box = await submitLoc.boundingBox();
   if (box) {
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 4 });
@@ -1276,6 +1363,7 @@ async function clickScheduleEventOnlyAndWait(
   if ((await submitLoc.count()) === 0) {
     throw new Error('Schedule Event button not found');
   }
+  await ensureRecaptchaTokenAndInject(page, opts, page.url());
   const box = await submitLoc.boundingBox();
   if (box) {
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 4 });

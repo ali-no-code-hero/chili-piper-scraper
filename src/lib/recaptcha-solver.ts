@@ -73,11 +73,12 @@ function findAnchorFrame(page: Page): Frame | null {
   return fallback;
 }
 
-/** After CapSolver result: click "I'm not a robot" checkbox then "Continue" on the popup. */
-async function clickCheckboxAndContinue(page: Page, challengeFrame: Frame): Promise<void> {
-  const timeout = 5000;
+/**
+ * Click the "I'm not a robot" checkbox in the Confirm popup and then "Continue".
+ * Used for reCAPTCHA v3 (no image challenge) and as part of v2 post-Verify flow.
+ */
+async function clickConfirmPopupCheckboxAndContinue(page: Page): Promise<void> {
   try {
-    // 1) Prefer "Confirm you're human" popup (e.g. Calendly): wait for it, then get anchor iframe inside it
     let checkboxClicked = false;
     for (const popupSel of CONFIRM_POPUP_SELECTORS) {
       try {
@@ -156,17 +157,6 @@ async function clickCheckboxAndContinue(page: Page, challengeFrame: Frame): Prom
 
     for (const sel of CONTINUE_BUTTON_SELECTORS) {
       try {
-        const inFrame = challengeFrame.locator(sel).first();
-        await inFrame.waitFor({ state: 'visible', timeout: 1500 });
-        await inFrame.click({ timeout: 2000 });
-        console.log('[reCAPTCHA] Clicked Continue in challenge frame.');
-        return;
-      } catch {
-        continue;
-      }
-    }
-    for (const sel of CONTINUE_BUTTON_SELECTORS) {
-      try {
         const onPage = page.locator(sel).first();
         await onPage.waitFor({ state: 'visible', timeout: 1500 });
         await onPage.click({ timeout: 2000 });
@@ -178,6 +168,26 @@ async function clickCheckboxAndContinue(page: Page, challengeFrame: Frame): Prom
     }
   } catch {
     // Non-fatal: checkbox/Continue may not be present in all flows
+  }
+}
+
+/** After CapSolver v2 result and Verify: try Continue in challenge frame, then popup checkbox + Continue. */
+async function clickCheckboxAndContinue(page: Page, challengeFrame: Frame): Promise<void> {
+  try {
+    for (const sel of CONTINUE_BUTTON_SELECTORS) {
+      try {
+        const inFrame = challengeFrame.locator(sel).first();
+        await inFrame.waitFor({ state: 'visible', timeout: 1500 });
+        await inFrame.click({ timeout: 2000 });
+        console.log('[reCAPTCHA] Clicked Continue in challenge frame.');
+        return;
+      } catch {
+        continue;
+      }
+    }
+    await clickConfirmPopupCheckboxAndContinue(page);
+  } catch {
+    await clickConfirmPopupCheckboxAndContinue(page);
   }
 }
 
@@ -363,6 +373,9 @@ async function trySolveRecaptchaV3(page: Page, options: WaitForAndSolveRecaptcha
   console.log('[reCAPTCHA] Injecting v3 token into page...');
   await injectRecaptchaV3Token(page, gRecaptchaResponse);
   console.log('[reCAPTCHA] reCAPTCHA v3 token injected.');
+  // v3 flow: "Confirm you're human" popup (checkbox + Continue) is the only UI – click it
+  await new Promise((r) => setTimeout(r, 1500));
+  await clickConfirmPopupCheckboxAndContinue(page);
   return true;
 }
 

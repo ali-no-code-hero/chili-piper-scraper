@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
 import { Page, Request, Response } from 'playwright';
@@ -239,6 +240,35 @@ export interface CreateBookingPageProxyOptions {
   password?: string;
 }
 
+/** Check TCP reachability of proxy server and log result (for debugging connection failures). */
+function logProxyReachability(server: string): void {
+  let host: string;
+  let port: number;
+  try {
+    const u = new URL(server.startsWith('http://') || server.startsWith('https://') ? server : `http://${server}`);
+    host = u.hostname;
+    port = parseInt(u.port, 10) || 3120;
+  } catch {
+    return;
+  }
+  const socket = new net.Socket();
+  const timeoutMs = 5000;
+  const timeout = setTimeout(() => {
+    socket.destroy();
+    console.warn(`${LOG_PREFIX} Proxy reachability: timeout after ${timeoutMs}ms connecting to ${host}:${port}`);
+  }, timeoutMs);
+  socket.once('connect', () => {
+    clearTimeout(timeout);
+    socket.destroy();
+    console.log(`${LOG_PREFIX} Proxy reachability: TCP connect OK to ${host}:${port}`);
+  });
+  socket.once('error', (err: NodeJS.ErrnoException) => {
+    clearTimeout(timeout);
+    console.warn(`${LOG_PREFIX} Proxy reachability: ${err.code || err.message} connecting to ${host}:${port}`);
+  });
+  socket.connect(port, host);
+}
+
 /** Options for createNewBookingPage (e.g. proxy for housejet-ppc). */
 export interface CreateNewBookingPageOptions {
   proxy?: CreateBookingPageProxyOptions;
@@ -302,6 +332,7 @@ async function createNewBookingPage(
       password: options.proxy.password,
     };
     console.log(`${LOG_PREFIX} [create] Using proxy for this context: ${options.proxy.server}`);
+    logProxyReachability(options.proxy.server);
   }
 
   let retries = 3;
@@ -368,7 +399,20 @@ async function createNewBookingPage(
     const msg = navError instanceof Error ? navError.message : String(navError);
     const isProxyFailure = /ERR_PROXY|proxy.*(fail|connection|refused)/i.test(msg);
     if (options?.proxy?.server && isProxyFailure) {
-      console.warn(`${LOG_PREFIX} Proxy connection failed (${msg}), retrying without proxy...`);
+      // Log full proxy error for debugging (Smartproxy auth/connect issues)
+      const err = navError instanceof Error ? navError : new Error(String(navError));
+      const errDetail: Record<string, unknown> = {
+        message: err.message,
+        name: err.name,
+      };
+      if (err.stack) errDetail.stack = err.stack;
+      if (err.cause) errDetail.cause = err.cause instanceof Error ? { message: err.cause.message, stack: err.cause.stack } : err.cause;
+      console.warn(
+        `${LOG_PREFIX} Proxy connection failed. Server: ${options.proxy.server} (user: ${options.proxy.username ? 'set' : 'not set'}).`,
+        'Full error:',
+        JSON.stringify(errDetail, null, 2)
+      );
+      console.warn(`${LOG_PREFIX} Retrying without proxy...`);
       await page.close().catch(() => {});
       await context.close().catch(() => {});
       const noProxyOptions = { ...contextOptions };

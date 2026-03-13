@@ -301,6 +301,17 @@ export interface CreateBookingPageProxyOptions {
   password?: string;
 }
 
+/** Log server's outbound IP (no proxy) via Node fetch – so we can compare with proxy IP later. */
+async function logServerOutboundIp(): Promise<void> {
+  try {
+    const res = await fetch('https://api.ipify.org', { signal: AbortSignal.timeout(5000) });
+    const ip = (await res.text()).trim() || '(empty)';
+    console.log(`${LOG_PREFIX} Server outbound IP (no proxy): ${ip}`);
+  } catch (e) {
+    console.warn(`${LOG_PREFIX} Could not get server IP (api.ipify.org):`, (e as Error)?.message ?? e);
+  }
+}
+
 /** Check TCP reachability of proxy server and log result (for debugging connection failures). */
 function logProxyReachability(server: string): void {
   let host: string;
@@ -393,6 +404,7 @@ async function createNewBookingPage(
       password: options.proxy.password,
     };
     console.log(`${LOG_PREFIX} [create] Using proxy for this context: ${options.proxy.server}`);
+    await logServerOutboundIp();
     logProxyReachability(options.proxy.server);
   }
 
@@ -452,6 +464,16 @@ async function createNewBookingPage(
     }
     route.continue();
   });
+
+  if (options?.proxy?.server) {
+    try {
+      await page.goto('https://api.ipify.org', { waitUntil: 'domcontentloaded', timeout: 8000 });
+      const outboundIp = (await page.textContent('body'))?.trim() || '(empty)';
+      console.log(`${LOG_PREFIX} Proxy context outbound IP: ${outboundIp}`);
+    } catch (ipErr) {
+      console.warn(`${LOG_PREFIX} Could not confirm proxy IP (api.ipify.org):`, (ipErr as Error)?.message ?? ipErr);
+    }
+  }
 
   console.log(`${LOG_PREFIX} Navigating to ${calendlyUrl}`);
   try {

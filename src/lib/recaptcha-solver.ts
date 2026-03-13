@@ -403,9 +403,14 @@ export async function waitForAndSolveRecaptchaIfPresent(
         const v3Attempted = await trySolveRecaptchaV3(page, options);
         if (!v3Attempted) {
           console.log('[reCAPTCHA] No reCAPTCHA v2 or v3 detected; continuing.');
+          return true;
         }
+        // v3 done (token + popup); v2 image challenge often appears after – wait and recheck
+        console.log('[reCAPTCHA] Waiting for v2 image challenge after v3 popup...');
+        await new Promise((r) => setTimeout(r, 3000));
+        frame = findChallengeFrame(page);
       }
-      return true;
+      if (!frame) return true;
     }
 
     const stillVisible = await isChallengeStillVisible(frame);

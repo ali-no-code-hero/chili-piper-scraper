@@ -14,7 +14,14 @@ import {
 const CHALLENGE_FRAME_URL_SUBSTR = 'recaptcha';
 const BFRAME_SUBSTR = 'bframe';
 const ANCHOR_FRAME_URL_SUBSTR = 'anchor';
-const RECAPTCHA_ANCHOR_CHECKBOX = '#recaptcha-anchor';
+/** Selectors for the "I'm not a robot" checkbox (anchor frame). Try in order. */
+const RECAPTCHA_CHECKBOX_SELECTORS = [
+  '#recaptcha-anchor',
+  'span#recaptcha-anchor',
+  '.rc-anchor-checkbox-holder',
+  'div.recaptcha-checkbox-border',
+  '[role="checkbox"]',
+];
 const CONTINUE_BUTTON_SELECTORS = [
   'button:has-text("Continue")',
   'input[type="button"][value="Continue"]',
@@ -47,26 +54,64 @@ function findChallengeFrame(page: Page): Frame | null {
   return null;
 }
 
-/** reCAPTCHA v2 anchor frame (contains "I'm not a robot" checkbox). */
+/** reCAPTCHA v2 anchor frame (contains "I'm not a robot" checkbox). Prefer URL with "anchor"; fallback: recaptcha frame that is not bframe. */
 function findAnchorFrame(page: Page): Frame | null {
+  let fallback: Frame | null = null;
   for (const frame of page.frames()) {
     const url = frame.url().toLowerCase();
-    if (url.includes(CHALLENGE_FRAME_URL_SUBSTR) && url.includes(ANCHOR_FRAME_URL_SUBSTR)) {
-      return frame;
-    }
+    if (!url.includes(CHALLENGE_FRAME_URL_SUBSTR)) continue;
+    if (url.includes(ANCHOR_FRAME_URL_SUBSTR)) return frame;
+    if (!url.includes(BFRAME_SUBSTR)) fallback = frame;
   }
-  return null;
+  return fallback;
 }
 
 /** After CapSolver result: click "I'm not a robot" checkbox then "Continue" on the popup. */
 async function clickCheckboxAndContinue(page: Page, challengeFrame: Frame): Promise<void> {
-  const timeout = 3000;
+  const timeout = 5000;
   try {
     const anchorFrame = findAnchorFrame(page);
-    if (anchorFrame) {
-      const checkbox = anchorFrame.locator(RECAPTCHA_ANCHOR_CHECKBOX).first();
-      await checkbox.click({ timeout }).catch(() => {});
-      await new Promise((r) => setTimeout(r, 800));
+    if (!anchorFrame) {
+      console.log('[reCAPTCHA] No anchor frame found for checkbox.');
+    } else {
+      let checkboxClicked = false;
+      for (const sel of RECAPTCHA_CHECKBOX_SELECTORS) {
+        try {
+          const checkbox = anchorFrame.locator(sel).first();
+          await checkbox.waitFor({ state: 'visible', timeout: 2000 });
+          await checkbox.scrollIntoViewIfNeeded();
+          await new Promise((r) => setTimeout(r, 200));
+          await checkbox.click({ timeout: 3000, force: true });
+          console.log('[reCAPTCHA] Clicked "I\'m not a robot" checkbox:', sel);
+          checkboxClicked = true;
+          await new Promise((r) => setTimeout(r, 800));
+          break;
+        } catch {
+          continue;
+        }
+      }
+      if (!checkboxClicked) {
+        // Fallback: try main-page iframe (anchor may be in different frame tree)
+        try {
+          const anchorIframe = page.frameLocator('iframe[src*="recaptcha"][src*="anchor"]').first();
+          for (const sel of RECAPTCHA_CHECKBOX_SELECTORS) {
+            try {
+              const cb = anchorIframe.locator(sel).first();
+              await cb.waitFor({ state: 'visible', timeout: 2000 });
+              await cb.scrollIntoViewIfNeeded();
+              await new Promise((r) => setTimeout(r, 200));
+              await cb.click({ timeout: 3000, force: true });
+              console.log('[reCAPTCHA] Clicked checkbox via frameLocator:', sel);
+              await new Promise((r) => setTimeout(r, 800));
+              break;
+            } catch {
+              continue;
+            }
+          }
+        } catch {
+          console.log('[reCAPTCHA] Could not click checkbox with any selector.');
+        }
+      }
     }
     for (const sel of CONTINUE_BUTTON_SELECTORS) {
       try {

@@ -13,6 +13,14 @@ import {
 
 const CHALLENGE_FRAME_URL_SUBSTR = 'recaptcha';
 const BFRAME_SUBSTR = 'bframe';
+const ANCHOR_FRAME_URL_SUBSTR = 'anchor';
+const RECAPTCHA_ANCHOR_CHECKBOX = '#recaptcha-anchor';
+const CONTINUE_BUTTON_SELECTORS = [
+  'button:has-text("Continue")',
+  'input[type="button"][value="Continue"]',
+  '[role="button"]:has-text("Continue")',
+  '.rc-button-default:has-text("Continue")',
+];
 const GRID_TABLE_33 = 'table.rc-imageselect-table-33';
 const GRID_TABLE_44 = 'table.rc-imageselect-table-44';
 const TILE_CELLS_33 = 'table.rc-imageselect-table-33 td';
@@ -37,6 +45,54 @@ function findChallengeFrame(page: Page): Frame | null {
     }
   }
   return null;
+}
+
+/** reCAPTCHA v2 anchor frame (contains "I'm not a robot" checkbox). */
+function findAnchorFrame(page: Page): Frame | null {
+  for (const frame of page.frames()) {
+    const url = frame.url().toLowerCase();
+    if (url.includes(CHALLENGE_FRAME_URL_SUBSTR) && url.includes(ANCHOR_FRAME_URL_SUBSTR)) {
+      return frame;
+    }
+  }
+  return null;
+}
+
+/** After CapSolver result: click "I'm not a robot" checkbox then "Continue" on the popup. */
+async function clickCheckboxAndContinue(page: Page, challengeFrame: Frame): Promise<void> {
+  const timeout = 3000;
+  try {
+    const anchorFrame = findAnchorFrame(page);
+    if (anchorFrame) {
+      const checkbox = anchorFrame.locator(RECAPTCHA_ANCHOR_CHECKBOX).first();
+      await checkbox.click({ timeout }).catch(() => {});
+      await new Promise((r) => setTimeout(r, 800));
+    }
+    for (const sel of CONTINUE_BUTTON_SELECTORS) {
+      try {
+        const inFrame = challengeFrame.locator(sel).first();
+        await inFrame.waitFor({ state: 'visible', timeout: 1500 });
+        await inFrame.click({ timeout: 2000 });
+        console.log('[reCAPTCHA] Clicked Continue in challenge frame.');
+        return;
+      } catch {
+        continue;
+      }
+    }
+    for (const sel of CONTINUE_BUTTON_SELECTORS) {
+      try {
+        const onPage = page.locator(sel).first();
+        await onPage.waitFor({ state: 'visible', timeout: 1500 });
+        await onPage.click({ timeout: 2000 });
+        console.log('[reCAPTCHA] Clicked Continue on page.');
+        return;
+      } catch {
+        continue;
+      }
+    }
+  } catch {
+    // Non-fatal: checkbox/Continue may not be present in all flows
+  }
 }
 
 async function getChallengeImageBase64(frame: Frame, gridSize: 3 | 4): Promise<string> {
@@ -122,6 +178,7 @@ async function solveOneRound(
   await verifyBtn.waitFor({ state: 'visible', timeout: 5000 });
   await verifyBtn.click({ timeout: 2000 });
   console.log(`[reCAPTCHA] Round ${round + 1}: clicked Verify`);
+  await clickCheckboxAndContinue(page, frame);
   return true;
 }
 

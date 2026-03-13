@@ -29,6 +29,15 @@ export const RECAPTCHA_V2_QUESTION_MAP: Record<string, string> = {
   '/m/01lynh': 'stairs',
 };
 
+/**
+ * CapSolver ml.service does not support some question IDs (e.g. "school bus" /m/02yvhj).
+ * Map unsupported IDs to a supported fallback for the API call.
+ * @see https://docs.capsolver.com/en/guide/recognition/ReCaptchaClassification/
+ */
+const CAPSOLVER_QUESTION_FALLBACK: Record<string, string> = {
+  '/m/02yvhj': '/m/01bjv', // school bus -> bus
+};
+
 /** Reverse map: label/keyword -> question ID (for mapping challenge text) */
 const LABEL_TO_QUESTION_ID: Record<string, string> = (() => {
   const out: Record<string, string> = {};
@@ -104,10 +113,11 @@ export async function solveReCaptchaV2Classification(
     throw new CapSolverNotConfiguredError();
   }
 
+  const apiQuestionId = CAPSOLVER_QUESTION_FALLBACK[questionId] ?? questionId;
   const task: Record<string, unknown> = {
     type: 'ReCaptchaV2Classification',
     image: imageBase64,
-    question: questionId,
+    question: apiQuestionId,
   };
   if (options?.websiteURL) task.websiteURL = options.websiteURL;
   if (options?.websiteKey) task.websiteKey = options.websiteKey;

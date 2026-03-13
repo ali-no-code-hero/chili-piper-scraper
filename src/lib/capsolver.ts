@@ -167,8 +167,9 @@ export async function solveReCaptchaV2Classification(
     const inferredSize = size ?? (objectsArray.length <= 9 ? 3 : 4);
     return { type: 'multi', objects: objectsArray, size: inferredSize };
   }
-  if (sol.type === 'single' && typeof sol.hasObject === 'boolean') {
-    return { type: 'single', hasObject: sol.hasObject, size: size ?? 3 };
+  if ((sol.type === 'single' || sol.type === '') && typeof sol.hasObject === 'boolean') {
+    const singleSize = typeof size === 'number' && size > 0 ? size : 3;
+    return { type: 'single', hasObject: sol.hasObject, size: singleSize };
   }
   if (sol.type === 'single' && size !== undefined) {
     return { type: 'single', hasObject: true, size };

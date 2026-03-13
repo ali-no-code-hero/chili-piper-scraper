@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { Page, Request, Response } from 'playwright';
 import { browserPool } from './browser-pool';
+import { waitForAndSolveRecaptchaIfPresent } from './recaptcha-solver';
 
 const CALENDLY_VIDEO_DIR = process.env.CALENDLY_VIDEO_DIR || path.join(process.cwd(), '.calendly-videos');
 const CALENDLY_VIDEO_ENABLED = process.env.CALENDLY_VIDEO_ENABLED !== '0' && process.env.CALENDLY_VIDEO_ENABLED !== 'false';
@@ -344,26 +345,18 @@ async function createNewBookingPage(calendlyUrl: string): Promise<{
     try {
       const videoPromise = page?.video?.() ?? context?.video?.() ?? null;
       if (page && !page.isClosed()) await page.close().catch(() => {});
-      // Save failure video before closing context so we don't read a closed stream (avoids "Controller is already closed").
+      // Use saveAs() so Playwright flushes and finalizes the video before we close the context (avoids blank/incomplete video).
       if (outcome === 'failure' && videoPromise) {
         try {
           const video = await videoPromise;
           if (video) {
-            const srcPath = await video.path();
-            if (srcPath && fs.existsSync(srcPath)) {
-              const failedDir = path.join(CALENDLY_VIDEO_DIR, 'failed');
-              try {
-                fs.mkdirSync(failedDir, { recursive: true });
-                const destName = `calendly-${sessionId}.webm`;
-                const destPath = path.join(failedDir, destName);
-                fs.copyFileSync(srcPath, destPath);
-                savedVideoPath = destPath;
-                console.log(`${LOG_PREFIX} Saved failure video: ${destPath}`);
-              } catch (copyErr) {
-                console.warn(`${LOG_PREFIX} Could not copy video to ${failedDir}:`, (copyErr as Error)?.message);
-                savedVideoPath = srcPath;
-              }
-            }
+            const failedDir = path.join(CALENDLY_VIDEO_DIR, 'failed');
+            fs.mkdirSync(failedDir, { recursive: true });
+            const destName = `calendly-${sessionId}.webm`;
+            const destPath = path.join(failedDir, destName);
+            await video.saveAs(destPath);
+            savedVideoPath = destPath;
+            console.log(`${LOG_PREFIX} Saved failure video: ${destPath}`);
           }
         } catch (e) {
           console.warn(`${LOG_PREFIX} Could not save video:`, (e as Error)?.message);
@@ -946,7 +939,9 @@ async function fillFormAndSubmit(
   console.log(`${LOG_PREFIX} [form] Clicking Schedule Event...`);
   await submitLoc.click(formClickOpts);
   console.log(`${LOG_PREFIX} [form] Schedule Event clicked; waiting for confirmation...`);
-
+  if (process.env.CAPSOLVER_API_KEY) {
+    await waitForAndSolveRecaptchaIfPresent(page, { maxRounds: 5 });
+  }
   await waitForConfirmation(page, confirmationRegex, false);
   console.log(`${LOG_PREFIX} Reached confirmation; booking complete`);
   stopNetworkLogging();
@@ -992,7 +987,9 @@ async function fillSimpleFormAndSubmit(
   const stopNetworkLogging = startScheduleEventNetworkLogging(page);
   await submitLoc.click(formClickOpts);
   console.log(`${LOG_PREFIX} [form] Schedule Event clicked; waiting for confirmation...`);
-
+  if (process.env.CAPSOLVER_API_KEY) {
+    await waitForAndSolveRecaptchaIfPresent(page, { maxRounds: 5 });
+  }
   await waitForConfirmation(page, confirmationRegex, true);
   console.log(`${LOG_PREFIX} Reached confirmation; booking complete`);
   stopNetworkLogging();
@@ -1015,6 +1012,9 @@ async function clickScheduleEventOnlyAndWait(
   console.log(`${LOG_PREFIX} [payperclose] Clicking Schedule Event...`);
   await submitLoc.click(formClickOpts);
   console.log(`${LOG_PREFIX} [payperclose] Schedule Event clicked; waiting for redirect to confirmation URL...`);
+  if (process.env.CAPSOLVER_API_KEY) {
+    await waitForAndSolveRecaptchaIfPresent(page, { maxRounds: 5 });
+  }
   await page.waitForURL(confirmationRegex, { timeout: 25000 });
   console.log(`${LOG_PREFIX} [payperclose] Confirmation URL reached`);
   stopNetworkLogging();

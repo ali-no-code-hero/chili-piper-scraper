@@ -3,6 +3,7 @@ import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
 import { Page, Request, Response } from 'playwright';
+import type { Locator } from 'playwright';
 import { browserPool } from './browser-pool';
 import { getCentralOffsetForDate } from './central-timezone';
 
@@ -42,6 +43,35 @@ const CALENDLY_USER_AGENT =
 function humanDelay(baseMs: number, jitterMs: number = 80): Promise<void> {
   const ms = Math.max(0, baseMs + (Math.random() * 2 - 1) * jitterMs);
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/** Simulate human-like mouse movement and optional scroll to reduce bot detection. */
+async function simulateHumanMovement(page: Page): Promise<void> {
+  const vw = page.viewportSize()?.width ?? 1280;
+  const vh = page.viewportSize()?.height ?? 720;
+  const steps = 2 + Math.floor(Math.random() * 2);
+  for (let i = 0; i < steps; i++) {
+    const x = Math.max(50, Math.min(vw - 50, 200 + Math.random() * (vw - 400)));
+    const y = Math.max(50, Math.min(vh - 50, 150 + Math.random() * (vh - 300)));
+    await page.mouse.move(x, y, { steps: 5 + Math.floor(Math.random() * 8) });
+    await humanDelay(80, 60);
+  }
+  const scrollAmount = Math.floor((Math.random() * 2 - 0.5) * 60);
+  if (scrollAmount !== 0) {
+    await page.mouse.wheel(0, scrollAmount);
+    await humanDelay(100, 50);
+  }
+}
+
+/** Focus field, clear it, and type text with variable per-key delay (more human-like). */
+async function typeLikeHuman(page: Page, locator: Locator, text: string): Promise<void> {
+  await locator.click();
+  await humanDelay(120, 80);
+  await locator.clear();
+  await humanDelay(100, 60);
+  const baseDelay = 60 + Math.floor(Math.random() * 80);
+  await page.keyboard.type(text, { delay: baseDelay });
+  await humanDelay(80, 40);
 }
 
 /** Label-based keys for answers; maps to question_0 .. question_9 */
@@ -1103,7 +1133,7 @@ async function fillFormAndSubmit(
   stopNetworkLogging();
 }
 
-/** Simple form: only name, email, phone. Fills and submits, then waits for confirmation. */
+/** Simple form: only name, email, phone. Human-like movement and name entry; fills and submits. */
 async function fillSimpleFormAndSubmit(
   page: Page,
   opts: BookCalendlySlotOptions,
@@ -1112,17 +1142,20 @@ async function fillSimpleFormAndSubmit(
   const formClickOpts = { force: true, timeout: 15000 } as const;
   const fullName = `${opts.firstName} ${opts.lastName}`.trim();
 
-  // Fill name: try single "name" field first, else first_name + last_name
+  await simulateHumanMovement(page);
+  await humanDelay(300);
+
+  // Name: wipe and re-enter with human-like typing (single "name" or first_name + last_name)
   const nameInput = page.locator('input[name="name"]').first();
   if ((await nameInput.count()) > 0) {
-    await nameInput.fill(fullName);
-    console.log(`${LOG_PREFIX} [form] Filled name (single field)`);
+    await typeLikeHuman(page, nameInput, fullName);
+    console.log(`${LOG_PREFIX} [form] Filled name (single field, human-like)`);
   } else {
     const firstNameLoc = page.locator('input[name="first_name"]').first();
     const lastNameLoc = page.locator('input[name="last_name"]').first();
-    if ((await firstNameLoc.count()) > 0) await firstNameLoc.fill(opts.firstName);
-    if ((await lastNameLoc.count()) > 0) await lastNameLoc.fill(opts.lastName);
-    console.log(`${LOG_PREFIX} [form] Filled first_name, last_name`);
+    if ((await firstNameLoc.count()) > 0) await typeLikeHuman(page, firstNameLoc, opts.firstName);
+    if ((await lastNameLoc.count()) > 0) await typeLikeHuman(page, lastNameLoc, opts.lastName);
+    console.log(`${LOG_PREFIX} [form] Filled first_name, last_name (human-like)`);
   }
 
   const emailLoc = page.locator('input[name="email"]').first();
@@ -1140,6 +1173,11 @@ async function fillSimpleFormAndSubmit(
   if ((await submitLoc.count()) === 0) {
     throw new Error('Schedule Event button not found');
   }
+  const box = await submitLoc.boundingBox();
+  if (box) {
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 4 });
+    await humanDelay(200, 100);
+  }
   const stopNetworkLogging = startScheduleEventNetworkLogging(page);
   await submitLoc.click(formClickOpts);
   console.log(`${LOG_PREFIX} [form] Schedule Event clicked; waiting for confirmation...`);
@@ -1148,19 +1186,42 @@ async function fillSimpleFormAndSubmit(
   stopNetworkLogging();
 }
 
-/** Pay-per-close: form is already pre-filled via URL; only click Schedule Event and wait for redirect to referralchime.com. */
+/** Pay-per-close: form is pre-filled via URL; simulate human behavior, wipe/re-enter name, then click Schedule Event. */
 async function clickScheduleEventOnlyAndWait(
   page: Page,
-  confirmationRegex: RegExp
+  confirmationRegex: RegExp,
+  opts: BookCalendlySlotOptions
 ): Promise<void> {
   const formClickOpts = { force: true, timeout: 15000 } as const;
-  console.log(`${LOG_PREFIX} [payperclose] Form pre-filled via URL; waiting for Schedule Event button...`);
+  console.log(`${LOG_PREFIX} [payperclose] Form pre-filled via URL; waiting for form...`);
   await page.waitForSelector('button[type="submit"]', { timeout: 10000 });
+  await humanDelay(400);
+
+  await simulateHumanMovement(page);
+  await humanDelay(300);
+
+  const fullName = `${opts.firstName} ${opts.lastName}`.trim();
+  const nameInput = page.locator('input[name="name"]').first();
+  if ((await nameInput.count()) > 0) {
+    console.log(`${LOG_PREFIX} [payperclose] Wiping and re-entering name (human-like)...`);
+    await typeLikeHuman(page, nameInput, fullName);
+  } else {
+    const firstNameLoc = page.locator('input[name="first_name"]').first();
+    const lastNameLoc = page.locator('input[name="last_name"]').first();
+    if ((await firstNameLoc.count()) > 0) await typeLikeHuman(page, firstNameLoc, opts.firstName);
+    if ((await lastNameLoc.count()) > 0) await typeLikeHuman(page, lastNameLoc, opts.lastName);
+  }
+  await humanDelay(400);
+
   const submitLoc = page.locator('button[type="submit"]').filter({ hasText: 'Schedule Event' }).first();
   if ((await submitLoc.count()) === 0) {
     throw new Error('Schedule Event button not found');
   }
-  await humanDelay(400);
+  const box = await submitLoc.boundingBox();
+  if (box) {
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 4 });
+    await humanDelay(200, 100);
+  }
   const stopNetworkLogging = startScheduleEventNetworkLogging(page);
   console.log(`${LOG_PREFIX} [payperclose] Clicking Schedule Event...`);
   await submitLoc.click(formClickOpts);
@@ -1325,8 +1386,8 @@ export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<B
     currentStep = 'fill_form';
     console.log(`${LOG_PREFIX} [step=${currentStep}] Starting form fill and submit...`);
     if (opts.calendlyType === 'payperclose' && effectiveConfirmationRegex) {
-      /** Pay-per-close: form is pre-filled via URL; only click Schedule Event and wait for referralchime.com redirect. */
-      await clickScheduleEventOnlyAndWait(page, effectiveConfirmationRegex);
+      /** Pay-per-close: form pre-filled via URL; human simulation, wipe/re-enter name, then click Schedule Event. */
+      await clickScheduleEventOnlyAndWait(page, effectiveConfirmationRegex, opts);
     } else {
       await fillFormAndSubmit(page, opts, normalizedAnswers, simpleForm, effectiveConfirmationRegex);
     }

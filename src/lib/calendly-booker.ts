@@ -85,6 +85,9 @@ async function findNameFieldInPageOrFrames(page: Page): Promise<
   const tryInFrame = async (ctx: { locator(selector: string): Locator }): Promise<
     { type: 'single'; locator: Locator } | { type: 'split'; first: Locator; last: Locator } | null
   > => {
+    // Calendly pay-per-close uses full_name (id=full_name_input); other flows use name or first_name/last_name
+    const fullNameInput = ctx.locator('input[name="full_name"], #full_name_input').first();
+    if ((await fullNameInput.count()) > 0) return { type: 'single', locator: fullNameInput };
     const nameOne = ctx.locator('input[name="name"]').first();
     if ((await nameOne.count()) > 0) return { type: 'single', locator: nameOne };
     const first = ctx.locator('input[name="first_name"]').first();
@@ -1173,9 +1176,13 @@ async function fillSimpleFormAndSubmit(
   await simulateHumanMovement(page);
   await humanDelay(300);
 
-  // Name: wipe and re-enter with human-like typing (single "name" or first_name + last_name)
+  // Name: wipe and re-enter with human-like typing (full_name, name, or first_name + last_name)
+  const fullNameInput = page.locator('input[name="full_name"], #full_name_input').first();
   const nameInput = page.locator('input[name="name"]').first();
-  if ((await nameInput.count()) > 0) {
+  if ((await fullNameInput.count()) > 0) {
+    await typeLikeHuman(page, fullNameInput, fullName);
+    console.log(`${LOG_PREFIX} [form] Filled full_name (human-like)`);
+  } else if ((await nameInput.count()) > 0) {
     await typeLikeHuman(page, nameInput, fullName);
     console.log(`${LOG_PREFIX} [form] Filled name (single field, human-like)`);
   } else {

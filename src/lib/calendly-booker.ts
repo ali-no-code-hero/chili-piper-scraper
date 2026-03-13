@@ -1545,7 +1545,7 @@ async function fillFormAndSubmit(
   }
 
   const recaptchaToken = await ensureRecaptchaTokenAndInject(page, opts, page.url());
-  const tokenRef = { current: recaptchaToken ?? '', kind: 'v3' as const };
+  const tokenRef: { current: string; kind: 'v3' | 'v2' } = { current: recaptchaToken ?? '', kind: 'v3' };
   const unrouteRecaptcha =
     tokenRef.current
       ? addRecaptchaTokenToCalendlyApiRequests(page, () => tokenRef.current, () => tokenRef.kind)
@@ -1616,7 +1616,7 @@ async function fillSimpleFormAndSubmit(
     throw new Error('Schedule Event button not found');
   }
   const recaptchaToken = await ensureRecaptchaTokenAndInject(page, opts, page.url());
-  const tokenRef = { current: recaptchaToken ?? '', kind: 'v3' as const };
+  const tokenRef: { current: string; kind: 'v3' | 'v2' } = { current: recaptchaToken ?? '', kind: 'v3' };
   const unrouteRecaptcha =
     tokenRef.current
       ? addRecaptchaTokenToCalendlyApiRequests(page, () => tokenRef.current, () => tokenRef.kind)
@@ -1679,7 +1679,7 @@ async function clickScheduleEventOnlyAndWait(
     throw new Error('Schedule Event button not found');
   }
   const recaptchaToken = await ensureRecaptchaTokenAndInject(page, opts, page.url());
-  const tokenRef = { current: recaptchaToken ?? '', kind: 'v3' as const };
+  const tokenRef: { current: string; kind: 'v3' | 'v2' } = { current: recaptchaToken ?? '', kind: 'v3' };
   const unrouteRecaptcha =
     tokenRef.current
       ? addRecaptchaTokenToCalendlyApiRequests(page, () => tokenRef.current, () => tokenRef.kind)

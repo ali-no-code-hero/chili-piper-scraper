@@ -1014,31 +1014,58 @@ async function clickNextButton(page: Page, normalizedTime: string): Promise<void
 }
 
 /**
- * Inject reCAPTCHA v3 token into the page: find promise-callback in ___grecaptcha_cfg.clients
- * and call it with the token; optionally set g-recaptcha-response textarea.
+ * Inject reCAPTCHA v3 token: find promise-callback in ___grecaptcha_cfg.clients and call it; set g-recaptcha-response if present.
+ * Returns true if callback was called or textarea was set.
  */
-async function injectRecaptchaV3Token(page: Page, token: string): Promise<void> {
-  await page.evaluate((gRecaptchaResponse) => {
+async function injectRecaptchaV3TokenInFrame(frame: Page | import('playwright').Frame, token: string): Promise<boolean> {
+  return frame.evaluate((gRecaptchaResponse: string) => {
     const cfg = (window as unknown as { ___grecaptcha_cfg?: { clients: Record<string, unknown> } }).___grecaptcha_cfg;
-    if (!cfg?.clients || typeof cfg.clients !== 'object') return;
-
+    if (!cfg?.clients || typeof cfg.clients !== 'object') return false;
+    let injected = false;
     for (const [, client] of Object.entries(cfg.clients)) {
       const c = client as Record<string, unknown>;
-      if (!c || typeof c !== 'object') continue;
-      const l = c.l as Record<string, unknown> | undefined;
-      if (!l || typeof l !== 'object') continue;
-      const inner = l.l as Record<string, unknown> | undefined;
+      if (!c?.l || typeof c.l !== 'object') continue;
+      const inner = (c.l as Record<string, unknown>).l as Record<string, unknown> | undefined;
       if (!inner || typeof inner !== 'object') continue;
       const callback = inner['promise-callback'] as ((t: string) => void) | undefined;
       if (typeof callback === 'function') {
-        callback(gRecaptchaResponse);
+        try {
+          callback(gRecaptchaResponse);
+          injected = true;
+        } catch {
+          /* ignore */
+        }
         break;
       }
     }
-
     const textarea = document.querySelector('textarea[name="g-recaptcha-response"]') as HTMLTextAreaElement | null;
-    if (textarea) textarea.value = gRecaptchaResponse;
+    if (textarea) {
+      textarea.value = gRecaptchaResponse;
+      injected = true;
+    }
+    return injected;
   }, token);
+}
+
+/**
+ * Inject reCAPTCHA v3 token into the page and all frames. Calendly often embeds the form (and reCAPTCHA) in an iframe,
+ * so the promise-callback may live in a child frame. We inject in every frame so the token is accepted before submit.
+ * After injection, waits briefly so the page can process the callback before we click Schedule Event.
+ */
+async function injectRecaptchaV3TokenInAllFrames(page: Page, token: string): Promise<void> {
+  const frames = [page, ...page.frames()];
+  let anyInjected = false;
+  for (const frame of frames) {
+    try {
+      const injected = await injectRecaptchaV3TokenInFrame(frame, token);
+      if (injected) anyInjected = true;
+    } catch {
+      // Cross-origin or detached frame; skip
+    }
+  }
+  if (anyInjected) {
+    await humanDelay(600);
+  }
 }
 
 /**
@@ -1076,9 +1103,10 @@ async function ensureRecaptchaTokenAndInject(page: Page, opts: BookCalendlySlotO
       enterprisePayload: process.env.CALENDLY_RECAPTCHA_ENTERPRISE_S
         ? { s: process.env.CALENDLY_RECAPTCHA_ENTERPRISE_S }
         : undefined,
+      apiDomain: process.env.CALENDLY_RECAPTCHA_API_DOMAIN?.trim() || undefined,
     });
 
-    await injectRecaptchaV3Token(page, result.gRecaptchaResponse);
+    await injectRecaptchaV3TokenInAllFrames(page, result.gRecaptchaResponse);
 
     if (result.recaptchaCaT ?? result.recaptchaCaE) {
       const u = new URL(pageUrl);

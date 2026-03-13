@@ -1130,25 +1130,15 @@ async function ensureRecaptchaTokenAndInject(
   }
 }
 
-/** Injects CapSolver token into Calendly API POST bodies to satisfy recaptcha_challenge_required. */
-function addRecaptchaTokenToCalendlyApiRequests(page: Page, token: string): () => void {
-  const RECAPTCHA_KEYS = ['g_recaptcha_response', 'recaptcha_response', 'recaptchaResponse', 'recaptcha_token'];
-  const handler = async (route: import('playwright').Route) => {
-    const request = route.request();
-    if (request.method() !== 'POST') {
-      route.continue();
-      return;
-    }
-    const url = request.url();
-    if (!url.includes('calendly.com/api/booking/') || (!url.includes('invitees') && !url.includes('analytics/track'))) {
-      route.continue();
-      return;
-    }
-    let postData = request.postData();
-    if (!postData) {
-      route.continue();
-      return;
-    }
+const RECAPTCHA_KEYS = ['g_recaptcha_response', 'recaptcha_response', 'recaptchaResponse', 'recaptcha_token'];
+
+/**
+ * Injects current reCAPTCHA token (v3 then v2 when solved) into Calendly API POST bodies.
+ * getToken is called on each request so after ensureRecaptchaV2SolvedIfPresent updates the token, subsequent requests get the v2 token.
+ * Also intercepts dfp.calendly.com/submit and injects the same token (JSON or form body).
+ */
+function addRecaptchaTokenToCalendlyApiRequests(page: Page, getToken: () => string): () => void {
+  const injectIntoJson = (postData: string, token: string): string | null => {
     try {
       const body = JSON.parse(postData) as Record<string, unknown>;
       let modified = false;
@@ -1162,27 +1152,78 @@ function addRecaptchaTokenToCalendlyApiRequests(page: Page, token: string): () =
         body.g_recaptcha_response = token;
         modified = true;
       }
-      if (modified) {
-        postData = JSON.stringify(body);
-        console.log(`${LOG_PREFIX} [recaptcha] Injected token into API request: ${url.split('?')[0]}`);
-      }
+      return modified ? JSON.stringify(body) : null;
     } catch {
-      /* leave postData unchanged if not JSON */
+      return null;
     }
-    route.continue({ postData });
   };
+
+  const injectIntoForm = (postData: string, token: string): string => {
+    const params = new URLSearchParams(postData);
+    params.set('g_recaptcha_response', token);
+    params.set('invitee[g_recaptcha_response]', token);
+    return params.toString();
+  };
+
+  const handler = async (route: import('playwright').Route) => {
+    const request = route.request();
+    if (request.method() !== 'POST') {
+      route.continue();
+      return;
+    }
+    const url = request.url();
+    const token = getToken();
+    if (!token) {
+      route.continue();
+      return;
+    }
+
+    const isDfpSubmit = url.includes('dfp.calendly.com/submit');
+    const isBookingApi =
+      url.includes('calendly.com/api/booking/') &&
+      (url.includes('invitees') || url.includes('analytics/track'));
+
+    if (!isDfpSubmit && !isBookingApi) {
+      route.continue();
+      return;
+    }
+
+    let postData = request.postData();
+    if (!postData) {
+      route.continue();
+      return;
+    }
+
+    let newPostData: string | null = injectIntoJson(postData, token);
+    if (newPostData === null && isDfpSubmit) {
+      newPostData = injectIntoForm(postData, token);
+    }
+    if (newPostData) {
+      console.log(`${LOG_PREFIX} [recaptcha] Injected token into API request: ${url.split('?')[0]}`);
+      route.continue({ postData: newPostData });
+    } else {
+      route.continue();
+    }
+  };
+
   page.route('**/calendly.com/api/booking/**', handler);
-  return () => page.unroute('**/calendly.com/api/booking/**', handler);
+  page.route('**/dfp.calendly.com/submit**', handler);
+  return () => {
+    page.unroute('**/calendly.com/api/booking/**', handler);
+    page.unroute('**/dfp.calendly.com/submit**', handler);
+  };
 }
 
 /**
  * If Calendly shows reCAPTCHA v2 (normal) after v3, solve it via CapSolver and inject the token.
  * V2 uses callback (not promise-callback). Set CALENDLY_RECAPTCHA_V2_WEBSITE_KEY when v2 appears (e.g. 6LconfUd...).
+ * When a v2 token is obtained, onV2Token(token) is called so API request interception can use it for subsequent requests.
  */
 async function ensureRecaptchaV2SolvedIfPresent(
   page: Page,
   opts: BookCalendlySlotOptions,
-  pageUrl: string
+  pageUrl: string,
+  onV2Token?: (token: string) => void
 ): Promise<void> {
   const v2SiteKey = process.env.CALENDLY_RECAPTCHA_V2_WEBSITE_KEY?.trim();
   if (!v2SiteKey || !process.env.CAPSOLVER_API_KEY?.trim()) return;
@@ -1244,6 +1285,7 @@ async function ensureRecaptchaV2SolvedIfPresent(
       if (ta) ta.value = token;
     }, result.gRecaptchaResponse);
 
+    onV2Token?.(result.gRecaptchaResponse);
     console.log(`${LOG_PREFIX} reCAPTCHA v2 token injected`);
     await humanDelay(500);
   } catch (e) {
@@ -1485,14 +1527,19 @@ async function fillFormAndSubmit(
   }
 
   const recaptchaToken = await ensureRecaptchaTokenAndInject(page, opts, page.url());
+  const tokenRef = { current: recaptchaToken ?? '' };
   const unrouteRecaptcha =
-    recaptchaToken ? addRecaptchaTokenToCalendlyApiRequests(page, recaptchaToken) : undefined;
+    tokenRef.current
+      ? addRecaptchaTokenToCalendlyApiRequests(page, () => tokenRef.current)
+      : undefined;
   await humanDelay(400); // Brief pause before submit (more human-like)
   const stopNetworkLogging = startScheduleEventNetworkLogging(page);
   console.log(`${LOG_PREFIX} [form] Clicking Schedule Event...`);
   await submitLoc.click(formClickOpts);
   await clickRecaptchaCheckboxIfPresent(page, 5000);
-  await ensureRecaptchaV2SolvedIfPresent(page, opts, page.url());
+  await ensureRecaptchaV2SolvedIfPresent(page, opts, page.url(), (t) => {
+    tokenRef.current = t;
+  });
   await clickRecaptchaV2VerifyButtonIfPresent(page, 5000);
   await clickRecaptchaContinuePopupIfPresent(page, 5000);
   console.log(`${LOG_PREFIX} [form] Schedule Event clicked; waiting for confirmation...`);
@@ -1550,8 +1597,11 @@ async function fillSimpleFormAndSubmit(
     throw new Error('Schedule Event button not found');
   }
   const recaptchaToken = await ensureRecaptchaTokenAndInject(page, opts, page.url());
+  const tokenRef = { current: recaptchaToken ?? '' };
   const unrouteRecaptcha =
-    recaptchaToken ? addRecaptchaTokenToCalendlyApiRequests(page, recaptchaToken) : undefined;
+    tokenRef.current
+      ? addRecaptchaTokenToCalendlyApiRequests(page, () => tokenRef.current)
+      : undefined;
   const box = await submitLoc.boundingBox();
   if (box) {
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 4 });
@@ -1560,7 +1610,9 @@ async function fillSimpleFormAndSubmit(
   const stopNetworkLogging = startScheduleEventNetworkLogging(page);
   await submitLoc.click(formClickOpts);
   await clickRecaptchaCheckboxIfPresent(page, 5000);
-  await ensureRecaptchaV2SolvedIfPresent(page, opts, page.url());
+  await ensureRecaptchaV2SolvedIfPresent(page, opts, page.url(), (t) => {
+    tokenRef.current = t;
+  });
   await clickRecaptchaV2VerifyButtonIfPresent(page, 5000);
   await clickRecaptchaContinuePopupIfPresent(page, 5000);
   console.log(`${LOG_PREFIX} [form] Schedule Event clicked; waiting for confirmation...`);
@@ -1607,8 +1659,11 @@ async function clickScheduleEventOnlyAndWait(
     throw new Error('Schedule Event button not found');
   }
   const recaptchaToken = await ensureRecaptchaTokenAndInject(page, opts, page.url());
+  const tokenRef = { current: recaptchaToken ?? '' };
   const unrouteRecaptcha =
-    recaptchaToken ? addRecaptchaTokenToCalendlyApiRequests(page, recaptchaToken) : undefined;
+    tokenRef.current
+      ? addRecaptchaTokenToCalendlyApiRequests(page, () => tokenRef.current)
+      : undefined;
   const box = await submitLoc.boundingBox();
   if (box) {
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 4 });
@@ -1618,7 +1673,9 @@ async function clickScheduleEventOnlyAndWait(
   console.log(`${LOG_PREFIX} [payperclose] Clicking Schedule Event...`);
   await submitLoc.click(formClickOpts);
   await clickRecaptchaCheckboxIfPresent(page, 5000);
-  await ensureRecaptchaV2SolvedIfPresent(page, opts, page.url());
+  await ensureRecaptchaV2SolvedIfPresent(page, opts, page.url(), (t) => {
+    tokenRef.current = t;
+  });
   await clickRecaptchaV2VerifyButtonIfPresent(page, 5000);
   await clickRecaptchaContinuePopupIfPresent(page, 5000);
   console.log(`${LOG_PREFIX} [payperclose] Schedule Event clicked; waiting for redirect to confirmation URL...`);

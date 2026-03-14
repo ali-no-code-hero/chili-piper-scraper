@@ -1230,21 +1230,52 @@ function addRecaptchaTokenToCalendlyApiRequests(
 }
 
 /**
+ * After clicking "I'm not a robot", the v2 challenge (image grid) may appear in the popup. Poll for it so we
+ * don't click Continue until we know whether v2 is showing. Returns true if v2 widget found, false on timeout.
+ */
+async function waitForRecaptchaV2ToAppear(page: Page, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const hasV2 = await page.evaluate(() => {
+      const cfg = (window as unknown as { ___grecaptcha_cfg?: { clients: Record<string, unknown> } }).___grecaptcha_cfg;
+      if (!cfg?.clients) return false;
+      for (const [, client] of Object.entries(cfg.clients)) {
+        const c = client as Record<string, unknown>;
+        if (!c?.l || typeof c.l !== 'object') continue;
+        const inner = (c.l as Record<string, unknown>).l as Record<string, unknown> | undefined;
+        if (!inner || typeof inner !== 'object') continue;
+        if (typeof inner.callback === 'function' && !('promise-callback' in inner)) return true;
+      }
+      return false;
+    });
+    if (hasV2) {
+      console.log(`${LOG_PREFIX} [recaptcha] v2 challenge appeared in popup`);
+      return true;
+    }
+    await humanDelay(500);
+  }
+  console.log(`${LOG_PREFIX} [recaptcha] no v2 challenge appeared within ${timeoutMs}ms; proceeding to Continue`);
+  return false;
+}
+
+/**
  * If Calendly shows reCAPTCHA v2 (normal) after v3, solve it via CapSolver and inject the token.
  * V2 uses callback (not promise-callback). Set CALENDLY_RECAPTCHA_V2_WEBSITE_KEY when v2 appears (e.g. 6LconfUd...).
  * When a v2 token is obtained, onV2Token(token) is called so API request interception can use it for subsequent requests.
+ * When skipInitialWait is true (e.g. after waitForRecaptchaV2ToAppear), the 2s delay is omitted.
  */
 async function ensureRecaptchaV2SolvedIfPresent(
   page: Page,
   opts: BookCalendlySlotOptions,
   pageUrl: string,
-  onV2Token?: (token: string) => void
+  onV2Token?: (token: string) => void,
+  skipInitialWait?: boolean
 ): Promise<void> {
   const v2SiteKey = process.env.CALENDLY_RECAPTCHA_V2_WEBSITE_KEY?.trim();
   if (!v2SiteKey || !process.env.CAPSOLVER_API_KEY?.trim()) return;
 
   try {
-    await humanDelay(2000);
+    if (!skipInitialWait) await humanDelay(2000);
     const hasV2Widget = await page.evaluate(() => {
       const cfg = (window as unknown as { ___grecaptcha_cfg?: { clients: Record<string, unknown> } }).___grecaptcha_cfg;
       if (!cfg?.clients) return false;
@@ -1555,11 +1586,14 @@ async function fillFormAndSubmit(
   console.log(`${LOG_PREFIX} [form] Clicking Schedule Event...`);
   await submitLoc.click(formClickOpts);
   await clickRecaptchaCheckboxIfPresent(page, 5000);
-  await ensureRecaptchaV2SolvedIfPresent(page, opts, page.url(), (t) => {
-    tokenRef.current = t;
-    tokenRef.kind = 'v2';
-  });
-  await clickRecaptchaV2VerifyButtonIfPresent(page, 5000);
+  const v2Appeared = await waitForRecaptchaV2ToAppear(page, 10000);
+  if (v2Appeared) {
+    await ensureRecaptchaV2SolvedIfPresent(page, opts, page.url(), (t) => {
+      tokenRef.current = t;
+      tokenRef.kind = 'v2';
+    }, true);
+    await clickRecaptchaV2VerifyButtonIfPresent(page, 5000);
+  }
   await clickRecaptchaContinuePopupIfPresent(page, 5000);
   console.log(`${LOG_PREFIX} [form] Schedule Event clicked; waiting for confirmation...`);
   try {
@@ -1629,11 +1663,14 @@ async function fillSimpleFormAndSubmit(
   const stopNetworkLogging = startScheduleEventNetworkLogging(page);
   await submitLoc.click(formClickOpts);
   await clickRecaptchaCheckboxIfPresent(page, 5000);
-  await ensureRecaptchaV2SolvedIfPresent(page, opts, page.url(), (t) => {
-    tokenRef.current = t;
-    tokenRef.kind = 'v2';
-  });
-  await clickRecaptchaV2VerifyButtonIfPresent(page, 5000);
+  const v2Appeared = await waitForRecaptchaV2ToAppear(page, 10000);
+  if (v2Appeared) {
+    await ensureRecaptchaV2SolvedIfPresent(page, opts, page.url(), (t) => {
+      tokenRef.current = t;
+      tokenRef.kind = 'v2';
+    }, true);
+    await clickRecaptchaV2VerifyButtonIfPresent(page, 5000);
+  }
   await clickRecaptchaContinuePopupIfPresent(page, 5000);
   console.log(`${LOG_PREFIX} [form] Schedule Event clicked; waiting for confirmation...`);
   try {
@@ -1693,11 +1730,14 @@ async function clickScheduleEventOnlyAndWait(
   console.log(`${LOG_PREFIX} [payperclose] Clicking Schedule Event...`);
   await submitLoc.click(formClickOpts);
   await clickRecaptchaCheckboxIfPresent(page, 5000);
-  await ensureRecaptchaV2SolvedIfPresent(page, opts, page.url(), (t) => {
-    tokenRef.current = t;
-    tokenRef.kind = 'v2';
-  });
-  await clickRecaptchaV2VerifyButtonIfPresent(page, 5000);
+  const v2Appeared = await waitForRecaptchaV2ToAppear(page, 10000);
+  if (v2Appeared) {
+    await ensureRecaptchaV2SolvedIfPresent(page, opts, page.url(), (t) => {
+      tokenRef.current = t;
+      tokenRef.kind = 'v2';
+    }, true);
+    await clickRecaptchaV2VerifyButtonIfPresent(page, 5000);
+  }
   await clickRecaptchaContinuePopupIfPresent(page, 5000);
   console.log(`${LOG_PREFIX} [payperclose] Schedule Event clicked; waiting for redirect to confirmation URL...`);
   try {

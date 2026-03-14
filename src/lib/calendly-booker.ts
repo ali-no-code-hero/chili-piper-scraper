@@ -1089,7 +1089,9 @@ async function ensureRecaptchaTokenAndInject(
 
   try {
     let proxy: CapSolverProxyOptions | undefined;
-    if (opts.calendlyType === 'payperclose') {
+    const useProxy =
+      process.env.CALENDLY_USE_PROXY === '1' || process.env.CALENDLY_USE_PROXY === 'true';
+    if (opts.calendlyType === 'payperclose' && useProxy) {
       const server = process.env.HOUSEJET_PPC_PROXY_SERVER?.trim();
       if (server) {
         proxy = {
@@ -1292,7 +1294,9 @@ async function ensureRecaptchaV2SolvedIfPresent(
 
     console.log(`${LOG_PREFIX} Solving reCAPTCHA v2 Enterprise (fallback) via CapSolver...`);
     let proxy: CapSolverProxyOptions | undefined;
-    if (opts.calendlyType === 'payperclose') {
+    const useProxy =
+      process.env.CALENDLY_USE_PROXY === '1' || process.env.CALENDLY_USE_PROXY === 'true';
+    if (opts.calendlyType === 'payperclose' && useProxy) {
       const server = process.env.HOUSEJET_PPC_PROXY_SERVER?.trim();
       if (server) {
         proxy = {
@@ -1904,9 +1908,11 @@ export async function bookCalendlySlot(opts: BookCalendlySlotOptions): Promise<B
   console.log(`${LOG_PREFIX} Starting booking: date=${opts.date} time=${opts.time} (normalized: ${normalizedTime}) email=${opts.email} simpleForm=${simpleForm}`);
   console.log(`${LOG_PREFIX} Using direct form URL (skip calendar/time picker)`);
 
-  // Optional rotating proxy for housejet-ppc (e.g. Smartproxy) – only this booking context uses it
+  // Optional rotating proxy for housejet-ppc (e.g. Smartproxy). Disabled by default; set CALENDLY_USE_PROXY=1 to enable.
   let createPageOptions: CreateNewBookingPageOptions | undefined;
-  if (opts.calendlyType === 'payperclose') {
+  const useProxy =
+    process.env.CALENDLY_USE_PROXY === '1' || process.env.CALENDLY_USE_PROXY === 'true';
+  if (opts.calendlyType === 'payperclose' && useProxy) {
     const proxyServer = process.env.HOUSEJET_PPC_PROXY_SERVER?.trim();
     if (proxyServer) {
       createPageOptions = {

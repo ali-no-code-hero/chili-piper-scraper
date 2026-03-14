@@ -1,6 +1,11 @@
 /**
  * CapSolver API client for reCAPTCHA v3 and v2 Enterprise.
  * Used to obtain gRecaptchaResponse tokens for Calendly form submission.
+ *
+ * Proxy behavior: when proxy is omitted or not set (e.g. CALENDLY_USE_PROXY disabled in the
+ * Calendly booker), we use the *ProxyLess task types so the solver matches the browser context
+ * (no proxy). When proxy is provided, we use the proxied task types and pass formatProxyForCapSolver(proxy).
+ *
  * @see https://docs.capsolver.com/en/guide/captcha/ReCaptchaV3/
  * @see https://docs.capsolver.com/guide/captcha/ReCaptchaV2/
  * @see https://docs.capsolver.com/en/guide/api-how-to-use-proxy/
@@ -21,6 +26,7 @@ export interface CapSolverProxyOptions {
 export interface SolveRecaptchaV3EnterpriseOptions {
   websiteURL: string;
   websiteKey: string;
+  /** When omitted, ReCaptchaV3EnterpriseTaskProxyLess is used (no proxy). When set, ReCaptchaV3EnterpriseTask is used. */
   proxy?: CapSolverProxyOptions;
   pageAction?: string;
   enterprisePayload?: { s: string };
@@ -198,6 +204,7 @@ export async function solveRecaptchaV3Enterprise(
 export interface SolveRecaptchaV2EnterpriseOptions {
   websiteURL: string;
   websiteKey: string;
+  /** When omitted, ReCaptchaV2EnterpriseTaskProxyLess is used (no proxy). When set, ReCaptchaV2EnterpriseTask is used. */
   proxy?: CapSolverProxyOptions;
   enterprisePayload?: { s: string };
   apiDomain?: string;

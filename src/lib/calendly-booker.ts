@@ -1347,8 +1347,42 @@ async function ensureRecaptchaV2SolvedIfPresent(
 }
 
 /**
+ * After clicking Schedule Event, the reCAPTCHA v3 popup may appear (with "I'm not a robot").
+ * Wait for it to be visible before solving v3 and clicking the checkbox. Returns true when popup found.
+ */
+async function waitForRecaptchaPopup(page: Page, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  const frames = [page, ...page.frames()];
+  const checkboxTexts = [/I'?\s*m not a robot/i, /I am not a robot/i];
+
+  while (Date.now() < deadline) {
+    for (const frame of frames) {
+      try {
+        for (const textRe of checkboxTexts) {
+          const el = frame.locator('[role="checkbox"], .rc-anchor, [title*="recaptcha"]').filter({ hasText: textRe }).first();
+          if ((await el.count()) > 0 && (await el.isVisible().catch(() => false))) {
+            console.log(`${LOG_PREFIX} [recaptcha] v3 popup visible (I'm not a robot)`);
+            return true;
+          }
+        }
+        const anchor = frame.locator('.rc-anchor-checkbox-holder, .rc-anchor').first();
+        if ((await anchor.count()) > 0 && (await anchor.isVisible().catch(() => false))) {
+          console.log(`${LOG_PREFIX} [recaptcha] v3 popup visible (recaptcha anchor)`);
+          return true;
+        }
+      } catch {
+        /* cross-origin or detached */
+      }
+    }
+    await humanDelay(300);
+  }
+  console.log(`${LOG_PREFIX} [recaptcha] no v3 popup appeared within ${timeoutMs}ms`);
+  return false;
+}
+
+/**
  * Click the "I am not a robot" / "I'm not a robot" checkbox that appears in the v3 recaptcha popup after Schedule Event.
- * This must run first; after it is clicked, the v2 challenge appears. Do not click Continue here.
+ * This must run after v3 token is injected; after it is clicked, the v2 challenge may appear. Do not click Continue here.
  */
 async function clickRecaptchaCheckboxIfPresent(page: Page, waitMs: number): Promise<boolean> {
   const deadline = Date.now() + waitMs;
@@ -1579,16 +1613,17 @@ async function fillFormAndSubmit(
     throw new Error('Schedule Event button not found');
   }
 
-  const recaptchaToken = await ensureRecaptchaTokenAndInject(page, opts, page.url());
-  const tokenRef: { current: string; kind: 'v3' | 'v2' } = { current: recaptchaToken ?? '', kind: 'v3' };
-  const unrouteRecaptcha =
-    tokenRef.current
-      ? addRecaptchaTokenToCalendlyApiRequests(page, () => tokenRef.current, () => tokenRef.kind)
-      : undefined;
+  const tokenRef: { current: string; kind: 'v3' | 'v2' } = { current: '', kind: 'v3' };
+  const unrouteRecaptcha = addRecaptchaTokenToCalendlyApiRequests(page, () => tokenRef.current, () => tokenRef.kind);
   await humanDelay(400); // Brief pause before submit (more human-like)
   const stopNetworkLogging = startScheduleEventNetworkLogging(page);
   console.log(`${LOG_PREFIX} [form] Clicking Schedule Event...`);
   await submitLoc.click(formClickOpts);
+  const popupVisible = await waitForRecaptchaPopup(page, 15000);
+  if (popupVisible) {
+    const v3Token = await ensureRecaptchaTokenAndInject(page, opts, page.url());
+    if (v3Token) tokenRef.current = v3Token;
+  }
   await clickRecaptchaCheckboxIfPresent(page, 5000);
   const v2Appeared = await waitForRecaptchaV2ToAppear(page, 10000);
   if (v2Appeared) {
@@ -1603,7 +1638,7 @@ async function fillFormAndSubmit(
   try {
     await waitForConfirmation(page, confirmationRegex, false);
   } finally {
-    unrouteRecaptcha?.();
+    unrouteRecaptcha();
   }
   console.log(`${LOG_PREFIX} Reached confirmation; booking complete`);
   stopNetworkLogging();
@@ -1653,12 +1688,8 @@ async function fillSimpleFormAndSubmit(
   if ((await submitLoc.count()) === 0) {
     throw new Error('Schedule Event button not found');
   }
-  const recaptchaToken = await ensureRecaptchaTokenAndInject(page, opts, page.url());
-  const tokenRef: { current: string; kind: 'v3' | 'v2' } = { current: recaptchaToken ?? '', kind: 'v3' };
-  const unrouteRecaptcha =
-    tokenRef.current
-      ? addRecaptchaTokenToCalendlyApiRequests(page, () => tokenRef.current, () => tokenRef.kind)
-      : undefined;
+  const tokenRef: { current: string; kind: 'v3' | 'v2' } = { current: '', kind: 'v3' };
+  const unrouteRecaptcha = addRecaptchaTokenToCalendlyApiRequests(page, () => tokenRef.current, () => tokenRef.kind);
   const box = await submitLoc.boundingBox();
   if (box) {
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 4 });
@@ -1666,6 +1697,11 @@ async function fillSimpleFormAndSubmit(
   }
   const stopNetworkLogging = startScheduleEventNetworkLogging(page);
   await submitLoc.click(formClickOpts);
+  const popupVisible = await waitForRecaptchaPopup(page, 15000);
+  if (popupVisible) {
+    const v3Token = await ensureRecaptchaTokenAndInject(page, opts, page.url());
+    if (v3Token) tokenRef.current = v3Token;
+  }
   await clickRecaptchaCheckboxIfPresent(page, 5000);
   const v2Appeared = await waitForRecaptchaV2ToAppear(page, 10000);
   if (v2Appeared) {
@@ -1680,7 +1716,7 @@ async function fillSimpleFormAndSubmit(
   try {
     await waitForConfirmation(page, confirmationRegex, true);
   } finally {
-    unrouteRecaptcha?.();
+    unrouteRecaptcha();
   }
   console.log(`${LOG_PREFIX} Reached confirmation; booking complete`);
   stopNetworkLogging();
@@ -1719,12 +1755,8 @@ async function clickScheduleEventOnlyAndWait(
   if ((await submitLoc.count()) === 0) {
     throw new Error('Schedule Event button not found');
   }
-  const recaptchaToken = await ensureRecaptchaTokenAndInject(page, opts, page.url());
-  const tokenRef: { current: string; kind: 'v3' | 'v2' } = { current: recaptchaToken ?? '', kind: 'v3' };
-  const unrouteRecaptcha =
-    tokenRef.current
-      ? addRecaptchaTokenToCalendlyApiRequests(page, () => tokenRef.current, () => tokenRef.kind)
-      : undefined;
+  const tokenRef: { current: string; kind: 'v3' | 'v2' } = { current: '', kind: 'v3' };
+  const unrouteRecaptcha = addRecaptchaTokenToCalendlyApiRequests(page, () => tokenRef.current, () => tokenRef.kind);
   const box = await submitLoc.boundingBox();
   if (box) {
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 4 });
@@ -1733,6 +1765,11 @@ async function clickScheduleEventOnlyAndWait(
   const stopNetworkLogging = startScheduleEventNetworkLogging(page);
   console.log(`${LOG_PREFIX} [payperclose] Clicking Schedule Event...`);
   await submitLoc.click(formClickOpts);
+  const popupVisible = await waitForRecaptchaPopup(page, 15000);
+  if (popupVisible) {
+    const v3Token = await ensureRecaptchaTokenAndInject(page, opts, page.url());
+    if (v3Token) tokenRef.current = v3Token;
+  }
   await clickRecaptchaCheckboxIfPresent(page, 5000);
   const v2Appeared = await waitForRecaptchaV2ToAppear(page, 10000);
   if (v2Appeared) {
@@ -1747,7 +1784,7 @@ async function clickScheduleEventOnlyAndWait(
   try {
     await page.waitForURL(confirmationRegex, { timeout: 25000 });
   } finally {
-    unrouteRecaptcha?.();
+    unrouteRecaptcha();
   }
   console.log(`${LOG_PREFIX} [payperclose] Confirmation URL reached`);
   stopNetworkLogging();

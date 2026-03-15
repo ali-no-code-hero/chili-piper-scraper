@@ -1,8 +1,12 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { chromium, Browser } from 'playwright';
 import { browserPool } from './browser-pool';
 import { getCalendarContextPool } from './calendar-context-pool';
 import { getCentralGmtLabelForDate } from './central-timezone';
 import { browserInstanceManager } from './browser-instance-manager';
+import { CHILI_PIPER_VIDEO_ENABLED, saveChiliPiperFailureVideo } from './chili-piper-video';
 
 export interface SlotData {
   date: string;
@@ -225,7 +229,9 @@ export class ChiliPiperScraper {
     let context: any = null;
     let page: any | null = null;
     let releaseLock: (() => void) | null = null;
-    
+    let videoDir: string | null = null;
+    let sessionId: string | null = null;
+
     try {
       // Trim logs in production: only emit debug logs when SCRAPER_DEBUG=true
       const debug = (process.env.SCRAPER_DEBUG || '').toLowerCase() === 'true';
@@ -256,7 +262,21 @@ export class ChiliPiperScraper {
       if (!page) {
         // Acquire lock for context creation to prevent race conditions
         releaseLock = await browserPool.acquireContextLock(browser);
-        
+
+        if (CHILI_PIPER_VIDEO_ENABLED) {
+          sessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+          const recordDir = path.join(os.tmpdir(), 'chili-piper-videos', sessionId);
+          try {
+            fs.mkdirSync(recordDir, { recursive: true });
+            videoDir = recordDir;
+            console.log(`[Chili Piper get-slots] Recording enabled: ${videoDir}`);
+          } catch (e) {
+            console.warn('[Chili Piper get-slots] Video disabled (mkdir failed):', (e as Error)?.message);
+            videoDir = null;
+            sessionId = null;
+          }
+        }
+
         // Retry logic for browser context creation (handles race conditions)
         let retries = 3;
         while (retries > 0) {
@@ -270,10 +290,13 @@ export class ChiliPiperScraper {
               browser = await browserPool.getBrowser();
               releaseLock = await browserPool.acquireContextLock(browser);
             }
-            // Create a context with US Central Time timezone
-            context = await browser.newContext({
+            const contextOptions: { timezoneId: string; recordVideo?: { dir: string; size: { width: number; height: number } } } = {
               timezoneId: 'America/Chicago', // US Central Time (handles DST automatically)
-            });
+            };
+            if (videoDir) {
+              contextOptions.recordVideo = { dir: videoDir, size: { width: 1280, height: 720 } };
+            }
+            context = await browser.newContext(contextOptions);
             page = await context.newPage();
             break; // Success, exit retry loop
           } catch (error: any) {
@@ -307,8 +330,8 @@ export class ChiliPiperScraper {
           throw new Error('Failed to create browser context after retries');
         }
       }
-      page.setDefaultNavigationTimeout(10000); // Reduced from 20s to 10s for speed
-      // Block tracking/ads; allow recaptcha so challenge iframes can load
+      page.setDefaultNavigationTimeout(15000);
+      // Block tracking/ads; allow recaptcha and stylesheets so full Chili Piper UI loads
       await page.route("**/*", (route: any) => {
         const url = route.request().url();
         if (url.includes('recaptcha') || url.includes('google.com/recaptcha')) {
@@ -316,7 +339,7 @@ export class ChiliPiperScraper {
           return;
         }
         const rt = route.request().resourceType();
-        if (rt === 'image' || rt === 'stylesheet' || rt === 'font' || rt === 'media' ||
+        if (rt === 'image' || rt === 'font' || rt === 'media' ||
             url.includes('google-analytics') || url.includes('googletagmanager') || url.includes('analytics') ||
             url.includes('facebook.net') || url.includes('doubleclick') || url.includes('ads') || url.includes('tracking') ||
             url.includes('pixel') || url.includes('beacon')) {
@@ -325,13 +348,13 @@ export class ChiliPiperScraper {
         }
         route.continue();
       });
-      
-      // Navigate to parameterized URL or base URL
+
+      // Navigate to parameterized URL or base URL; wait for full load so Chili Piper UI is ready
       if (!useParameterizedUrl && !calendarPool.isReady()) {
-        await page.goto(this.baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+        await page.goto(this.baseUrl, { waitUntil: 'load', timeout: 15000 });
       } else if (useParameterizedUrl) {
         console.log(`🚀 Navigating directly to parameterized URL (skipping form)`);
-        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+        await page.goto(targetUrl, { waitUntil: 'load', timeout: 15000 });
       }
 
       // Skip all waits - form is pre-filled via URL params, just click Submit
@@ -634,7 +657,14 @@ export class ChiliPiperScraper {
 
     } catch (error) {
       console.error('Scraping error:', error);
-      
+
+      // Save failure video before closing context (get-slots)
+      if (videoDir && sessionId && context && page) {
+        await saveChiliPiperFailureVideo(context, page, videoDir, sessionId).catch((e) => {
+          console.warn('[Chili Piper get-slots] Could not save failure video:', (e as Error)?.message);
+        });
+      }
+
       // Release lock if it exists
       if (releaseLock) {
         try {
@@ -643,7 +673,7 @@ export class ChiliPiperScraper {
           // Ignore lock release errors
         }
       }
-      
+
       // Release browser and close context on error
       try {
         if (context) {

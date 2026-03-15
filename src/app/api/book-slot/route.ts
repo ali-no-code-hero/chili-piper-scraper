@@ -8,46 +8,13 @@ import { ErrorHandler, ErrorCode, SuccessCode } from '@/lib/error-handler';
 import { browserInstanceManager } from '@/lib/browser-instance-manager';
 import { ChiliPiperScraper } from '@/lib/scraper';
 import { browserPool } from '@/lib/browser-pool';
+import {
+  CHILI_PIPER_VIDEO_DIR,
+  CHILI_PIPER_VIDEO_ENABLED,
+  saveChiliPiperFailureVideo,
+} from '@/lib/chili-piper-video';
 
 const security = new SecurityMiddleware();
-
-const CHILI_PIPER_VIDEO_DIR = process.env.CHILI_PIPER_VIDEO_DIR || path.join(process.cwd(), '.chili-piper-videos');
-const CHILI_PIPER_VIDEO_ENABLED = process.env.CHILI_PIPER_VIDEO_ENABLED !== '0' && process.env.CHILI_PIPER_VIDEO_ENABLED !== 'false';
-
-/**
- * Save Chili Piper failure video before context is closed (avoids "Controller is already closed").
- * Call with the context and page that were recording. Does not close context.
- */
-async function saveChiliPiperFailureVideo(
-  context: any,
-  page: any,
-  videoDir: string,
-  sessionId: string
-): Promise<string | null> {
-  let savedPath: string | null = null;
-  try {
-    const videoPromise = page?.video?.() ?? context?.video?.() ?? null;
-    if (page && !page.isClosed()) await page.close().catch(() => {});
-    if (videoPromise) {
-      const video = await videoPromise;
-      if (video) {
-        const srcPath = await video.path();
-        if (srcPath && fs.existsSync(srcPath)) {
-          const failedDir = path.join(CHILI_PIPER_VIDEO_DIR, 'failed');
-          fs.mkdirSync(failedDir, { recursive: true });
-          const destName = `chili-piper-${sessionId}.webm`;
-          const destPath = path.join(failedDir, destName);
-          fs.copyFileSync(srcPath, destPath);
-          savedPath = destPath;
-          console.log('[Chili Piper] Saved failure video:', destPath);
-        }
-      }
-    }
-  } catch (e) {
-    console.warn('[Chili Piper] Could not save failure video:', (e as Error)?.message);
-  }
-  return savedPath;
-}
 
 /**
  * Parse date/time string like "November 13, 2025 at 1:25 PM CST"
@@ -234,10 +201,11 @@ async function createInstanceForEmail(
     
     page.setDefaultNavigationTimeout(15000);
     page.setDefaultTimeout(15000);
+    // Allow stylesheets so full Chili Piper UI loads; block tracking/ads only
     await page.route("**/*", (route: any) => {
       const url = route.request().url();
       const rt = route.request().resourceType();
-      if (rt === 'image' || rt === 'stylesheet' || rt === 'font' || rt === 'media' ||
+      if (rt === 'image' || rt === 'font' || rt === 'media' ||
           url.includes('google-analytics') || url.includes('googletagmanager') || url.includes('analytics') ||
           url.includes('facebook.net') || url.includes('doubleclick') || url.includes('ads') || url.includes('tracking') ||
           url.includes('pixel') || url.includes('beacon')) {
@@ -246,7 +214,7 @@ async function createInstanceForEmail(
       }
       route.continue();
     });
-    
+
     await page.goto(targetUrl, { waitUntil: 'load', timeout: 15000 });
     // Brief wait for form to be interactive
     await new Promise((r) => setTimeout(r, 1500));
@@ -520,17 +488,35 @@ export async function POST(request: NextRequest) {
           throw new Error('Browser page was closed');
         }
 
-        // Ensure we're on calendar view
+        // Resolve calendar context: main page or iframe (Chili Piper often embeds calendar in iframe)
+        let calendarContext: any = page;
+        let calendarFound = false;
         try {
           await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 5000 });
-          log('Calendar view found');
-        } catch (calErr) {
-          logErr('Calendar not found on page', { error: (calErr as Error).message });
+          calendarFound = true;
+          log('Calendar view found on main page');
+        } catch {
+          // Try iframes
+          const frames = page.frames();
+          for (const frame of frames) {
+            try {
+              await frame.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 5000 });
+              calendarContext = frame;
+              calendarFound = true;
+              log('Calendar view found in iframe');
+              break;
+            } catch {
+              continue;
+            }
+          }
+        }
+        if (!calendarFound) {
+          logErr('Calendar not found on page or in iframes');
           throw new Error('Calendar not found on page');
         }
 
-        // Find and click the day button
-        const dayButtons = await page.$$('[data-id="calendar-day-button"], button[data-test-id^="days:"]');
+        // Find and click the day button (use calendar context: page or iframe)
+        const dayButtons = await calendarContext.$$('[data-id="calendar-day-button"], button[data-test-id^="days:"]');
         let dayClicked = false;
         log('Day button search', { targetDate: date, buttonCount: dayButtons.length });
         
@@ -580,14 +566,14 @@ export async function POST(request: NextRequest) {
         throw new Error(`Day button not found for date ${date}`);
       }
 
-      // Wait for slots to load - use reliable wait condition
+      // Wait for slots to load - use reliable wait condition (calendar context: page or iframe)
       try {
-        await page.waitForSelector('[data-id="calendar-slot"], button[data-test-id^="slot-"]', { timeout: 5000 });
+        await calendarContext.waitForSelector('[data-id="calendar-slot"], button[data-test-id^="slot-"]', { timeout: 5000 });
         log('Slot buttons appeared after day click');
       } catch (slotWaitErr) {
         // If slots don't appear, wait a bit more and try again
         await page.waitForTimeout(1000);
-        const slotsExist = await page.$('[data-id="calendar-slot"], button[data-test-id^="slot-"]');
+        const slotsExist = await calendarContext.$('[data-id="calendar-slot"], button[data-test-id^="slot-"]');
         if (!slotsExist) {
           logErr('No slot buttons found after clicking day', { date, error: (slotWaitErr as Error).message });
           throw new Error(`No slot buttons found after clicking day button for ${date}`);
@@ -597,7 +583,7 @@ export async function POST(request: NextRequest) {
 
       // Log available slots for debugging
       try {
-        const availableSlots = await page.$$eval('[data-id="calendar-slot"], button[data-test-id^="slot-"]', 
+        const availableSlots = await calendarContext.$$eval('[data-id="calendar-slot"], button[data-test-id^="slot-"]', 
           (buttons: Element[]) => buttons.map((b: Element) => ({
             text: b.textContent?.trim() || '',
             dataTestId: b.getAttribute('data-test-id') || '',
@@ -645,7 +631,7 @@ export async function POST(request: NextRequest) {
       
       for (const slotId of slotIdVariations) {
         try {
-          const slotButton = await page.$(`button[data-test-id="${slotId}"]`);
+          const slotButton = await calendarContext.$(`button[data-test-id="${slotId}"]`);
           if (slotButton) {
             const isDisabled = await slotButton.evaluate((el: any) => 
               el.disabled || el.getAttribute('aria-disabled') === 'true'
@@ -666,7 +652,7 @@ export async function POST(request: NextRequest) {
 
       // Fallback: try by text content with improved matching
       if (!slotClicked) {
-        const slotButtons = await page.$$('[data-id="calendar-slot"], button[data-test-id^="slot-"]');
+        const slotButtons = await calendarContext.$$('[data-id="calendar-slot"], button[data-test-id^="slot-"]');
         log('Trying text matching for slot', { slotButtonCount: slotButtons.length, targetTime: time });
         
         for (const button of slotButtons) {

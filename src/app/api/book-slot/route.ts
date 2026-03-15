@@ -133,7 +133,7 @@ function buildParameterizedUrl(
     PersonEmail: email,
   });
 
-  const phoneValue = phone.startsWith('+') ? phone : `+${phone}`;
+  const phoneValue = phone.startsWith('+') ? phone.slice(1) : phone;
   params.append(phoneFieldId, phoneValue);
 
   const existingParams = new URLSearchParams(urlParts.search);

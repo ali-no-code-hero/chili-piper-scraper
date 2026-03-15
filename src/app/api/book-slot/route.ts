@@ -358,6 +358,7 @@ export async function POST(request: NextRequest) {
     // Parse date/time
     const parsed = parseDateTime(dateTime);
     if (!parsed) {
+      console.warn('[book-slot] Parse failed', { requestId, dateTime });
       const responseTime = Date.now() - requestStartTime;
       const errorResponse = ErrorHandler.createError(
         ErrorCode.VALIDATION_ERROR,
@@ -412,16 +413,27 @@ export async function POST(request: NextRequest) {
       let videoDir: string | undefined;
       let sessionId: string | undefined;
 
+      const log = (msg: string, data?: Record<string, unknown>) => {
+        console.log('[book-slot]', requestId, msg, data ?? '');
+      };
+      const logErr = (msg: string, data?: Record<string, unknown>) => {
+        console.error('[book-slot]', requestId, msg, data ?? '');
+      };
+
       try {
+        log('Booking started', { email, date: parsed!.date, time: parsed!.time });
+
         instance = scraper.getExistingInstance(email);
 
         if (!instance) {
-          console.log(`📝 No existing instance for ${email}, creating new one...`);
+          log('No existing instance, creating new one', { email });
           if (!firstName || !lastName || !phone) {
+            logErr('Missing required fields for new instance', { hasFirst: !!firstName, hasLast: !!lastName, hasPhone: !!phone });
             throw new Error('firstName, lastName, and phone are required when creating a new instance');
           }
           const newInstance = await createInstanceForEmail(email, firstName, lastName, phone);
           if (!newInstance) {
+            logErr('createInstanceForEmail returned null');
             throw new Error('Failed to create browser instance');
           }
           browser = newInstance.browser;
@@ -429,30 +441,47 @@ export async function POST(request: NextRequest) {
           page = newInstance.page;
           videoDir = newInstance.videoDir;
           sessionId = newInstance.sessionId;
+          log('New instance created and registered', { sessionId });
           await browserInstanceManager.registerInstance(email, browser, context, page);
         } else {
           browser = instance.browser;
           context = instance.context;
           page = instance.page;
-          console.log(`✅ Using existing instance for ${email}`);
+          log('Using existing instance', { email });
         }
 
+        // Capture Chili Piper page errors and console for debugging 500s
+        page.on('pageerror', (err: Error) => {
+          logErr('Chili Piper page JS error', { message: err.message, stack: err.stack });
+        });
+        page.on('console', (msg: { type: () => string; text: () => string }) => {
+          const type = msg.type();
+          const text = msg.text();
+          if (type === 'error' || type === 'warning') {
+            log('Chili Piper console', { type, text: text.slice(0, 500) });
+          }
+        });
+
         // Verify page is still valid
-      if (page.isClosed()) {
-        throw new Error('Browser page was closed');
-      }
+        if (page.isClosed()) {
+          logErr('Page was already closed before booking');
+          throw new Error('Browser page was closed');
+        }
 
-      // Ensure we're on calendar view
-      try {
-        await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 5000 });
-      } catch {
-        throw new Error('Calendar not found on page');
-      }
+        // Ensure we're on calendar view
+        try {
+          await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 5000 });
+          log('Calendar view found');
+        } catch (calErr) {
+          logErr('Calendar not found on page', { error: (calErr as Error).message });
+          throw new Error('Calendar not found on page');
+        }
 
-      // Find and click the day button
-      const dayButtons = await page.$$('[data-id="calendar-day-button"], button[data-test-id^="days:"]');
-      let dayClicked = false;
-      
+        // Find and click the day button
+        const dayButtons = await page.$$('[data-id="calendar-day-button"], button[data-test-id^="days:"]');
+        let dayClicked = false;
+        log('Day button search', { targetDate: date, buttonCount: dayButtons.length });
+        
       for (const button of dayButtons) {
         try {
           const buttonText = await button.textContent();
@@ -479,7 +508,7 @@ export async function POST(request: NextRequest) {
           if (day === targetDay && hasTargetMonth) {
             await button.click();
             dayClicked = true;
-            console.log(`✅ Clicked day button for ${date}`);
+            log('Clicked day button', { date });
             break;
           }
         } catch (error) {
@@ -488,20 +517,30 @@ export async function POST(request: NextRequest) {
       }
 
       if (!dayClicked) {
+        const dayButtonTexts: string[] = [];
+        for (const btn of dayButtons) {
+          try {
+            const t = await btn.textContent();
+            if (t) dayButtonTexts.push(t.trim().slice(0, 80));
+          } catch {}
+        }
+        logErr('Day button not found', { targetDate: date, seenButtonTexts: dayButtonTexts });
         throw new Error(`Day button not found for date ${date}`);
       }
 
       // Wait for slots to load - use reliable wait condition
       try {
         await page.waitForSelector('[data-id="calendar-slot"], button[data-test-id^="slot-"]', { timeout: 5000 });
-        console.log(`✅ Slot buttons appeared after clicking day button`);
-      } catch (error) {
+        log('Slot buttons appeared after day click');
+      } catch (slotWaitErr) {
         // If slots don't appear, wait a bit more and try again
         await page.waitForTimeout(1000);
         const slotsExist = await page.$('[data-id="calendar-slot"], button[data-test-id^="slot-"]');
         if (!slotsExist) {
+          logErr('No slot buttons found after clicking day', { date, error: (slotWaitErr as Error).message });
           throw new Error(`No slot buttons found after clicking day button for ${date}`);
         }
+        log('Slot buttons appeared after extra wait');
       }
 
       // Log available slots for debugging
@@ -514,10 +553,15 @@ export async function POST(request: NextRequest) {
             ariaDisabled: b.getAttribute('aria-disabled') === 'true'
           }))
         );
-        console.log(`🔍 Available slots (${availableSlots.length} total):`, 
-          availableSlots.map((s: { text: string; dataTestId: string; disabled: boolean; ariaDisabled: boolean }) => `${s.text} (${s.dataTestId})`).join(', '));
-      } catch (error) {
-        console.log(`⚠️ Could not log available slots:`, error);
+        log('Available slots', {
+          count: availableSlots.length,
+          targetTime: time,
+          formattedSlotId: `slot-${formattedTime}`,
+          slots: availableSlots.map((s: { text: string; dataTestId: string; disabled: boolean; ariaDisabled: boolean }) =>
+            `${s.text}|${s.dataTestId}|disabled=${s.disabled}`).slice(0, 20)
+        });
+      } catch (slotLogErr) {
+        log('Could not log available slots', { error: (slotLogErr as Error).message });
       }
 
       // Find and click the time slot button
@@ -557,10 +601,10 @@ export async function POST(request: NextRequest) {
             if (!isDisabled) {
               await slotButton.click();
               slotClicked = true;
-              console.log(`✅ Clicked time slot button by data-test-id: ${slotId}`);
+              log('Clicked time slot by data-test-id', { slotId });
               break;
             } else {
-              console.log(`⚠️ Slot button found but is disabled: ${slotId}`);
+              log('Slot button found but disabled', { slotId });
             }
           }
         } catch (error) {
@@ -571,7 +615,7 @@ export async function POST(request: NextRequest) {
       // Fallback: try by text content with improved matching
       if (!slotClicked) {
         const slotButtons = await page.$$('[data-id="calendar-slot"], button[data-test-id^="slot-"]');
-        console.log(`🔍 Trying text matching on ${slotButtons.length} slot buttons...`);
+        log('Trying text matching for slot', { slotButtonCount: slotButtons.length, targetTime: time });
         
         for (const button of slotButtons) {
           try {
@@ -583,7 +627,6 @@ export async function POST(request: NextRequest) {
               el.disabled || el.getAttribute('aria-disabled') === 'true'
             );
             if (isDisabled) {
-              console.log(`⚠️ Skipping disabled slot: ${buttonText.trim()}`);
               continue;
             }
             
@@ -602,7 +645,7 @@ export async function POST(request: NextRequest) {
                 timesMatch(trimmedText, time)) {
               await button.click();
               slotClicked = true;
-              console.log(`✅ Clicked time slot button by text: ${trimmedText} (matched ${time})`);
+              log('Clicked time slot by text', { trimmedText, matchedTime: time });
               break;
             }
           } catch (error) {
@@ -619,6 +662,7 @@ export async function POST(request: NextRequest) {
             (buttons: Element[]) => buttons.map((b: Element) => b.textContent?.trim()).filter(Boolean) as string[]
           );
           availableSlotInfo = ` Available slots: ${slots.join(', ')}`;
+          logErr('Time slot button not found', { targetTime: time, slotTimeId, availableSlots: slots.slice(0, 30) });
         } catch {}
         
         throw new Error(`Time slot button not found for time ${time} (formatted: ${slotTimeId}).${availableSlotInfo}`);
@@ -627,16 +671,20 @@ export async function POST(request: NextRequest) {
       // Wait a moment to ensure booking is processed
       await page.waitForTimeout(1000);
 
+        log('Booking step completed, cleaning up instance', { email });
         // Close instance after successful booking
         await browserInstanceManager.cleanupInstance(email);
 
         return { success: true, date, time };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        const stack = err instanceof Error ? err.stack : undefined;
+        logErr('Booking failed inside execute', { error: message, stack: stack?.slice(0, 800) });
         let videoPath: string | undefined;
         if (videoDir && sessionId && context && page) {
           const saved = await saveChiliPiperFailureVideo(context, page, videoDir, sessionId);
           if (saved) videoPath = saved;
+          log('Failure video saved', { videoPath: saved });
         }
         await browserInstanceManager.cleanupInstance(email);
         return { success: false, error: message, videoPath };
@@ -645,6 +693,12 @@ export async function POST(request: NextRequest) {
 
     if (!result.success) {
       const responseTime = Date.now() - requestStartTime;
+      console.error('[book-slot] Returning 500 – booking failed', {
+        requestId,
+        error: result.error,
+        videoPath: result.videoPath,
+        responseTimeMs: responseTime,
+      });
       const errorResponse = ErrorHandler.createError(
         ErrorCode.SCRAPING_FAILED,
         'Booking failed',
@@ -676,7 +730,11 @@ export async function POST(request: NextRequest) {
     return security.addSecurityHeaders(response);
 
   } catch (error: any) {
-    console.error('❌ Booking API error:', error);
+    console.error('[book-slot] Top-level error', requestId, {
+      message: error?.message,
+      name: error?.name,
+      stack: error?.stack?.slice(0, 600),
+    });
 
     const responseTime = Date.now() - requestStartTime;
 

@@ -232,7 +232,8 @@ async function createInstanceForEmail(
       throw new Error('Failed to create browser context after retries');
     }
     
-    page.setDefaultNavigationTimeout(10000);
+    page.setDefaultNavigationTimeout(15000);
+    page.setDefaultTimeout(15000);
     await page.route("**/*", (route: any) => {
       const url = route.request().url();
       const rt = route.request().resourceType();
@@ -246,8 +247,10 @@ async function createInstanceForEmail(
       route.continue();
     });
     
-    await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
-    
+    await page.goto(targetUrl, { waitUntil: 'load', timeout: 15000 });
+    // Brief wait for form to be interactive
+    await new Promise((r) => setTimeout(r, 1500));
+
     // Click submit button
     const submitSelectors = [
       'button[type="submit"]',
@@ -259,11 +262,12 @@ async function createInstanceForEmail(
     
     for (const selector of submitSelectors) {
       try {
-        await page.click(selector, { timeout: 2000 });
+        await page.click(selector, { timeout: 3000 });
+        await new Promise((r) => setTimeout(r, 1500));
         break;
       } catch {}
     }
-    
+
     // Click schedule button if present
     const scheduleSelectors = [
       '[data-test-id="ConciergeLiveBox-book"]',
@@ -274,13 +278,47 @@ async function createInstanceForEmail(
     
     for (const selector of scheduleSelectors) {
       try {
-        await page.click(selector, { timeout: 2000 });
+        await page.click(selector, { timeout: 3000 });
         break;
       } catch {}
     }
-    
-    // Wait for calendar
-    await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 10000 });
+
+    // Give the calendar time to load after clicking schedule
+    await new Promise((r) => setTimeout(r, 2000));
+
+    // Wait for calendar using multiple strategies (same approach as scraper)
+    const calendarSelectors = [
+      '[data-id="calendar-day-button"]',
+      'button[data-test-id^="days:"]',
+      '[data-id="calendar-day-button-selected"]',
+      '[data-id="calendar"]',
+      '[role="grid"]',
+      '[data-test-id*="calendar"]',
+      'button[data-test-id*="days:"]',
+    ];
+    let calendarFound = false;
+    for (const selector of calendarSelectors) {
+      try {
+        await page.waitForSelector(selector, { timeout: 5000 });
+        calendarFound = true;
+        break;
+      } catch {}
+    }
+    if (!calendarFound) {
+      // Check iframes (Chili Piper sometimes embeds calendar in iframe)
+      const frames = page.frames();
+      for (const frame of frames) {
+        try {
+          await frame.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"], [data-id="calendar"], [role="grid"]', { timeout: 5000 });
+          calendarFound = true;
+          break;
+        } catch {}
+      }
+    }
+    if (!calendarFound) {
+      // Final wait with longer timeout for slow loads
+      await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 15000 });
+    }
 
     const out: { browser: any; context: any; page: any; videoDir?: string; sessionId?: string } = { browser, context, page };
     if (videoDir) out.videoDir = videoDir;
@@ -288,25 +326,39 @@ async function createInstanceForEmail(
     return out;
   } catch (error) {
     console.error('Error creating instance:', error);
-    
+
+    // Save failure video so it shows on the video page (recorded to temp dir, copy to CHILI_PIPER_VIDEO_DIR/failed)
+    if (videoDir && sessionId && CHILI_PIPER_VIDEO_ENABLED) {
+      try {
+        if (page && !page.isClosed()) await page.close().catch(() => {});
+        if (context) await context.close().catch(() => {});
+        const webmFiles = fs.existsSync(videoDir) ? fs.readdirSync(videoDir).filter((f) => f.endsWith('.webm')) : [];
+        if (webmFiles.length > 0) {
+          const failedDir = path.join(CHILI_PIPER_VIDEO_DIR, 'failed');
+          fs.mkdirSync(failedDir, { recursive: true });
+          const srcPath = path.join(videoDir, webmFiles[0]);
+          const destName = `chili-piper-${sessionId}.webm`;
+          const destPath = path.join(failedDir, destName);
+          fs.copyFileSync(srcPath, destPath);
+          console.log('[Chili Piper] Saved failure video (instance creation failed):', destPath);
+        }
+        page = null;
+        context = null;
+      } catch (saveErr) {
+        console.warn('[Chili Piper] Could not save failure video on create error:', (saveErr as Error)?.message);
+      }
+    }
+
     // Clean up on error
     try {
-      if (releaseLock) {
-        releaseLock();
-      }
-      if (page && !page.isClosed()) {
-        await page.close().catch(() => {});
-      }
-      if (context) {
-        await context.close().catch(() => {});
-      }
-      if (browser) {
-        browserPool.releaseBrowser(browser);
-      }
+      if (releaseLock) releaseLock();
+      if (page && !page.isClosed()) await page.close().catch(() => {});
+      if (context) await context.close().catch(() => {});
+      if (browser) browserPool.releaseBrowser(browser);
     } catch (cleanupError) {
       // Ignore cleanup errors
     }
-    
+
     return null;
   }
 }

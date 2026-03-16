@@ -3,6 +3,7 @@ import { SecurityMiddleware } from '@/lib/security-middleware';
 import { concurrencyManager } from '@/lib/concurrency-manager';
 import { ErrorHandler, ErrorCode, SuccessCode } from '@/lib/error-handler';
 import { bookCalendlySlot, normalizeTimeForCalendly } from '@/lib/calendly-booker';
+import { bookCalendlySlotViaBrowserless } from '@/lib/browserless-calendly-booker';
 import { bookLoftySlot, bookLoftySlotL2 } from '@/lib/lofty-booker';
 import { POST as bookSlotPost } from '@/app/api/book-slot/route';
 
@@ -171,18 +172,31 @@ export async function POST(request: NextRequest) {
       }
 
       const calendlyType = vendor === 'housejet-ppc' ? 'payperclose' : 'agentfire';
+      const useBrowserless =
+        vendor === 'housejet-ppc' && Boolean(process.env.BROWSERLESS_API_TOKEN?.trim());
       const result = await concurrencyManager.execute(
         () =>
-          bookCalendlySlot({
-            date,
-            time,
-            firstName,
-            lastName,
-            email,
-            phone,
-            calendlyType,
-            answers: Object.keys(answersRecord).length > 0 ? answersRecord : undefined,
-          }),
+          useBrowserless
+            ? bookCalendlySlotViaBrowserless({
+                date,
+                time,
+                firstName,
+                lastName,
+                email,
+                phone,
+                calendlyType: 'payperclose',
+                answers: Object.keys(answersRecord).length > 0 ? answersRecord : undefined,
+              })
+            : bookCalendlySlot({
+                date,
+                time,
+                firstName,
+                lastName,
+                email,
+                phone,
+                calendlyType,
+                answers: Object.keys(answersRecord).length > 0 ? answersRecord : undefined,
+              }),
         45000
       );
 

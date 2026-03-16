@@ -137,7 +137,7 @@ data: {"success":true,"streaming":false,"message":"Slot collection completed","d
 }
 ```
 
-**Optional (server env):** To rotate IP for housejet-ppc bookings only, set `HOUSEJET_PPC_PROXY_SERVER` (e.g. Smartproxy `http://gate.smartproxy.com:7000`) and optionally `HOUSEJET_PPC_PROXY_USERNAME` / `HOUSEJET_PPC_PROXY_PASSWORD`. Only the booking context uses the proxy; other vendors are unchanged.
+**Optional (server env):** When `BROWSERLESS_API_TOKEN` is set, housejet-ppc booking uses Browserless BQL (stealth) instead of local Playwright. Optional `BROWSERLESS_BQL_URL` overrides the BQL endpoint (default: `https://production-sfo.browserless.io/stealth/bql`). To rotate IP with local Playwright, set `HOUSEJET_PPC_PROXY_SERVER` (e.g. Smartproxy `http://gate.smartproxy.com:7000`) and optionally `HOUSEJET_PPC_PROXY_USERNAME` / `HOUSEJET_PPC_PROXY_PASSWORD`; only the booking context uses the proxy.
 
 **Success Response (200):** Same shape as the underlying endpoint (e.g. `message`, `date`, `time`; for `/api/book` with Calendly vendors, `data.vendor` is also included).
 
@@ -363,21 +363,6 @@ The scraper can be configured via environment variables:
 - `CHILI_PIPER_FORM_URL`: Target Chili Piper form URL
 - `MAX_DAYS_TO_COLLECT`: Maximum days to scrape (default: 7)
 - `MAX_SCRAPING_TIMEOUT`: Timeout in milliseconds (default: 30000)
-
-### CapSolver / Calendly reCAPTCHA v3 Enterprise
-
-When Calendly uses reCAPTCHA v3 Enterprise, the app can solve it via [CapSolver](https://docs.capsolver.com/en/guide/captcha/ReCaptchaV3/) before submitting the booking form. The same proxy used for the booking context (e.g. `HOUSEJET_PPC_PROXY_*` for pay-per-close) is sent to CapSolver when present so the token is solved from the same IP that submits the form.
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `CAPSOLVER_API_KEY` | CapSolver API key. If set, reCAPTCHA solving is attempted before clicking Schedule Event. | No (skip solve if unset) |
-| `CALENDLY_RECAPTCHA_WEBSITE_KEY` | reCAPTCHA site key for the Calendly page. Required when CapSolver is used. Find via page source or [CapSolver extension](https://docs.capsolver.com/en/blog/show-to-get-recaptcha-version/). | When using CapSolver |
-| `CALENDLY_RECAPTCHA_PAGE_ACTION` | Optional. reCAPTCHA v3 action name (e.g. `scheduling`). Find via `grecaptcha.execute` on the page or CapSolver extension. | No |
-| `CALENDLY_RECAPTCHA_API_DOMAIN` | Optional. Domain for loading reCAPTCHA (e.g. `www.recaptcha.net`). Can improve token acceptance. | No |
-| `CALENDLY_RECAPTCHA_V2_WEBSITE_KEY` | When Calendly shows reCAPTCHA v2 (normal) after v3, set this to the v2 site key (e.g. `6LconfUd...`). Enables solving the v2 fallback via CapSolver. | No |
-| `CALENDLY_RECAPTCHA_ENTERPRISE_S` | Optional. Enterprise `s` parameter from `grecaptcha.enterprise.render`, for `enterprisePayload.s`. | No |
-
-If `CAPSOLVER_API_KEY` is set but `CALENDLY_RECAPTCHA_WEBSITE_KEY` is not, a warning is logged and the booking continues without solving (no hard failure).
 
 ## Examples
 

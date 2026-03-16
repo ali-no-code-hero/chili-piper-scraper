@@ -58,25 +58,36 @@ export async function bookCalendlySlotViaBrowserless(
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
+    const body = JSON.stringify({
+      query,
+      variables: null,
+      operationName,
+    });
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query,
-        variables: null,
-        operationName,
-      }),
+      body,
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
 
-    const json = (await response.json()) as {
+    const rawText = await response.text();
+    let json: {
       data?: {
         finalState?: { url?: string };
         errorMessage?: { text?: string } | Array<{ text?: string }>;
       };
       errors?: Array<{ message?: string }>;
     };
+    try {
+      json = rawText ? (JSON.parse(rawText) as typeof json) : {};
+    } catch {
+      const snippet = rawText.slice(0, 300).replace(/\s+/g, ' ');
+      return {
+        success: false,
+        error: `Browserless returned non-JSON (HTTP ${response.status}): ${snippet}${rawText.length > 300 ? '...' : ''}`,
+      };
+    }
 
     if (!response.ok) {
       const errMsg = json.errors?.[0]?.message ?? `HTTP ${response.status}`;

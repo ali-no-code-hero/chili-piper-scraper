@@ -4,6 +4,17 @@ import { getDirectPaypercloseCalendlyUrl } from '@/lib/calendly-booker';
 const DEFAULT_BQL_URL = 'https://production-sfo.browserless.io/stealth/bql';
 const FETCH_TIMEOUT_MS = 28_000;
 
+/** Build Browserless API URL with optional proxy and options (matches BrowserQL editor). */
+function buildBrowserlessApiUrl(baseUrl: string, token: string): string {
+  const params = new URLSearchParams();
+  params.set('token', token);
+  const proxy = process.env.BROWSERLESS_PROXY?.trim();
+  if (proxy) params.set('proxy', proxy);
+  const blockConsent = process.env.BROWSERLESS_BLOCK_CONSENT_MODALS?.trim();
+  if (blockConsent === 'true' || blockConsent === '1') params.set('blockConsentModals', 'true');
+  return `${baseUrl.replace(/\?.*$/, '')}?${params.toString()}`;
+}
+
 /** Escape a string for use inside a GraphQL double-quoted string (backslash and quote). */
 function escapeForGraphQLString(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
@@ -35,22 +46,32 @@ export async function bookCalendlySlotViaBrowserless(
   const directUrl = getDirectPaypercloseCalendlyUrl(opts);
   const escapedUrl = escapeForGraphQLString(directUrl);
   const bqlUrl = process.env.BROWSERLESS_BQL_URL?.trim() || DEFAULT_BQL_URL;
-  const apiUrl = `${bqlUrl}?token=${encodeURIComponent(token)}`;
+  const apiUrl = buildBrowserlessApiUrl(bqlUrl, token);
 
-  const operationName = 'BookCalendlyWithErrors';
+  const operationName = 'BookCalendlyFinal';
   const query = `mutation ${operationName} {
+  viewport(width: 1366, height: 768) {
+    width
+    height
+    time
+  }
   goto(url: "${escapedUrl}", waitUntil: networkIdle) {
     status
   }
   click(selector: "button[type='submit']") {
     time
   }
-  waitForNavigation(waitUntil: networkIdle, timeout: 12000) {
+  waitForNavigation(waitUntil: networkIdle, timeout: 15000) {
     status
   }
-  finalState: url { url }
+  currentUrl: url {
+    url
+  }
   errorMessage: text(selector: "[role='alert'], .error, .alert, .message-error") {
     text
+  }
+  screenshot {
+    base64
   }
 }`;
 
@@ -60,7 +81,6 @@ export async function bookCalendlySlotViaBrowserless(
   try {
     const body = JSON.stringify({
       query,
-      variables: null,
       operationName,
     });
     const response = await fetch(apiUrl, {
@@ -74,8 +94,9 @@ export async function bookCalendlySlotViaBrowserless(
     const rawText = await response.text();
     let json: {
       data?: {
-        finalState?: { url?: string };
+        currentUrl?: { url?: string };
         errorMessage?: { text?: string } | Array<{ text?: string }>;
+        screenshot?: { base64?: string };
       };
       errors?: Array<{ message?: string }>;
     };
@@ -101,14 +122,14 @@ export async function bookCalendlySlotViaBrowserless(
     }
 
     const data = json.data;
-    if (!data?.finalState?.url) {
+    if (!data?.currentUrl?.url) {
       return {
         success: false,
-        error: 'BQL response missing finalState.url',
+        error: 'BQL response missing currentUrl.url',
       };
     }
 
-    const finalUrl = data.finalState.url;
+    const finalUrl = data.currentUrl.url;
     const isStillOnCalendly =
       finalUrl.includes('calendly.com') && !finalUrl.includes('invitee_confirmations');
 

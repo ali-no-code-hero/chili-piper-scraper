@@ -366,9 +366,9 @@ export class ChiliPiperScraper {
       // Navigate to parameterized URL or base URL; wait for full load so Chili Piper UI is ready
       if (this.directCalendar) {
         console.log(`🚀 Direct calendar mode: navigating to calendar URL`);
-        await page.goto(targetUrl, { waitUntil: 'load', timeout: 15000 });
+        await page.goto(targetUrl, { waitUntil: 'load', timeout: 20000 });
         // Allow client-side calendar to render (e.g. luxurypresence round-robin SPA)
-        await new Promise((r) => setTimeout(r, 2500));
+        await new Promise((r) => setTimeout(r, 5000));
       } else if (!useParameterizedUrl && !calendarPool.isReady()) {
         await page.goto(this.baseUrl, { waitUntil: 'load', timeout: 15000 });
       } else if (useParameterizedUrl) {
@@ -510,11 +510,12 @@ export class ChiliPiperScraper {
         } catch {}
       }
       
-      // If not found immediately, try with short wait
+      // If not found immediately, try with short wait (longer for direct-calendar SPA)
       if (!calendarFound) {
+        const firstPassTimeout = this.directCalendar ? 3000 : 300;
         for (const selector of calendarSelectors) {
           try {
-            await page.waitForSelector(selector, { timeout: 300 });
+            await page.waitForSelector(selector, { timeout: firstPassTimeout });
             console.log(`✅ Calendar loaded using selector: ${selector}`);
             calendarFound = true;
             break;
@@ -525,22 +526,25 @@ export class ChiliPiperScraper {
       }
       
       if (!calendarFound) {
-        // Final retry with minimal wait (include luxurypresence-style selectors)
+        // Final retry (include luxurypresence-style selectors; longer timeout for SPA)
         console.log('🔁 Calendar not found, final retry...');
         const fallbackSelector = this.directCalendar
           ? 'button:has-text("Press enter to navigate"), button:has-text("Monday")'
           : '[data-id="calendar-day-button"], button[data-test-id^="days:"]';
         try {
-          await page.waitForSelector(fallbackSelector, { timeout: 300 });
+          await page.waitForSelector(fallbackSelector, { timeout: this.directCalendar ? 10000 : 300 });
           calendarFound = true;
+          console.log(`✅ Calendar loaded on retry using fallback selector`);
         } catch {}
-        for (const selector of calendarSelectors) {
-          try {
-            await page.waitForSelector(selector, { timeout: 4000 });
-            console.log(`✅ Calendar loaded on retry using selector: ${selector}`);
-            calendarFound = true;
-            break;
-          } catch {}
+        if (!calendarFound) {
+          for (const selector of calendarSelectors) {
+            try {
+              await page.waitForSelector(selector, { timeout: this.directCalendar ? 5000 : 4000 });
+              console.log(`✅ Calendar loaded on retry using selector: ${selector}`);
+              calendarFound = true;
+              break;
+            } catch {}
+          }
         }
       }
 
@@ -563,9 +567,12 @@ export class ChiliPiperScraper {
       }
       
       if (!calendarFound) {
-        // Final fallback: wait for day buttons broadly (5s)
+        // Final fallback: wait for day buttons broadly (luxurypresence or cinq)
+        const broadFallback = this.directCalendar
+          ? 'button:has-text("Press enter to navigate"), button:has-text("Monday"), button:has-text("Which time")'
+          : 'button[data-test-id*="days:"], [data-id="calendar-day-button"], [data-test-id*="day"]';
         try {
-          await page.waitForSelector('button[data-test-id*="days:"], [data-id="calendar-day-button"], [data-test-id*="day"]', { timeout: 1000 });
+          await page.waitForSelector(broadFallback, { timeout: this.directCalendar ? 8000 : 1000 });
           console.log('✅ Fallback: detected day buttons without calendar container');
           calendarFound = true;
           calendarContext = page;
@@ -575,29 +582,36 @@ export class ChiliPiperScraper {
       if (!calendarFound) {
         // Give it one more try with a longer wait - sometimes calendar takes a moment to render
         console.log('⏳ Calendar not found initially, waiting a bit longer and retrying...');
-        // Wait for calendar to render
+        const lastResortSelector = this.directCalendar
+          ? 'button:has-text("Press enter to navigate"), button:has-text("Monday"), h2:has-text("Which time")'
+          : '[data-id="calendar-day-button"], button[data-test-id^="days:"]';
         try {
-          await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 500 });
-        } catch {
-          // Continue even if wait fails
+          await page.waitForSelector(lastResortSelector, { timeout: this.directCalendar ? 12000 : 500 });
+          console.log(`✅ Calendar found on last-resort wait`);
+          calendarFound = true;
+          calendarContext = page;
+        } catch {}
+        if (!calendarFound) {
+          for (const selector of calendarSelectors) {
+            try {
+              await page.waitForSelector(selector, { timeout: this.directCalendar ? 6000 : 3000 });
+              console.log(`✅ Calendar found on retry using selector: ${selector}`);
+              calendarFound = true;
+              calendarContext = page;
+              break;
+            } catch {}
+          }
         }
-        for (const selector of calendarSelectors) {
-          try {
-            await page.waitForSelector(selector, { timeout: 3000 });
-            console.log(`✅ Calendar found on retry using selector: ${selector}`);
-            calendarFound = true;
-            calendarContext = page;
-            break;
-          } catch {}
-        }
-        
-        // Also check for day buttons in iframes
+        // Also check for day buttons in iframes (luxurypresence or cinq)
         if (!calendarFound) {
           try {
             const frames = page.frames();
+            const iframeSelector = this.directCalendar
+              ? 'button:has-text("Press enter to navigate"), button:has-text("Monday")'
+              : 'button[data-test-id*="days:"], [data-id="calendar-day-button"]';
             for (const frame of frames) {
               try {
-                await frame.waitForSelector('button[data-test-id*="days:"], [data-id="calendar-day-button"]', { timeout: 2000 });
+                await frame.waitForSelector(iframeSelector, { timeout: this.directCalendar ? 6000 : 2000 });
                 console.log(`✅ Calendar found in iframe`);
                 calendarFound = true;
                 calendarContext = frame;
@@ -606,7 +620,6 @@ export class ChiliPiperScraper {
             }
           } catch {}
         }
-        
         if (!calendarFound) {
           throw new Error('Could not find calendar elements with any of the provided selectors');
         }

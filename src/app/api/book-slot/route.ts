@@ -586,12 +586,36 @@ export async function POST(request: NextRequest) {
           }
         }
         if (!calendarFound && instance && firstName && lastName && phone) {
-          // Same instance but calendar not visible (stale tab, wrong user, or SPA navigated). Re-navigate to calendar.
-          const reNavOk = await navigateExistingPageToCalendar(page, email, firstName, lastName, phone, log);
-          if (reNavOk) {
+          // Same instance but calendar not visible. Clean up and run full form fill again (new browser, goto, submit, schedule, wait for calendar).
+          let pageUrl = '';
+          try {
+            pageUrl = page.url();
+          } catch {}
+          log('Calendar not found on current page, cleaning up and starting full form fill again', { pageUrl: pageUrl || '(unknown)' });
+          await browserInstanceManager.cleanupInstance(email);
+          const newInstance = await createInstanceForEmail(email, firstName, lastName, phone);
+          if (newInstance) {
+            browser = newInstance.browser;
+            context = newInstance.context;
+            page = newInstance.page;
+            videoDir = newInstance.videoDir;
+            sessionId = newInstance.sessionId;
+            await browserInstanceManager.registerInstance(email, browser, context, page, videoDir, sessionId);
+            log('New instance created after full form fill');
+            page.on('pageerror', (err: Error) => {
+              logErr('Chili Piper page JS error', { message: err.message, stack: err.stack });
+            });
+            page.on('console', (msg: { type: () => string; text: () => string }) => {
+              const type = msg.type();
+              const text = msg.text();
+              if (type === 'error' || type === 'warning') {
+                log('Chili Piper console', { type, text: text.slice(0, 500) });
+              }
+            });
             try {
               await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 5000 });
               calendarFound = true;
+              calendarContext = page;
             } catch {
               const frames = page.frames();
               for (const frame of frames) {
@@ -600,13 +624,24 @@ export async function POST(request: NextRequest) {
                   calendarContext = frame;
                   calendarFound = true;
                   break;
-                } catch { /* continue */ }
+                } catch {
+                  /* continue */
+                }
               }
             }
           }
         }
         if (!calendarFound) {
-          logErr('Calendar not found on page or in iframes');
+          let pageUrl = '';
+          try {
+            pageUrl = page.url();
+          } catch {}
+          logErr('Calendar not found on page or in iframes', {
+            pageUrl: pageUrl || '(unknown)',
+            hasInstance: !!instance,
+            hasFirstLastPhone: !!(firstName && lastName && phone),
+            frameCount: page.frames?.()?.length ?? 0,
+          });
           throw new Error('Calendar not found on page');
         }
 

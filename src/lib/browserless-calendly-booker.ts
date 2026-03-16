@@ -47,7 +47,7 @@ export async function bookCalendlySlotViaBrowserless(
   waitForNavigation(waitUntil: networkIdle, timeout: 12000) {
     status
   }
-  finalState: info { url }
+  finalState: url { url }
   errorMessage: text(selector: "[role='alert'], .error, .alert, .message-error") {
     text
   }

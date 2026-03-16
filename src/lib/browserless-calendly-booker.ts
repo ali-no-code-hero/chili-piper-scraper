@@ -37,7 +37,8 @@ export async function bookCalendlySlotViaBrowserless(
   const bqlUrl = process.env.BROWSERLESS_BQL_URL?.trim() || DEFAULT_BQL_URL;
   const apiUrl = `${bqlUrl}?token=${encodeURIComponent(token)}`;
 
-  const query = `mutation BookCalendlyWithErrors {
+  const operationName = 'BookCalendlyWithErrors';
+  const query = `mutation ${operationName} {
   goto(url: "${escapedUrl}", waitUntil: networkIdle) {
     status
   }
@@ -60,7 +61,11 @@ export async function bookCalendlySlotViaBrowserless(
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query }),
+      body: JSON.stringify({
+        query,
+        variables: null,
+        operationName,
+      }),
       signal: controller.signal,
     });
     clearTimeout(timeoutId);

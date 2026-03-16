@@ -203,16 +203,20 @@ export async function POST(request: NextRequest) {
       const responseTime = Date.now() - requestStartTime;
 
       if (!result.success) {
-        const isSlot = result.error?.toLowerCase().includes('slot') || result.error?.toLowerCase().includes('time');
-        const isDay = result.error?.toLowerCase().includes('day') || result.error?.toLowerCase().includes('month');
-        const isValidation = result.error?.toLowerCase().includes('validation') || (result.missingFields?.length ?? 0) > 0;
-        const code = isValidation
-          ? ErrorCode.VALIDATION_ERROR
-          : isSlot
-            ? ErrorCode.SLOT_NOT_FOUND
-            : isDay
-              ? ErrorCode.DAY_BUTTON_NOT_FOUND
-              : ErrorCode.SCRAPING_FAILED;
+        const err = (result.error ?? '').toLowerCase();
+        const isTimeout = err.includes('timed out') || err.includes('timeout');
+        const isValidation = err.includes('validation') || (result.missingFields?.length ?? 0) > 0;
+        const isSlot = !isTimeout && (err.includes('slot') || err.includes('time'));
+        const isDay = !isTimeout && (err.includes('day') || err.includes('month'));
+        const code = isTimeout
+          ? ErrorCode.REQUEST_TIMEOUT
+          : isValidation
+            ? ErrorCode.VALIDATION_ERROR
+            : isSlot
+              ? ErrorCode.SLOT_NOT_FOUND
+              : isDay
+                ? ErrorCode.DAY_BUTTON_NOT_FOUND
+                : ErrorCode.SCRAPING_FAILED;
         const metadata: Record<string, unknown> = { originalError: result.error };
         if (result.failedAfterStep) metadata.failedAfterStep = result.failedAfterStep;
         if (result.missingFields?.length) metadata.missingFields = result.missingFields;

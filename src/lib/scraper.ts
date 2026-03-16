@@ -367,6 +367,8 @@ export class ChiliPiperScraper {
       if (this.directCalendar) {
         console.log(`🚀 Direct calendar mode: navigating to calendar URL`);
         await page.goto(targetUrl, { waitUntil: 'load', timeout: 15000 });
+        // Allow client-side calendar to render (e.g. luxurypresence round-robin SPA)
+        await new Promise((r) => setTimeout(r, 2500));
       } else if (!useParameterizedUrl && !calendarPool.isReady()) {
         await page.goto(this.baseUrl, { waitUntil: 'load', timeout: 15000 });
       } else if (useParameterizedUrl) {
@@ -461,24 +463,38 @@ export class ChiliPiperScraper {
       }
       
       // Wait for calendar elements - prioritize selectors based on actual HTML structure
-      // HTML shows: data-id="calendar-day-button" and data-test-id="days:Oct/Fri Oct 31 2025..."
+      // cinq/concierge: data-id="calendar-day-button" and data-test-id="days:Oct/Fri Oct 31 2025..."
+      // luxurypresence round-robin: buttons with "Press enter to navigate available slots" or weekday names
       const calendarSelectors = strictMode
         ? ['[data-id="calendar-day-button"]', 'button[data-test-id^="days:"]']
-        : [
-            '[data-id="calendar-day-button"]', // Most reliable based on HTML
-            'button[data-test-id^="days:"]', // Exact match from HTML: days:Oct/Fri Oct 31...
-            '[data-id="calendar-day-button-selected"]', // Selected day variant
-            '[data-test-id*="calendar"]',
-            '[data-id="calendar"]',
-            'div[aria-label*="Calendar" i]',
-            '[role="grid"]',
-            '[data-test-id*="day"]',
-            'button:has-text("Monday")',
-            'button:has-text("Tuesday")',
-            'button:has-text("Wednesday")',
-            'button:has-text("Thursday")',
-            'button:has-text("Friday")'
-          ];
+        : this.directCalendar
+          ? [
+              'button:has-text("Press enter to navigate")', // luxurypresence day buttons
+              'button:has-text("Monday")',
+              'button:has-text("Tuesday")',
+              'button:has-text("Wednesday")',
+              'button:has-text("Thursday")',
+              'button:has-text("Friday")',
+              'button:has-text("Saturday")',
+              'button:has-text("Sunday")',
+              '[data-id="calendar-day-button"]',
+              'button[data-test-id^="days:"]',
+            ]
+          : [
+              '[data-id="calendar-day-button"]', // Most reliable based on HTML
+              'button[data-test-id^="days:"]', // Exact match from HTML: days:Oct/Fri Oct 31...
+              '[data-id="calendar-day-button-selected"]', // Selected day variant
+              '[data-test-id*="calendar"]',
+              '[data-id="calendar"]',
+              'div[aria-label*="Calendar" i]',
+              '[role="grid"]',
+              '[data-test-id*="day"]',
+              'button:has-text("Monday")',
+              'button:has-text("Tuesday")',
+              'button:has-text("Wednesday")',
+              'button:has-text("Thursday")',
+              'button:has-text("Friday")'
+            ];
       
       let calendarFound = false;
       let calendarContext: any = page;
@@ -509,10 +525,13 @@ export class ChiliPiperScraper {
       }
       
       if (!calendarFound) {
-        // Final retry with minimal wait
+        // Final retry with minimal wait (include luxurypresence-style selectors)
         console.log('🔁 Calendar not found, final retry...');
+        const fallbackSelector = this.directCalendar
+          ? 'button:has-text("Press enter to navigate"), button:has-text("Monday")'
+          : '[data-id="calendar-day-button"], button[data-test-id^="days:"]';
         try {
-          await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 300 });
+          await page.waitForSelector(fallbackSelector, { timeout: 300 });
           calendarFound = true;
         } catch {}
         for (const selector of calendarSelectors) {
@@ -1191,7 +1210,9 @@ export class ChiliPiperScraper {
       : [
           'button[data-test-id*="days:"]',
           '[data-id="calendar-day-button"]',
-          '[data-test-id*="day"]'
+          '[data-test-id*="day"]',
+          'button:has-text("Press enter to navigate")', // luxurypresence round-robin
+          'button:has-text("Monday")',
         ];
 
       for (const ctx of contexts) {
@@ -1214,7 +1235,8 @@ export class ChiliPiperScraper {
         } else {
           const a = await ctx.$$('button[data-test-id*="days:"]');
           const b = await ctx.$$('.calendar-day-button, [data-id="calendar-day-button"], [data-test-id*="day"]');
-          buttons = a.concat(b);
+          const c = await ctx.$$('button:has-text("Press enter to navigate")'); // luxurypresence
+          buttons = a.concat(b).concat(c);
         }
       } catch {}
 

@@ -499,7 +499,7 @@ export async function POST(request: NextRequest) {
       { success: true; date: string; time: string } | { success: false; error: string; videoPath?: string }
     > => {
       const scraper = new ChiliPiperScraper();
-      let instance: { browser: any; context: any; page: any } | null = null;
+      let instance: { browser: any; context: any; page: any; videoDir?: string; sessionId?: string } | null = null;
       let browser: any = null;
       let context: any = null;
       let page: any = null;

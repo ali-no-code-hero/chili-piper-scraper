@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { SecurityMiddleware } from '@/lib/security-middleware';
 import { concurrencyManager } from '@/lib/concurrency-manager';
 import { ErrorHandler, ErrorCode, SuccessCode } from '@/lib/error-handler';
-import { bookCalendlySlot, normalizeTimeForCalendly } from '@/lib/calendly-booker';
-import { bookCalendlySlotViaBrowserless } from '@/lib/browserless-calendly-booker';
+import { bookCalendlySlot, getDirectPaypercloseCalendlyUrl, normalizeTimeForCalendly } from '@/lib/calendly-booker';
 import { bookLoftySlot, bookLoftySlotL2 } from '@/lib/lofty-booker';
 import { POST as bookSlotPost } from '@/app/api/book-slot/route';
+
+const BOOK_HOUSEJET_PPC_URL =
+  process.env.BOOK_HOUSEJET_PPC_URL || 'https://xggz-mymh-hmop.n7c.xano.io/api:oLrvDV0I/book-housejet-ppc';
 
 const security = new SecurityMiddleware();
 
@@ -120,7 +122,7 @@ export async function POST(request: NextRequest) {
       return security.addSecurityHeaders(NextResponse.json(json, { status }));
     }
 
-    if (vendor === 'agentfire' || vendor === 'housejet-ppc') {
+    if (vendor === 'housejet-ppc') {
       const date = body.date as string;
       const time = body.time as string;
       if (!date || !time) {
@@ -128,7 +130,117 @@ export async function POST(request: NextRequest) {
         const errorResponse = ErrorHandler.createError(
           ErrorCode.VALIDATION_ERROR,
           'Missing date or time',
-          'date and time are required when vendor is agentfire or housejet-ppc. date: YYYY-MM-DD, time: e.g. 9:30am',
+          'date and time are required when vendor is housejet-ppc. date: YYYY-MM-DD, time: e.g. 9:30am',
+          { date: !!date, time: !!time },
+          requestId,
+          responseTime
+        );
+        return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: STATUS_FAILURE }));
+      }
+      if (!isValidDate(date)) {
+        const responseTime = Date.now() - requestStartTime;
+        const errorResponse = ErrorHandler.createError(
+          ErrorCode.VALIDATION_ERROR,
+          'Invalid date',
+          'date must be YYYY-MM-DD',
+          { providedValue: date },
+          requestId,
+          responseTime
+        );
+        return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: STATUS_FAILURE }));
+      }
+      const normalizedTime = normalizeTimeForCalendly(time);
+      if (!normalizedTime || !/^\d{1,2}:\d{2}(am|pm)$/.test(normalizedTime)) {
+        const responseTime = Date.now() - requestStartTime;
+        const errorResponse = ErrorHandler.createError(
+          ErrorCode.VALIDATION_ERROR,
+          'Invalid time',
+          'time must be like 9:30am or 2:00 PM',
+          { providedValue: time },
+          requestId,
+          responseTime
+        );
+        return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: STATUS_FAILURE }));
+      }
+
+      const calendlyUrl = getDirectPaypercloseCalendlyUrl({
+        date,
+        time,
+        firstName,
+        lastName,
+        email,
+        phone,
+        calendlyType: 'payperclose',
+      });
+      const responseTime = Date.now() - requestStartTime;
+
+      try {
+        const res = await fetch(BOOK_HOUSEJET_PPC_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ calendly_url: calendlyUrl }),
+          signal: AbortSignal.timeout(15000),
+        });
+        const resJson = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        if (!res.ok) {
+          const errMsg =
+            (resJson.message as string) ||
+            (resJson.error as string) ||
+            `External API returned ${res.status}`;
+          const errorResponse = ErrorHandler.createError(
+            ErrorCode.SCRAPING_FAILED,
+            errMsg,
+            errMsg,
+            { status: res.status, response: resJson },
+            requestId,
+            Date.now() - requestStartTime
+          );
+          return security.addSecurityHeaders(
+            NextResponse.json(errorResponse, { status: STATUS_FAILURE })
+          );
+        }
+        const successResponse = ErrorHandler.createSuccess(
+          SuccessCode.OPERATION_SUCCESS,
+          {
+            message: 'Housejet PPC booking requested',
+            vendor: 'housejet-ppc',
+            date,
+            time,
+            ...(resJson && typeof resJson === 'object' && Object.keys(resJson).length > 0
+              ? { externalResponse: resJson }
+              : {}),
+          },
+          requestId,
+          Date.now() - requestStartTime
+        );
+        return security.addSecurityHeaders(
+          NextResponse.json(successResponse, { status: STATUS_SUCCESS })
+        );
+      } catch (err) {
+        const errMessage = err instanceof Error ? err.message : String(err);
+        const errorResponse = ErrorHandler.createError(
+          ErrorCode.SCRAPING_FAILED,
+          errMessage,
+          errMessage,
+          { originalError: errMessage },
+          requestId,
+          Date.now() - requestStartTime
+        );
+        return security.addSecurityHeaders(
+          NextResponse.json(errorResponse, { status: STATUS_FAILURE })
+        );
+      }
+    }
+
+    if (vendor === 'agentfire') {
+      const date = body.date as string;
+      const time = body.time as string;
+      if (!date || !time) {
+        const responseTime = Date.now() - requestStartTime;
+        const errorResponse = ErrorHandler.createError(
+          ErrorCode.VALIDATION_ERROR,
+          'Missing date or time',
+          'date and time are required when vendor is agentfire. date: YYYY-MM-DD, time: e.g. 9:30am',
           { date: !!date, time: !!time },
           requestId,
           responseTime
@@ -171,32 +283,18 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const calendlyType = vendor === 'housejet-ppc' ? 'payperclose' : 'agentfire';
-      const useBrowserless =
-        vendor === 'housejet-ppc' && Boolean(process.env.BROWSERLESS_API_TOKEN?.trim());
       const result = await concurrencyManager.execute(
         () =>
-          useBrowserless
-            ? bookCalendlySlotViaBrowserless({
-                date,
-                time,
-                firstName,
-                lastName,
-                email,
-                phone,
-                calendlyType: 'payperclose',
-                answers: Object.keys(answersRecord).length > 0 ? answersRecord : undefined,
-              })
-            : bookCalendlySlot({
-                date,
-                time,
-                firstName,
-                lastName,
-                email,
-                phone,
-                calendlyType,
-                answers: Object.keys(answersRecord).length > 0 ? answersRecord : undefined,
-              }),
+          bookCalendlySlot({
+            date,
+            time,
+            firstName,
+            lastName,
+            email,
+            phone,
+            calendlyType: 'agentfire',
+            answers: Object.keys(answersRecord).length > 0 ? answersRecord : undefined,
+          }),
         45000
       );
 
@@ -239,7 +337,7 @@ export async function POST(request: NextRequest) {
         SuccessCode.OPERATION_SUCCESS,
         {
           message: 'Calendly slot booked successfully',
-          vendor,
+          vendor: 'agentfire',
           date: result.date,
           time: result.time,
         },

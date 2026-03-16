@@ -172,16 +172,29 @@ export async function POST(request: NextRequest) {
         phone,
         calendlyType: 'payperclose',
       });
-      const responseTime = Date.now() - requestStartTime;
+
+      const xanoRequestBody = { calendly_url: calendlyUrl };
+      console.log('[housejet-ppc xano] request', {
+        url: BOOK_HOUSEJET_PPC_URL,
+        method: 'POST',
+        body: xanoRequestBody,
+      });
 
       try {
         const res = await fetch(BOOK_HOUSEJET_PPC_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ calendly_url: calendlyUrl }),
+          body: JSON.stringify(xanoRequestBody),
           signal: AbortSignal.timeout(15000),
         });
         const resJson = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+
+        console.log('[housejet-ppc xano] response', {
+          status: res.status,
+          ok: res.ok,
+          body: resJson,
+        });
+
         if (!res.ok) {
           const errMsg =
             (resJson.message as string) ||
@@ -218,6 +231,7 @@ export async function POST(request: NextRequest) {
         );
       } catch (err) {
         const errMessage = err instanceof Error ? err.message : String(err);
+        console.log('[housejet-ppc xano] request failed', { error: errMessage });
         const errorResponse = ErrorHandler.createError(
           ErrorCode.SCRAPING_FAILED,
           errMessage,

@@ -331,6 +331,79 @@ async function createInstanceForEmail(
   }
 }
 
+/**
+ * Navigate an existing page (reused instance) to the calendar view.
+ * Used when the page is not showing the calendar (stale tab, wrong user, SPA navigated).
+ * Requires firstName, lastName, phone for prefill URL.
+ */
+async function navigateExistingPageToCalendar(
+  page: any,
+  email: string,
+  firstName: string,
+  lastName: string,
+  phone: string,
+  log: (msg: string, data?: Record<string, unknown>) => void
+): Promise<boolean> {
+  try {
+    const baseUrl = process.env.CHILI_PIPER_FORM_URL || "https://cincpro.chilipiper.com/concierge-router/link/lp-request-a-demo-agent-advice";
+    const phoneFieldId = process.env.CHILI_PIPER_PHONE_FIELD_ID || 'aa1e0f82-816d-478f-bf04-64a447af86b3';
+    const targetUrl = buildParameterizedUrl(firstName, lastName, email, phone, baseUrl, phoneFieldId);
+
+    log('Re-navigating existing instance to calendar', { url: targetUrl.slice(0, 80) + '...' });
+    page.setDefaultNavigationTimeout(15000);
+    page.setDefaultTimeout(15000);
+    await page.goto(targetUrl, { waitUntil: 'load', timeout: 15000 });
+    await new Promise((r) => setTimeout(r, 1500));
+
+    // Submit / continue if present
+    const submitSelectors = [
+      'button[type="submit"]', 'input[type="submit"]', 'button:has-text("Submit")', 'button:has-text("Continue")',
+      '[data-test-id="GuestForm-submit-button"]',
+    ];
+    for (const selector of submitSelectors) {
+      try {
+        await page.click(selector, { timeout: 3000 });
+        await new Promise((r) => setTimeout(r, 1500));
+        break;
+      } catch { /* ignore */ }
+    }
+
+    // Click schedule button if present
+    const scheduleSelectors = [
+      '[data-test-id="ConciergeLiveBox-book"]', '[data-id="concierge-live-book"]',
+      'button:has-text("Schedule a meeting")', 'button:has-text("Schedule")',
+    ];
+    for (const selector of scheduleSelectors) {
+      try {
+        await page.click(selector, { timeout: 3000 });
+        break;
+      } catch { /* ignore */ }
+    }
+
+    await new Promise((r) => setTimeout(r, 2000));
+
+    // Wait for calendar
+    try {
+      await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 10000 });
+      log('Calendar visible after re-navigation');
+      return true;
+    } catch {
+      const frames = page.frames();
+      for (const frame of frames) {
+        try {
+          await frame.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 5000 });
+          log('Calendar visible in iframe after re-navigation');
+          return true;
+        } catch { /* continue */ }
+      }
+    }
+    return false;
+  } catch (e) {
+    log('Re-navigation failed', { error: (e as Error)?.message });
+    return false;
+  }
+}
+
 export async function POST(request: NextRequest) {
   const requestStartTime = Date.now();
   const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -462,12 +535,14 @@ export async function POST(request: NextRequest) {
           videoDir = newInstance.videoDir;
           sessionId = newInstance.sessionId;
           log('New instance created and registered', { sessionId });
-          await browserInstanceManager.registerInstance(email, browser, context, page);
+          await browserInstanceManager.registerInstance(email, browser, context, page, videoDir, sessionId);
         } else {
           browser = instance.browser;
           context = instance.context;
           page = instance.page;
-          log('Using existing instance', { email });
+          videoDir = instance.videoDir;
+          sessionId = instance.sessionId;
+          log('Using existing instance', { email, hasVideoRecording: !!(videoDir && sessionId) });
         }
 
         // Capture Chili Piper page errors and console for debugging 500s
@@ -507,6 +582,26 @@ export async function POST(request: NextRequest) {
               break;
             } catch {
               continue;
+            }
+          }
+        }
+        if (!calendarFound && instance && firstName && lastName && phone) {
+          // Same instance but calendar not visible (stale tab, wrong user, or SPA navigated). Re-navigate to calendar.
+          const reNavOk = await navigateExistingPageToCalendar(page, email, firstName, lastName, phone, log);
+          if (reNavOk) {
+            try {
+              await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 5000 });
+              calendarFound = true;
+            } catch {
+              const frames = page.frames();
+              for (const frame of frames) {
+                try {
+                  await frame.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 5000 });
+                  calendarContext = frame;
+                  calendarFound = true;
+                  break;
+                } catch { /* continue */ }
+              }
             }
           }
         }

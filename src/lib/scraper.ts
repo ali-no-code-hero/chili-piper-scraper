@@ -53,9 +53,10 @@ export class ChiliPiperScraper {
 
   /**
    * Get existing browser instance for an email
-   * Returns the page if instance exists and is valid, null otherwise
+   * Returns the page if instance exists and is valid, null otherwise.
+   * When the instance was created with recording, videoDir and sessionId are included so failure videos can be saved.
    */
-  getExistingInstance(email: string): { browser: any; context: any; page: any } | null {
+  getExistingInstance(email: string): { browser: any; context: any; page: any; videoDir?: string; sessionId?: string } | null {
     const instance = browserInstanceManager.getInstance(email);
     if (!instance) {
       return null;
@@ -64,6 +65,8 @@ export class ChiliPiperScraper {
       browser: instance.browser,
       context: instance.context,
       page: instance.page,
+      videoDir: instance.videoDir,
+      sessionId: instance.sessionId,
     };
   }
 
@@ -598,8 +601,8 @@ export class ChiliPiperScraper {
         }
 
         // Register the instance with the browser instance manager
-        // Note: We keep the browser, context, and page open
-        await browserInstanceManager.registerInstance(email, browser, context, page);
+        // Note: We keep the browser, context, and page open. Pass videoDir/sessionId so book-slot can save failure videos when reusing this instance.
+        await browserInstanceManager.registerInstance(email, browser, context, page, videoDir ?? undefined, sessionId ?? undefined);
         console.log(`✅ Browser instance registered for ${email} - keeping open for future bookings`);
         
         // Don't release browser back to pool - it's now managed by browserInstanceManager

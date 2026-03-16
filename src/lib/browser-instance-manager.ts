@@ -8,6 +8,10 @@ interface BrowserInstance {
   email: string;
   lastUsed: number;
   createdAt: number;
+  /** When set, failure video can be saved to this dir (from context recordVideo) */
+  videoDir?: string;
+  /** Session id used for failure video filename */
+  sessionId?: string;
 }
 
 class BrowserInstanceManager {
@@ -23,13 +27,16 @@ class BrowserInstanceManager {
   }
 
   /**
-   * Register a browser instance for an email
+   * Register a browser instance for an email.
+   * videoDir and sessionId are optional; when present, failure videos can be saved when reusing this instance.
    */
   async registerInstance(
     email: string,
     browser: Browser,
     context: BrowserContext,
-    page: Page
+    page: Page,
+    videoDir?: string,
+    sessionId?: string
   ): Promise<void> {
     // Check if instance already exists for this email
     const existing = this.instances.get(email);
@@ -62,6 +69,8 @@ class BrowserInstanceManager {
       email,
       lastUsed: Date.now(),
       createdAt: Date.now(),
+      videoDir,
+      sessionId,
     });
 
     // Release browser from pool so it's available for new requests

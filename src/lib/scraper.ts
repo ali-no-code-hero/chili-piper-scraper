@@ -25,13 +25,23 @@ export interface ScrapingResult {
   error?: string;
 }
 
+export interface ChiliPiperScraperOptions {
+  /** When true, baseUrl goes directly to calendar; skip form submit and schedule clicks. */
+  directCalendar?: boolean;
+}
+
 export class ChiliPiperScraper {
   private baseUrl: string;
   private routingId: string | null = null;
   private phoneFieldId: string;
+  private directCalendar: boolean;
 
-  constructor(formUrl?: string) {
+  constructor(
+    formUrl?: string,
+    options?: ChiliPiperScraperOptions
+  ) {
     this.baseUrl = formUrl || process.env.CHILI_PIPER_FORM_URL || "https://cincpro.chilipiper.com/concierge-router/link/lp-request-a-demo-agent-advice";
+    this.directCalendar = options?.directCalendar ?? false;
     
     // Extract routing ID from environment, URL, or leave null for form-based approach
     this.routingId = process.env.CHILI_PIPER_ROUTING_ID || null;
@@ -247,11 +257,12 @@ export class ChiliPiperScraper {
 
       console.log(`🎯 Starting scrape for ${firstName} ${lastName} (${email})`);
       const strictMode = (process.env.STRICT_SELECTORS || '').toLowerCase() === 'true';
-      
-      // Build parameterized URL to skip form filling (much faster!)
-      // Always use prefill URL format - just adds query params to base URL
-      const targetUrl = this.buildParameterizedUrl(firstName, lastName, email, phone);
-      const useParameterizedUrl = true; // Always use prefill URLs for faster scraping
+
+      // Direct-calendar vendors (e.g. luxurypresence): URL goes straight to calendar, no form
+      const useParameterizedUrl = !this.directCalendar;
+      const targetUrl = this.directCalendar
+        ? this.baseUrl
+        : this.buildParameterizedUrl(firstName, lastName, email, phone);
 
       // Try warm post-form calendar context first (only if not using parameterized URL)
       const calendarPool = getCalendarContextPool(this.baseUrl);
@@ -353,103 +364,100 @@ export class ChiliPiperScraper {
       });
 
       // Navigate to parameterized URL or base URL; wait for full load so Chili Piper UI is ready
-      if (!useParameterizedUrl && !calendarPool.isReady()) {
+      if (this.directCalendar) {
+        console.log(`🚀 Direct calendar mode: navigating to calendar URL`);
+        await page.goto(targetUrl, { waitUntil: 'load', timeout: 15000 });
+      } else if (!useParameterizedUrl && !calendarPool.isReady()) {
         await page.goto(this.baseUrl, { waitUntil: 'load', timeout: 15000 });
       } else if (useParameterizedUrl) {
         console.log(`🚀 Navigating directly to parameterized URL (skipping form)`);
         await page.goto(targetUrl, { waitUntil: 'load', timeout: 15000 });
       }
 
-      // Skip all waits - form is pre-filled via URL params, just click Submit
-      console.log("⚡ Using prefill URL - form fields are already filled!");
-      
-      // Now just click Submit button (form fields are pre-filled via URL)
-      const submitSelectors = [
-        'button[type="submit"]',
-        'input[type="submit"]',
-        'button:has-text("Submit")',
-        'button:has-text("Continue")',
-        '[data-test-id="GuestForm-submit-button"]',
-        'button[data-test-id*="submit"]',
-        'button[data-test-id*="continue"]',
-        '.submit-button',
-        '.continue-button'
-      ];
-      
-      let submitClicked = false;
-      for (const selector of submitSelectors) {
-        try {
-          // Try clicking immediately without wait (button should be ready)
-          await page.click(selector, { timeout: 200 });
-          console.log(`✅ Successfully clicked submit button using selector: ${selector}`);
-          submitClicked = true;
-          break;
-        } catch (error) {
-          // If immediate click fails, try with short wait
+      if (!this.directCalendar) {
+        // Skip all waits - form is pre-filled via URL params, just click Submit
+        console.log("⚡ Using prefill URL - form fields are already filled!");
+
+        // Now just click Submit button (form fields are pre-filled via URL)
+        const submitSelectors = [
+          'button[type="submit"]',
+          'input[type="submit"]',
+          'button:has-text("Submit")',
+          'button:has-text("Continue")',
+          '[data-test-id="GuestForm-submit-button"]',
+          'button[data-test-id*="submit"]',
+          'button[data-test-id*="continue"]',
+          '.submit-button',
+          '.continue-button'
+        ];
+
+        let submitClicked = false;
+        for (const selector of submitSelectors) {
           try {
-            await page.waitForSelector(selector, { timeout: 200 });
-            await page.click(selector);
+            await page.click(selector, { timeout: 200 });
             console.log(`✅ Successfully clicked submit button using selector: ${selector}`);
             submitClicked = true;
             break;
-          } catch {
-            continue;
+          } catch (error) {
+            try {
+              await page.waitForSelector(selector, { timeout: 200 });
+              await page.click(selector);
+              console.log(`✅ Successfully clicked submit button using selector: ${selector}`);
+              submitClicked = true;
+              break;
+            } catch {
+              continue;
+            }
           }
         }
-      }
-      
-      if (!submitClicked) {
-        console.log("⚠️ Submit button not found - page may have auto-submitted or gone directly to calendar");
-      } else {
-        console.log("✅ Form submitted (fields were pre-filled via URL)");
-        // Skip wait - page should transition immediately
-      }
 
-      // Skip wait - page should already be on calendar or schedule choice
-      console.log("⏳ Checking for calendar/schedule page...");
-      
-      // Look for "Schedule a meeting" or similar options (optional - sometimes page goes directly to calendar)
-      // Based on HTML: data-test-id="ConciergeLiveBox-book" or data-id="concierge-live-book"
-      // This is needed for both parameterized URLs and form-based flows
-      const scheduleSelectors = [
-        '[data-test-id="ConciergeLiveBox-book"]',
-        '[data-id="concierge-live-book"]',
-        'button:has-text("Schedule a meeting")',
-        'button:has-text("Schedule")',
-        'button:has-text("Book a meeting")',
-        'button:has-text("Schedule later")',
-        '[data-test-id*="schedule"]',
-        'button[data-test-id*="schedule"]'
-      ];
-      
-      // Check for schedule button (page might go directly to calendar, or show schedule option)
-      let scheduleClicked = false;
-      for (const selector of scheduleSelectors) {
-        try {
-          // Try clicking immediately without wait
-          await page.click(selector, { timeout: 200 });
-          console.log(`✅ Successfully clicked schedule button using selector: ${selector}`);
-          scheduleClicked = true;
-          break;
-        } catch (error) {
-          // If immediate click fails, try with short wait
+        if (!submitClicked) {
+          console.log("⚠️ Submit button not found - page may have auto-submitted or gone directly to calendar");
+        } else {
+          console.log("✅ Form submitted (fields were pre-filled via URL)");
+        }
+
+        // Skip wait - page should already be on calendar or schedule choice
+        console.log("⏳ Checking for calendar/schedule page...");
+
+        const scheduleSelectors = [
+          '[data-test-id="ConciergeLiveBox-book"]',
+          '[data-id="concierge-live-book"]',
+          'button:has-text("Schedule a meeting")',
+          'button:has-text("Schedule")',
+          'button:has-text("Book a meeting")',
+          'button:has-text("Schedule later")',
+          '[data-test-id*="schedule"]',
+          'button[data-test-id*="schedule"]'
+        ];
+
+        let scheduleClicked = false;
+        for (const selector of scheduleSelectors) {
           try {
-            await page.waitForSelector(selector, { timeout: 200 });
-            await page.click(selector);
+            await page.click(selector, { timeout: 200 });
             console.log(`✅ Successfully clicked schedule button using selector: ${selector}`);
             scheduleClicked = true;
             break;
-          } catch {
-            continue;
+          } catch (error) {
+            try {
+              await page.waitForSelector(selector, { timeout: 200 });
+              await page.click(selector);
+              console.log(`✅ Successfully clicked schedule button using selector: ${selector}`);
+              scheduleClicked = true;
+              break;
+            } catch {
+              continue;
+            }
           }
         }
-      }
-      
-      // Skip calendar wait - it should be ready immediately after schedule click or already visible
-      if (scheduleClicked) {
-        console.log("✅ Proceeding to schedule a meeting");
+
+        if (scheduleClicked) {
+          console.log("✅ Proceeding to schedule a meeting");
+        } else {
+          console.log("ℹ️ No schedule button found - page may have gone directly to calendar");
+        }
       } else {
-        console.log("ℹ️ No schedule button found - page may have gone directly to calendar");
+        console.log("ℹ️ Direct calendar mode - skipping submit and schedule clicks");
       }
       
       // Wait for calendar elements - prioritize selectors based on actual HTML structure

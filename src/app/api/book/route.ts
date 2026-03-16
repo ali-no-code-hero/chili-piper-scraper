@@ -15,7 +15,7 @@ const security = new SecurityMiddleware();
 const STATUS_SUCCESS = 200;
 const STATUS_FAILURE = 201;
 
-const VENDORS = ['cinq', 'agentfire', 'housejet-ppc', 'lofty', 'lofty-5-9', 'lofty-10-24', 'lofty-25'] as const;
+const VENDORS = ['cinq', 'luxurypresence', 'agentfire', 'housejet-ppc', 'lofty', 'lofty-5-9', 'lofty-10-24', 'lofty-25'] as const;
 type Vendor = (typeof VENDORS)[number];
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -114,6 +114,44 @@ export async function POST(request: NextRequest) {
           lastName,
           phone: phone || '',
           dateTime: dateTime.trim(),
+        }),
+      });
+      const bookSlotResponse = await bookSlotPost(bookSlotRequest);
+      const status = bookSlotResponse.status >= 200 && bookSlotResponse.status < 300 ? STATUS_SUCCESS : STATUS_FAILURE;
+      const json = await bookSlotResponse.json();
+      return security.addSecurityHeaders(NextResponse.json(json, { status }));
+    }
+
+    if (vendor === 'luxurypresence') {
+      const dateTime = body.dateTime as string;
+      if (!dateTime || typeof dateTime !== 'string' || !dateTime.trim()) {
+        const responseTime = Date.now() - requestStartTime;
+        const errorResponse = ErrorHandler.createError(
+          ErrorCode.VALIDATION_ERROR,
+          'Missing dateTime',
+          'dateTime is required when vendor is luxurypresence. Format like "November 13, 2025 at 1:25 PM CST"',
+          undefined,
+          requestId,
+          responseTime
+        );
+        return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: STATUS_FAILURE }));
+      }
+      const bookSlotUrl = request.nextUrl.origin + '/api/book-slot';
+      const bookSlotRequest = new NextRequest(bookSlotUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': request.headers.get('Authorization') || '',
+          'x-forwarded-for': request.headers.get('x-forwarded-for') || '',
+          'x-real-ip': request.headers.get('x-real-ip') || '',
+        },
+        body: JSON.stringify({
+          email,
+          firstName,
+          lastName,
+          phone: phone || '',
+          dateTime: dateTime.trim(),
+          vendor: 'luxurypresence',
         }),
       });
       const bookSlotResponse = await bookSlotPost(bookSlotRequest);

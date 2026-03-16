@@ -458,7 +458,9 @@ export const ValidationSchemas = {
     first_name: { type: 'string', required: true, minLength: 1, maxLength: 100 },
     last_name: { type: 'string', required: true, minLength: 1, maxLength: 100 },
     email: { type: 'email', required: true, maxLength: 255 },
-    phone: { type: 'phone', required: true, minLength: 10, maxLength: 20 }
+    phone: { type: 'phone', required: true, minLength: 10, maxLength: 20 },
+    vendor: { type: 'string', required: false, maxLength: 50 },
+    days: { type: 'number', required: false }
   },
   
   adminLogin: {

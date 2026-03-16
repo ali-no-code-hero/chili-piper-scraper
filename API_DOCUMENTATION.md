@@ -22,7 +22,7 @@ Authorization: Bearer your-api-key-here
 
 Contact your administrator to obtain an API key. API keys are managed through the admin interface.
 
-## Endpointsx
+## Endpoints
 
 ### 1. Get Available Slots (Regular)
 
@@ -36,9 +36,17 @@ Contact your administrator to obtain an API key. API keys are managed through th
   "first_name": "John",
   "last_name": "Doe", 
   "email": "john.doe@example.com",
-  "phone": "5551234567"
+  "phone": "5551234567",
+  "vendor": "cinq",
+  "days": 7
 }
 ```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `first_name`, `last_name`, `email`, `phone` | Yes | Guest details (used for form prefill when vendor uses a form before calendar). |
+| `vendor` | No | Chili Piper flow: `cinq` (default) or `luxurypresence`. When omitted, defaults to cinq. For `luxurypresence`, the URL goes directly to the calendar (no form step). |
+| `days` | No | Max days to collect (1–30). Omit for default. |
 
 **Response:**
 ```json
@@ -96,6 +104,7 @@ data: {"success":true,"streaming":false,"message":"Slot collection completed","d
 | vendor       | Backend              | Required fields (besides vendor, email, firstName, lastName) | Optional |
 |-------------|----------------------|----------------------------------------------------------------|----------|
 | `cinq`      | Chili Piper          | `dateTime` (e.g. "November 13, 2025 at 1:25 PM CST")         | `phone`  |
+| `luxurypresence` | Chili Piper (direct calendar) | `dateTime` (same format as cinq) | `phone` (form has no phone field) |
 | `agentfire` | Calendly (AgentFire) | `date` (YYYY-MM-DD), `time` (e.g. 9:30am)                    | `phone`, `answers` |
 | `housejet-ppc` | Calendly (Pay-per-closing) | `date`, `time`                              | `phone`  |
 
@@ -107,6 +116,19 @@ data: {"success":true,"streaming":false,"message":"Slot collection completed","d
   "firstName": "Jane",
   "lastName": "Doe",
   "phone": "5551234567",
+  "dateTime": "November 13, 2025 at 1:25 PM CST"
+}
+```
+
+**Request (Chili Piper – vendor luxurypresence):**  
+Uses a direct-to-calendar URL; after slot selection the guest form (first name, last name, email) is filled and "Confirm Meeting" is clicked. Phone is optional.
+
+```json
+{
+  "vendor": "luxurypresence",
+  "email": "jane@example.com",
+  "firstName": "Jane",
+  "lastName": "Doe",
   "dateTime": "November 13, 2025 at 1:25 PM CST"
 }
 ```

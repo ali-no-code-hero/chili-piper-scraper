@@ -13,6 +13,7 @@ import {
   CHILI_PIPER_VIDEO_ENABLED,
   saveChiliPiperFailureVideo,
 } from '@/lib/chili-piper-video';
+import { getChiliPiperVendorConfig } from '@/lib/chili-piper-vendors';
 
 const security = new SecurityMiddleware();
 
@@ -111,6 +112,11 @@ function buildParameterizedUrl(
   return `${urlParts.origin}${urlParts.pathname}?${existingParams.toString()}`;
 }
 
+interface CreateInstanceOptions {
+  baseUrl?: string;
+  directCalendar?: boolean;
+}
+
 /**
  * Create a new browser instance and navigate to calendar for an email
  */
@@ -118,7 +124,8 @@ async function createInstanceForEmail(
   email: string,
   firstName: string,
   lastName: string,
-  phone: string
+  phone: string,
+  options?: CreateInstanceOptions
 ): Promise<{ browser: any; context: any; page: any; videoDir?: string; sessionId?: string } | null> {
   let browser: any = null;
   let context: any = null;
@@ -127,10 +134,14 @@ async function createInstanceForEmail(
   let videoDir: string | null = null;
   const sessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
+  const baseUrl = options?.baseUrl ?? process.env.CHILI_PIPER_FORM_URL ?? "https://cincpro.chilipiper.com/concierge-router/link/lp-request-a-demo-agent-advice";
+  const directCalendar = options?.directCalendar ?? false;
+  const phoneFieldId = process.env.CHILI_PIPER_PHONE_FIELD_ID || 'aa1e0f82-816d-478f-bf04-64a447af86b3';
+  const targetUrl = directCalendar
+    ? baseUrl
+    : buildParameterizedUrl(firstName, lastName, email, phone || '+15555555555', baseUrl, phoneFieldId);
+
   try {
-    const baseUrl = process.env.CHILI_PIPER_FORM_URL || "https://cincpro.chilipiper.com/concierge-router/link/lp-request-a-demo-agent-advice";
-    const phoneFieldId = process.env.CHILI_PIPER_PHONE_FIELD_ID || 'aa1e0f82-816d-478f-bf04-64a447af86b3';
-    const targetUrl = buildParameterizedUrl(firstName, lastName, email, phone, baseUrl, phoneFieldId);
 
     if (CHILI_PIPER_VIDEO_ENABLED) {
       const recordDir = path.join(os.tmpdir(), 'chili-piper-videos', sessionId);
@@ -216,43 +227,48 @@ async function createInstanceForEmail(
     });
 
     await page.goto(targetUrl, { waitUntil: 'load', timeout: 15000 });
-    // Brief wait for form to be interactive
-    await new Promise((r) => setTimeout(r, 1500));
 
-    // Click submit button
-    const submitSelectors = [
-      'button[type="submit"]',
-      'input[type="submit"]',
-      'button:has-text("Submit")',
-      'button:has-text("Continue")',
-      '[data-test-id="GuestForm-submit-button"]',
-    ];
-    
-    for (const selector of submitSelectors) {
-      try {
-        await page.click(selector, { timeout: 3000 });
-        await new Promise((r) => setTimeout(r, 1500));
-        break;
-      } catch {}
+    if (!directCalendar) {
+      // Brief wait for form to be interactive
+      await new Promise((r) => setTimeout(r, 1500));
+
+      // Click submit button
+      const submitSelectors = [
+        'button[type="submit"]',
+        'input[type="submit"]',
+        'button:has-text("Submit")',
+        'button:has-text("Continue")',
+        '[data-test-id="GuestForm-submit-button"]',
+      ];
+
+      for (const selector of submitSelectors) {
+        try {
+          await page.click(selector, { timeout: 3000 });
+          await new Promise((r) => setTimeout(r, 1500));
+          break;
+        } catch {}
+      }
+
+      // Click schedule button if present
+      const scheduleSelectors = [
+        '[data-test-id="ConciergeLiveBox-book"]',
+        '[data-id="concierge-live-book"]',
+        'button:has-text("Schedule a meeting")',
+        'button:has-text("Schedule")',
+      ];
+
+      for (const selector of scheduleSelectors) {
+        try {
+          await page.click(selector, { timeout: 3000 });
+          break;
+        } catch {}
+      }
+
+      // Give the calendar time to load after clicking schedule
+      await new Promise((r) => setTimeout(r, 2000));
+    } else {
+      await new Promise((r) => setTimeout(r, 1500));
     }
-
-    // Click schedule button if present
-    const scheduleSelectors = [
-      '[data-test-id="ConciergeLiveBox-book"]',
-      '[data-id="concierge-live-book"]',
-      'button:has-text("Schedule a meeting")',
-      'button:has-text("Schedule")',
-    ];
-    
-    for (const selector of scheduleSelectors) {
-      try {
-        await page.click(selector, { timeout: 3000 });
-        break;
-      } catch {}
-    }
-
-    // Give the calendar time to load after clicking schedule
-    await new Promise((r) => setTimeout(r, 2000));
 
     // Wait for calendar using multiple strategies (same approach as scraper)
     const calendarSelectors = [
@@ -334,7 +350,7 @@ async function createInstanceForEmail(
 /**
  * Navigate an existing page (reused instance) to the calendar view.
  * Used when the page is not showing the calendar (stale tab, wrong user, SPA navigated).
- * Requires firstName, lastName, phone for prefill URL.
+ * When directCalendar is true, goes to baseUrl only and skips submit/schedule clicks.
  */
 async function navigateExistingPageToCalendar(
   page: any,
@@ -342,12 +358,16 @@ async function navigateExistingPageToCalendar(
   firstName: string,
   lastName: string,
   phone: string,
-  log: (msg: string, data?: Record<string, unknown>) => void
+  log: (msg: string, data?: Record<string, unknown>) => void,
+  options?: CreateInstanceOptions
 ): Promise<boolean> {
   try {
-    const baseUrl = process.env.CHILI_PIPER_FORM_URL || "https://cincpro.chilipiper.com/concierge-router/link/lp-request-a-demo-agent-advice";
+    const baseUrl = options?.baseUrl ?? process.env.CHILI_PIPER_FORM_URL ?? "https://cincpro.chilipiper.com/concierge-router/link/lp-request-a-demo-agent-advice";
+    const directCalendar = options?.directCalendar ?? false;
     const phoneFieldId = process.env.CHILI_PIPER_PHONE_FIELD_ID || 'aa1e0f82-816d-478f-bf04-64a447af86b3';
-    const targetUrl = buildParameterizedUrl(firstName, lastName, email, phone, baseUrl, phoneFieldId);
+    const targetUrl = directCalendar
+      ? baseUrl
+      : buildParameterizedUrl(firstName, lastName, email, phone || '+15555555555', baseUrl, phoneFieldId);
 
     log('Re-navigating existing instance to calendar', { url: targetUrl.slice(0, 80) + '...' });
     page.setDefaultNavigationTimeout(15000);
@@ -355,34 +375,33 @@ async function navigateExistingPageToCalendar(
     await page.goto(targetUrl, { waitUntil: 'load', timeout: 15000 });
     await new Promise((r) => setTimeout(r, 1500));
 
-    // Submit / continue if present
-    const submitSelectors = [
-      'button[type="submit"]', 'input[type="submit"]', 'button:has-text("Submit")', 'button:has-text("Continue")',
-      '[data-test-id="GuestForm-submit-button"]',
-    ];
-    for (const selector of submitSelectors) {
-      try {
-        await page.click(selector, { timeout: 3000 });
-        await new Promise((r) => setTimeout(r, 1500));
-        break;
-      } catch { /* ignore */ }
+    if (!directCalendar) {
+      const submitSelectors = [
+        'button[type="submit"]', 'input[type="submit"]', 'button:has-text("Submit")', 'button:has-text("Continue")',
+        '[data-test-id="GuestForm-submit-button"]',
+      ];
+      for (const selector of submitSelectors) {
+        try {
+          await page.click(selector, { timeout: 3000 });
+          await new Promise((r) => setTimeout(r, 1500));
+          break;
+        } catch { /* ignore */ }
+      }
+
+      const scheduleSelectors = [
+        '[data-test-id="ConciergeLiveBox-book"]', '[data-id="concierge-live-book"]',
+        'button:has-text("Schedule a meeting")', 'button:has-text("Schedule")',
+      ];
+      for (const selector of scheduleSelectors) {
+        try {
+          await page.click(selector, { timeout: 3000 });
+          break;
+        } catch { /* ignore */ }
+      }
+
+      await new Promise((r) => setTimeout(r, 2000));
     }
 
-    // Click schedule button if present
-    const scheduleSelectors = [
-      '[data-test-id="ConciergeLiveBox-book"]', '[data-id="concierge-live-book"]',
-      'button:has-text("Schedule a meeting")', 'button:has-text("Schedule")',
-    ];
-    for (const selector of scheduleSelectors) {
-      try {
-        await page.click(selector, { timeout: 3000 });
-        break;
-      } catch { /* ignore */ }
-    }
-
-    await new Promise((r) => setTimeout(r, 2000));
-
-    // Wait for calendar
     try {
       await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 10000 });
       log('Calendar visible after re-navigation');
@@ -422,6 +441,7 @@ export async function POST(request: NextRequest) {
           firstName: { type: 'string' },
           lastName: { type: 'string' },
           phone: { type: 'string' },
+          vendor: { type: 'string' },
         },
       },
       allowedMethods: ['POST'],
@@ -445,8 +465,9 @@ export async function POST(request: NextRequest) {
     }
 
     const body = securityResult.sanitizedData!;
-    const { email, dateTime, firstName, lastName, phone } = body;
-    console.log('[book-slot] API called', { email, dateTime, requestId });
+    const { email, dateTime, firstName, lastName, phone, vendor } = body;
+    const vendorConfig = getChiliPiperVendorConfig(vendor as string | undefined);
+    console.log('[book-slot] API called', { email, dateTime, requestId, vendor: vendor || 'cinq' });
 
     // Parse date/time
     const parsed = parseDateTime(dateTime);
@@ -498,7 +519,7 @@ export async function POST(request: NextRequest) {
     const result = await concurrencyManager.execute(async (): Promise<
       { success: true; date: string; time: string } | { success: false; error: string; videoPath?: string }
     > => {
-      const scraper = new ChiliPiperScraper();
+      const scraper = new ChiliPiperScraper(vendorConfig.formUrl);
       let instance: { browser: any; context: any; page: any; videoDir?: string; sessionId?: string } | null = null;
       let browser: any = null;
       let context: any = null;
@@ -520,11 +541,18 @@ export async function POST(request: NextRequest) {
 
         if (!instance) {
           log('No existing instance, creating new one', { email });
-          if (!firstName || !lastName || !phone) {
-            logErr('Missing required fields for new instance', { hasFirst: !!firstName, hasLast: !!lastName, hasPhone: !!phone });
-            throw new Error('firstName, lastName, and phone are required when creating a new instance');
+          if (!firstName || !lastName) {
+            logErr('Missing required fields for new instance', { hasFirst: !!firstName, hasLast: !!lastName });
+            throw new Error('firstName and lastName are required when creating a new instance');
           }
-          const newInstance = await createInstanceForEmail(email, firstName, lastName, phone);
+          if (!vendorConfig.directCalendar && !phone) {
+            logErr('Phone required for this vendor', { vendor: vendorConfig });
+            throw new Error('phone is required when creating a new instance for this vendor');
+          }
+          const newInstance = await createInstanceForEmail(email, firstName, lastName, phone || '', {
+            baseUrl: vendorConfig.formUrl,
+            directCalendar: vendorConfig.directCalendar,
+          });
           if (!newInstance) {
             logErr('createInstanceForEmail returned null');
             throw new Error('Failed to create browser instance');
@@ -585,7 +613,7 @@ export async function POST(request: NextRequest) {
             }
           }
         }
-        if (!calendarFound && instance && firstName && lastName && phone) {
+        if (!calendarFound && instance && firstName && lastName && (phone || vendorConfig.directCalendar)) {
           // Same instance but calendar not visible. Clean up and run full form fill again (new browser, goto, submit, schedule, wait for calendar).
           let pageUrl = '';
           try {
@@ -593,7 +621,10 @@ export async function POST(request: NextRequest) {
           } catch {}
           log('Calendar not found on current page, cleaning up and starting full form fill again', { pageUrl: pageUrl || '(unknown)' });
           await browserInstanceManager.cleanupInstance(email);
-          const newInstance = await createInstanceForEmail(email, firstName, lastName, phone);
+          const newInstance = await createInstanceForEmail(email, firstName, lastName, phone || '', {
+            baseUrl: vendorConfig.formUrl,
+            directCalendar: vendorConfig.directCalendar,
+          });
           if (newInstance) {
             browser = newInstance.browser;
             context = newInstance.context;
@@ -836,8 +867,38 @@ export async function POST(request: NextRequest) {
         throw new Error(`Time slot button not found for time ${time} (formatted: ${slotTimeId}).${availableSlotInfo}`);
       }
 
-      // Wait a moment to ensure booking is processed
+      // Wait a moment for slot selection to be processed
       await page.waitForTimeout(1000);
+
+      // Vendors like luxurypresence show guest form after slot selection; fill and click Confirm Meeting
+      if (vendorConfig.fillGuestFormAfterSlot && firstName && lastName && email) {
+        const formContext = calendarContext as any;
+        try {
+          await formContext.waitForSelector('[data-test-id="GuestFormField-PersonFirstName"], [data-test-id="GuestForm-submit-button"]', { timeout: 5000 });
+          const firstSel = '[data-test-id="GuestFormField-PersonFirstName"]';
+          const lastSel = '[data-test-id="GuestFormField-PersonLastName"]';
+          const emailSel = '[data-test-id="GuestFormField-PersonEmail"]';
+          await formContext.fill(firstSel, firstName);
+          await formContext.fill(lastSel, lastName);
+          await formContext.fill(emailSel, email);
+          const confirmSelectors = [
+            '[data-test-id="GuestForm-submit-button"]',
+            '[data-id="form-confirm-button"]',
+            'button:has-text("Confirm Meeting")',
+          ];
+          for (const sel of confirmSelectors) {
+            try {
+              await formContext.click(sel, { timeout: 2000 });
+              log('Clicked Confirm Meeting');
+              break;
+            } catch { /* try next */ }
+          }
+          await page.waitForTimeout(1500);
+        } catch (formErr) {
+          logErr('Guest form fill or confirm failed', { error: (formErr as Error)?.message });
+          throw formErr;
+        }
+      }
 
         log('Booking step completed, cleaning up instance', { email });
         // Close instance after successful booking

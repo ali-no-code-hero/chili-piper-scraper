@@ -83,10 +83,16 @@ export async function POST(request: NextRequest) {
     const concurrencyStatus = concurrencyManager.getStatus();
     console.log(`🚦 Concurrency status: ${concurrencyStatus.active}/${concurrencyStatus.capacity} active, ${concurrencyStatus.queued} queued`);
     
+    // Resolve vendor config (default: cinq when vendor missing or unknown)
+    const { getChiliPiperVendorConfig } = await import('@/lib/chili-piper-vendors');
+    const vendorConfig = getChiliPiperVendorConfig(body.vendor as string | undefined);
+
     // Run the scraping through concurrency manager (dynamic import to avoid bundling Playwright)
     const result = await concurrencyManager.execute(async () => {
       const { ChiliPiperScraper } = await import('@/lib/scraper');
-      const scraper = new ChiliPiperScraper();
+      const scraper = new ChiliPiperScraper(vendorConfig.formUrl, {
+        directCalendar: vendorConfig.directCalendar,
+      });
       return await scraper.scrapeSlots(
         body.first_name,
         body.last_name,

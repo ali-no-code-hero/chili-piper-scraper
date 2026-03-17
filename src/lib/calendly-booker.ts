@@ -10,7 +10,7 @@ import { getCentralOffsetForDate } from './central-timezone';
 const CALENDLY_VIDEO_DIR = process.env.CALENDLY_VIDEO_DIR || path.join(process.cwd(), '.calendly-videos');
 const CALENDLY_VIDEO_ENABLED = process.env.CALENDLY_VIDEO_ENABLED !== '0' && process.env.CALENDLY_VIDEO_ENABLED !== 'false';
 
-const CALENDLY_BASE_URL_DEFAULT = 'https://calendly.com/agentfire-demo/30-minute-demo';
+const CALENDLY_BASE_URL_DEFAULT = 'https://calendly.com/agentfire-demo/agentadvice';
 const CALENDLY_PAYPERCLOSE_BASE_URL = 'https://calendly.com/pay-per-closing/exclusive-referral-program-agent-advice';
 
 function getCalendlyBaseUrl(): string {

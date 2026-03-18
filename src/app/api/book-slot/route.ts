@@ -234,12 +234,19 @@ async function createInstanceForEmail(
     await page.goto(targetUrl, { waitUntil: 'load', timeout: 15000 });
     logTiming('goto done');
 
+    const SUBMIT_MAX_MS = 10000;
+    const SCHEDULE_MAX_MS = 10000;
+    const CALENDAR_CHECK_AFTER_SUBMIT_MS = 5000;
+
+    let calendarFound = false;
+    let calendarStrategy: string = 'none';
+
     if (!directCalendar) {
       // Brief wait for form to be interactive
       await new Promise((r) => setTimeout(r, 1500));
       logTiming('after initial 1.5s wait');
 
-      // Click submit button
+      // Click submit button (max 10s total)
       const submitSelectors = [
         'button[type="submit"]',
         'input[type="submit"]',
@@ -247,10 +254,11 @@ async function createInstanceForEmail(
         'button:has-text("Continue")',
         '[data-test-id="GuestForm-submit-button"]',
       ];
+      const submitTimeoutPerSelector = Math.max(500, Math.floor(SUBMIT_MAX_MS / submitSelectors.length));
       let submitClicked = false;
       for (const selector of submitSelectors) {
         try {
-          await page.click(selector, { timeout: 3000 });
+          await page.click(selector, { timeout: submitTimeoutPerSelector });
           submitClicked = true;
           logTiming(`submit clicked (${selector.slice(0, 35)})`);
           break;
@@ -259,68 +267,98 @@ async function createInstanceForEmail(
       if (!submitClicked) logTiming('submit: no selector matched');
       await new Promise((r) => setTimeout(r, 1500));
 
-      // Click schedule button if present
-      const scheduleSelectors = [
-        '[data-test-id="ConciergeLiveBox-book"]',
-        '[data-id="concierge-live-book"]',
-        'button:has-text("Schedule a meeting")',
-        'button:has-text("Schedule")',
+      // Look for calendar; if present, skip schedule button
+      const quickCalendarSelectors = [
+        '[data-id="calendar-day-button"]',
+        'button[data-test-id^="days:"]',
+        '[data-id="calendar"]',
+        '[role="grid"]',
       ];
-      let scheduleClicked = false;
-      for (const selector of scheduleSelectors) {
+      const checkTimeoutPerSelector = Math.max(500, Math.floor(CALENDAR_CHECK_AFTER_SUBMIT_MS / quickCalendarSelectors.length));
+      for (const selector of quickCalendarSelectors) {
         try {
-          await page.click(selector, { timeout: 3000 });
-          scheduleClicked = true;
-          logTiming(`schedule clicked (${selector.slice(0, 35)})`);
+          await page.waitForSelector(selector, { timeout: checkTimeoutPerSelector });
+          calendarFound = true;
+          calendarStrategy = 'after submit (skipped schedule)';
+          logTiming('calendar visible after submit, skipping schedule');
           break;
         } catch {}
       }
-      if (!scheduleClicked) logTiming('schedule: no selector matched');
+      if (!calendarFound) {
+        const frames = page.frames();
+        for (const frame of frames) {
+          try {
+            await frame.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"], [data-id="calendar"], [role="grid"]', { timeout: checkTimeoutPerSelector });
+            calendarFound = true;
+            calendarStrategy = 'after submit (iframe, skipped schedule)';
+            logTiming('calendar visible in iframe after submit, skipping schedule');
+            break;
+          } catch {}
+        }
+      }
 
-      // Give the calendar time to load after clicking schedule
-      await new Promise((r) => setTimeout(r, 2000));
-      logTiming('after 2s post-schedule wait');
+      if (!calendarFound) {
+        // Calendar not present; click schedule button (max 10s total)
+        const scheduleSelectors = [
+          '[data-test-id="ConciergeLiveBox-book"]',
+          '[data-id="concierge-live-book"]',
+          'button:has-text("Schedule a meeting")',
+          'button:has-text("Schedule")',
+        ];
+        const scheduleTimeoutPerSelector = Math.max(500, Math.floor(SCHEDULE_MAX_MS / scheduleSelectors.length));
+        let scheduleClicked = false;
+        for (const selector of scheduleSelectors) {
+          try {
+            await page.click(selector, { timeout: scheduleTimeoutPerSelector });
+            scheduleClicked = true;
+            logTiming(`schedule clicked (${selector.slice(0, 35)})`);
+            break;
+          } catch {}
+        }
+        if (!scheduleClicked) logTiming('schedule: no selector matched');
+
+        await new Promise((r) => setTimeout(r, 2000));
+        logTiming('after 2s post-schedule wait');
+      }
     } else {
       await new Promise((r) => setTimeout(r, 1500));
     }
-    logTiming('form flow done (submit+schedule+waits)');
+    logTiming('form flow done');
 
-    // Wait for calendar using multiple strategies (same approach as scraper)
-    const calendarSelectors = [
-      '[data-id="calendar-day-button"]',
-      'button[data-test-id^="days:"]',
-      '[data-id="calendar-day-button-selected"]',
-      '[data-id="calendar"]',
-      '[role="grid"]',
-      '[data-test-id*="calendar"]',
-      'button[data-test-id*="days:"]',
-    ];
-    let calendarFound = false;
-    let calendarStrategy: string = 'none';
-    for (const selector of calendarSelectors) {
-      try {
-        await page.waitForSelector(selector, { timeout: 5000 });
-        calendarFound = true;
-        calendarStrategy = `main:${selector.slice(0, 40)}`;
-        break;
-      } catch {}
-    }
+    // Wait for calendar if not already found (e.g. after schedule click)
     if (!calendarFound) {
-      // Check iframes (Chili Piper sometimes embeds calendar in iframe)
-      const frames = page.frames();
-      for (const frame of frames) {
+      const calendarSelectors = [
+        '[data-id="calendar-day-button"]',
+        'button[data-test-id^="days:"]',
+        '[data-id="calendar-day-button-selected"]',
+        '[data-id="calendar"]',
+        '[role="grid"]',
+        '[data-test-id*="calendar"]',
+        'button[data-test-id*="days:"]',
+      ];
+      for (const selector of calendarSelectors) {
         try {
-          await frame.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"], [data-id="calendar"], [role="grid"]', { timeout: 5000 });
+          await page.waitForSelector(selector, { timeout: 5000 });
           calendarFound = true;
-          calendarStrategy = 'iframe';
+          calendarStrategy = `main:${selector.slice(0, 40)}`;
           break;
         } catch {}
       }
-    }
-    if (!calendarFound) {
-      // Final wait with longer timeout for slow loads
-      await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 15000 });
-      calendarStrategy = 'final wait (15s)';
+      if (!calendarFound) {
+        const frames = page.frames();
+        for (const frame of frames) {
+          try {
+            await frame.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"], [data-id="calendar"], [role="grid"]', { timeout: 5000 });
+            calendarFound = true;
+            calendarStrategy = 'iframe';
+            break;
+          } catch {}
+        }
+      }
+      if (!calendarFound) {
+        await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 15000 });
+        calendarStrategy = 'final wait (15s)';
+      }
     }
 
     logTiming(`calendar visible (${calendarStrategy})`);

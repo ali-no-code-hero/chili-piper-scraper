@@ -630,34 +630,24 @@ export class ChiliPiperScraper {
 
       const slots = collectedSlots;
 
-      // Register instance instead of closing - keep page on calendar view for future bookings
-      // Ensure page is still on calendar view (it should be after getAvailableSlots)
+      // Close instance after slots are returned; book-slot will create its own when needed
       try {
-        // Verify calendar is still visible using common selectors
-        const calendarStillVisible = await page.$('[data-id="calendar-day-button"], button[data-test-id^="days:"]').catch(() => null);
-        if (!calendarStillVisible) {
-          // Calendar might have been lost, try to ensure we're still on calendar
-          console.log('⚠️ Calendar not visible after scraping, ensuring we stay on calendar view...');
+        if (page && !page.isClosed()) {
+          await page.close();
         }
-
-        // Register the instance with the browser instance manager
-        // Note: We keep the browser, context, and page open. Pass videoDir/sessionId so book-slot can save failure videos when reusing this instance.
-        await browserInstanceManager.registerInstance(email, browser, context, page, videoDir ?? undefined, sessionId ?? undefined);
-        console.log(`✅ Browser instance registered for ${email} - keeping open for future bookings`);
-        
-        // Don't release browser back to pool - it's now managed by browserInstanceManager
-        // Don't close page or context - they're kept open
+        if (context) {
+          await context.close();
+        }
+        if (browser) {
+          browserPool.releaseBrowser(browser);
+        }
+        console.log(`✅ Browser instance closed for ${email} after returning slots`);
       } catch (e) {
-        console.error(`⚠️ Error registering browser instance for ${email}:`, e);
-        // Fallback: clean up if registration fails
+        console.error(`⚠️ Error closing browser instance for ${email}:`, e);
         try {
-          if (page && !page.isClosed()) {
-            await page.close();
-          }
-          if (context) {
-            await context.close();
-            browserPool.releaseBrowser(browser);
-          }
+          if (page && !page.isClosed()) await page.close().catch(() => {});
+          if (context) await context.close().catch(() => {});
+          if (browser) browserPool.releaseBrowser(browser);
         } catch (cleanupError) {
           // Ignore cleanup errors
         }

@@ -141,6 +141,9 @@ async function createInstanceForEmail(
     ? baseUrl
     : buildParameterizedUrl(firstName, lastName, email, phone || '+15555555555', baseUrl, phoneFieldId);
 
+  const t0 = Date.now();
+  const logTiming = (step: string) => console.log(`[createInstance] ${step}: ${Date.now() - t0}ms`);
+
   try {
 
     if (CHILI_PIPER_VIDEO_ENABLED) {
@@ -209,7 +212,9 @@ async function createInstanceForEmail(
       browserPool.releaseBrowser(browser);
       throw new Error('Failed to create browser context after retries');
     }
-    
+
+    logTiming('context+page ready');
+
     page.setDefaultNavigationTimeout(15000);
     page.setDefaultTimeout(15000);
     // Allow stylesheets so full Chili Piper UI loads; block tracking/ads only
@@ -227,6 +232,7 @@ async function createInstanceForEmail(
     });
 
     await page.goto(targetUrl, { waitUntil: 'load', timeout: 15000 });
+    logTiming('goto done');
 
     if (!directCalendar) {
       // Brief wait for form to be interactive
@@ -269,6 +275,7 @@ async function createInstanceForEmail(
     } else {
       await new Promise((r) => setTimeout(r, 1500));
     }
+    logTiming('form flow done (submit+schedule+waits)');
 
     // Wait for calendar using multiple strategies (same approach as scraper)
     const calendarSelectors = [
@@ -281,10 +288,12 @@ async function createInstanceForEmail(
       'button[data-test-id*="days:"]',
     ];
     let calendarFound = false;
+    let calendarStrategy: string = 'none';
     for (const selector of calendarSelectors) {
       try {
         await page.waitForSelector(selector, { timeout: 5000 });
         calendarFound = true;
+        calendarStrategy = `main:${selector.slice(0, 40)}`;
         break;
       } catch {}
     }
@@ -295,6 +304,7 @@ async function createInstanceForEmail(
         try {
           await frame.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"], [data-id="calendar"], [role="grid"]', { timeout: 5000 });
           calendarFound = true;
+          calendarStrategy = 'iframe';
           break;
         } catch {}
       }
@@ -302,13 +312,18 @@ async function createInstanceForEmail(
     if (!calendarFound) {
       // Final wait with longer timeout for slow loads
       await page.waitForSelector('[data-id="calendar-day-button"], button[data-test-id^="days:"]', { timeout: 15000 });
+      calendarStrategy = 'final wait (15s)';
     }
+
+    logTiming(`calendar visible (${calendarStrategy})`);
 
     const out: { browser: any; context: any; page: any; videoDir?: string; sessionId?: string } = { browser, context, page };
     if (videoDir) out.videoDir = videoDir;
     if (sessionId) out.sessionId = sessionId;
+    logTiming('total (instance ready)');
     return out;
   } catch (error) {
+    logTiming('failed');
     console.error('Error creating instance:', error);
 
     // Save failure video so it shows on the video page (recorded to temp dir, copy to CHILI_PIPER_VIDEO_DIR/failed)

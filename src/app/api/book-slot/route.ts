@@ -237,6 +237,7 @@ async function createInstanceForEmail(
     if (!directCalendar) {
       // Brief wait for form to be interactive
       await new Promise((r) => setTimeout(r, 1500));
+      logTiming('after initial 1.5s wait');
 
       // Click submit button
       const submitSelectors = [
@@ -246,14 +247,17 @@ async function createInstanceForEmail(
         'button:has-text("Continue")',
         '[data-test-id="GuestForm-submit-button"]',
       ];
-
+      let submitClicked = false;
       for (const selector of submitSelectors) {
         try {
           await page.click(selector, { timeout: 3000 });
-          await new Promise((r) => setTimeout(r, 1500));
+          submitClicked = true;
+          logTiming(`submit clicked (${selector.slice(0, 35)})`);
           break;
         } catch {}
       }
+      if (!submitClicked) logTiming('submit: no selector matched');
+      await new Promise((r) => setTimeout(r, 1500));
 
       // Click schedule button if present
       const scheduleSelectors = [
@@ -262,16 +266,20 @@ async function createInstanceForEmail(
         'button:has-text("Schedule a meeting")',
         'button:has-text("Schedule")',
       ];
-
+      let scheduleClicked = false;
       for (const selector of scheduleSelectors) {
         try {
           await page.click(selector, { timeout: 3000 });
+          scheduleClicked = true;
+          logTiming(`schedule clicked (${selector.slice(0, 35)})`);
           break;
         } catch {}
       }
+      if (!scheduleClicked) logTiming('schedule: no selector matched');
 
       // Give the calendar time to load after clicking schedule
       await new Promise((r) => setTimeout(r, 2000));
+      logTiming('after 2s post-schedule wait');
     } else {
       await new Promise((r) => setTimeout(r, 1500));
     }

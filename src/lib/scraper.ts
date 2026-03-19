@@ -624,6 +624,19 @@ export class ChiliPiperScraper {
           } catch {}
         }
         if (!calendarFound) {
+          // Direct-calendar LP pages can render calendar controls late (or inside iframes after hydration).
+          const recoveredContext = await this.findCalendarContext(
+            page,
+            calendarSelectors,
+            this.directCalendar ? 25000 : 6000
+          );
+          if (recoveredContext) {
+            console.log('✅ Calendar found during extended polling pass');
+            calendarFound = true;
+            calendarContext = recoveredContext;
+          }
+        }
+        if (!calendarFound) {
           throw new Error('Could not find calendar elements with any of the provided selectors');
         }
       }
@@ -870,6 +883,37 @@ export class ChiliPiperScraper {
     }
 
     throw new Error(`Could not find ${fieldName} field with any of the provided selectors`);
+  }
+
+  /**
+   * Poll page + iframes for calendar day selectors for a bounded duration.
+   * Helps with LP direct-calendar flows where controls appear after late hydration.
+   */
+  private async findCalendarContext(page: any, selectors: string[], totalTimeoutMs: number): Promise<any | null> {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < totalTimeoutMs) {
+      for (const selector of selectors) {
+        try {
+          const match = await page.$(selector);
+          if (match) return page;
+        } catch {}
+      }
+
+      try {
+        const frames = page.frames?.() || [];
+        for (const frame of frames) {
+          for (const selector of selectors) {
+            try {
+              const match = await frame.$(selector);
+              if (match) return frame;
+            } catch {}
+          }
+        }
+      } catch {}
+
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    return null;
   }
 
   /**

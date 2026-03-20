@@ -118,6 +118,44 @@ interface CreateInstanceOptions {
   directCalendar?: boolean;
 }
 
+/** Direct-calendar SPA (e.g. Luxury round-robin): longer nav/UI waits; poll for real mounted widgets. */
+const DIRECT_CALENDAR_GOTO_TIMEOUT_MS = 30000;
+const DIRECT_CALENDAR_UI_POLL_TOTAL_MS = 45000;
+
+const CALENDAR_CHROME_SELECTOR =
+  '[data-id="calendar-arrows-button-next"], [data-id="calendar-arrows-button-prev"], button[data-test-id^="days:"], [data-id="calendar-day-button"], [data-id="calendar-day-button-selected"]';
+
+/**
+ * Wait until Chili Piper calendar strip or week arrows appear (main document or iframes).
+ * `document` load fires before React hydration; this targets visible booking UI.
+ */
+async function waitForCalendarChrome(page: any, totalTimeoutMs: number): Promise<'main' | 'iframe'> {
+  const deadline = Date.now() + totalTimeoutMs;
+  while (Date.now() < deadline) {
+    const slice = Math.min(8000, Math.max(500, deadline - Date.now()));
+    try {
+      await page.waitForSelector(CALENDAR_CHROME_SELECTOR, { timeout: slice });
+      return 'main';
+    } catch {
+      /* keep polling */
+    }
+    for (const frame of page.frames()) {
+      const ft = Math.min(4000, Math.max(300, deadline - Date.now()));
+      if (ft < 300) break;
+      try {
+        await frame.waitForSelector(CALENDAR_CHROME_SELECTOR, { timeout: ft });
+        return 'iframe';
+      } catch {
+        /* next frame */
+      }
+    }
+    await page.waitForTimeout(400);
+  }
+  throw new Error(
+    `Timeout ${totalTimeoutMs}ms waiting for Chili Piper calendar UI (arrows or day buttons)`
+  );
+}
+
 /**
  * Create a new browser instance and navigate to calendar for an email
  */
@@ -216,23 +254,39 @@ async function createInstanceForEmail(
 
     logTiming('context+page ready');
 
-    page.setDefaultNavigationTimeout(15000);
-    page.setDefaultTimeout(15000);
-    // Allow stylesheets so full Chili Piper UI loads; block tracking/ads only
+    const navTimeout = directCalendar ? DIRECT_CALENDAR_GOTO_TIMEOUT_MS : 15000;
+    const defaultTimeout = directCalendar ? DIRECT_CALENDAR_UI_POLL_TOTAL_MS : 15000;
+    page.setDefaultNavigationTimeout(navTimeout);
+    page.setDefaultTimeout(defaultTimeout);
+    // Cinq: block heavy assets + trackers. Direct-calendar SPA: allow fonts/images so React can paint reliably.
     await page.route("**/*", (route: any) => {
       const url = route.request().url();
       const rt = route.request().resourceType();
-      if (rt === 'image' || rt === 'font' || rt === 'media' ||
-          url.includes('google-analytics') || url.includes('googletagmanager') || url.includes('analytics') ||
-          url.includes('facebook.net') || url.includes('doubleclick') || url.includes('ads') || url.includes('tracking') ||
-          url.includes('pixel') || url.includes('beacon')) {
+      const tracking =
+        url.includes('google-analytics') ||
+        url.includes('googletagmanager') ||
+        url.includes('analytics') ||
+        url.includes('facebook.net') ||
+        url.includes('doubleclick') ||
+        url.includes('ads') ||
+        url.includes('tracking') ||
+        url.includes('pixel') ||
+        url.includes('beacon');
+      if (tracking) {
+        route.abort();
+        return;
+      }
+      if (!directCalendar && (rt === 'image' || rt === 'font' || rt === 'media')) {
         route.abort();
         return;
       }
       route.continue();
     });
 
-    await page.goto(targetUrl, { waitUntil: 'load', timeout: 15000 });
+    await page.goto(targetUrl, {
+      waitUntil: directCalendar ? 'domcontentloaded' : 'load',
+      timeout: navTimeout,
+    });
     logTiming('goto done');
 
     const SUBMIT_MAX_MS = 10000;
@@ -322,7 +376,12 @@ async function createInstanceForEmail(
         logTiming('after 2s post-schedule wait');
       }
     } else {
-      await new Promise((r) => setTimeout(r, 1500));
+      // Round-robin SPA: `load` is unreliable; allow hydration then wait for mounted calendar chrome.
+      await new Promise((r) => setTimeout(r, 2000));
+      logTiming('after direct-calendar hydration wait');
+      const where = await waitForCalendarChrome(page, DIRECT_CALENDAR_UI_POLL_TOTAL_MS);
+      calendarFound = true;
+      calendarStrategy = `direct-calendar:${where}`;
     }
     logTiming('form flow done');
 
@@ -432,9 +491,29 @@ async function navigateExistingPageToCalendar(
       : buildParameterizedUrl(firstName, lastName, email, phone || '+15555555555', baseUrl, phoneFieldId);
 
     log('Re-navigating existing instance to calendar', { url: targetUrl.slice(0, 80) + '...' });
-    page.setDefaultNavigationTimeout(15000);
-    page.setDefaultTimeout(15000);
-    await page.goto(targetUrl, { waitUntil: 'load', timeout: 15000 });
+    const navT = directCalendar ? DIRECT_CALENDAR_GOTO_TIMEOUT_MS : 15000;
+    const defT = directCalendar ? DIRECT_CALENDAR_UI_POLL_TOTAL_MS : 15000;
+    page.setDefaultNavigationTimeout(navT);
+    page.setDefaultTimeout(defT);
+    await page.goto(targetUrl, {
+      waitUntil: directCalendar ? 'domcontentloaded' : 'load',
+      timeout: navT,
+    });
+
+    if (directCalendar) {
+      await new Promise((r) => setTimeout(r, 2000));
+      try {
+        await waitForCalendarChrome(page, DIRECT_CALENDAR_UI_POLL_TOTAL_MS);
+        log('Calendar visible after re-navigation (direct calendar)');
+        return true;
+      } catch (e) {
+        log('Direct calendar UI wait failed after re-navigation', {
+          error: (e as Error)?.message,
+        });
+        return false;
+      }
+    }
+
     await new Promise((r) => setTimeout(r, 1500));
 
     if (!directCalendar) {

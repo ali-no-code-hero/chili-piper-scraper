@@ -258,7 +258,7 @@ export class ChiliPiperScraper {
       console.log(`🎯 Starting scrape for ${firstName} ${lastName} (${email})`);
       const strictMode = (process.env.STRICT_SELECTORS || '').toLowerCase() === 'true';
 
-      // Direct-calendar vendors (e.g. luxurypresence): URL goes straight to calendar, no form
+      // Direct-calendar vendors (e.g. luxury-presence): URL goes straight to calendar, no form
       const useParameterizedUrl = !this.directCalendar;
       const targetUrl = this.directCalendar
         ? this.baseUrl
@@ -367,7 +367,7 @@ export class ChiliPiperScraper {
       if (this.directCalendar) {
         console.log(`🚀 Direct calendar mode: navigating to calendar URL`);
         await page.goto(targetUrl, { waitUntil: 'load', timeout: 20000 });
-        // Allow client-side calendar to render (e.g. luxurypresence round-robin SPA)
+        // Allow client-side calendar to render (e.g. luxury-presence round-robin SPA)
         await new Promise((r) => setTimeout(r, 5000));
       } else if (!useParameterizedUrl && !calendarPool.isReady()) {
         await page.goto(this.baseUrl, { waitUntil: 'load', timeout: 15000 });
@@ -464,7 +464,7 @@ export class ChiliPiperScraper {
       
       // Wait for calendar elements - prioritize selectors based on actual HTML structure
       // cinq/concierge: data-id="calendar-day-button" and data-test-id="days:Oct/Fri Oct 31 2025..."
-      // luxurypresence round-robin: buttons with "Press enter to navigate available slots" or weekday names
+      // luxury-presence round-robin: buttons with "Press enter to navigate available slots" or weekday names
       const calendarSelectors = strictMode
         ? ['[data-id="calendar-day-button"]', '[data-id="calendar-day-button-selected"]', 'button[data-test-id^="days:"]']
         : this.directCalendar
@@ -529,7 +529,7 @@ export class ChiliPiperScraper {
       }
       
       if (!calendarFound) {
-        // Final retry (include luxurypresence-style selectors; longer timeout for SPA)
+        // Final retry (include luxury-presence-style selectors; longer timeout for SPA)
         console.log('🔁 Calendar not found, final retry...');
         const fallbackSelector = this.directCalendar
           ? '[data-id="calendar-day-button"], [data-id="calendar-day-button-selected"], button[data-test-id^="days:"], button:has-text("Press enter to navigate available slots"), button:has-text("Monday")'
@@ -570,7 +570,7 @@ export class ChiliPiperScraper {
       }
       
       if (!calendarFound) {
-        // Final fallback: wait for day buttons broadly (luxurypresence or cinq)
+        // Final fallback: wait for day buttons broadly (luxury-presence or cinq)
         const broadFallback = this.directCalendar
           ? '[data-id="calendar-day-button"], [data-id="calendar-day-button-selected"], button[data-test-id^="days:"], button:has-text("Press enter to navigate available slots"), button:has-text("Monday"), h2:has-text("Which time works best for you?")'
           : 'button[data-test-id*="days:"], [data-id="calendar-day-button"], [data-test-id*="day"]';
@@ -605,7 +605,7 @@ export class ChiliPiperScraper {
             } catch {}
           }
         }
-        // Also check for day buttons in iframes (luxurypresence or cinq)
+        // Also check for day buttons in iframes (luxury-presence or cinq)
         if (!calendarFound) {
           try {
             const frames = page.frames();
@@ -1263,7 +1263,7 @@ export class ChiliPiperScraper {
           'button[data-test-id^="days:"]',
           'button[data-test-id*="days:"]',
           '[data-test-id*="day"]',
-          'button:has-text("Press enter to navigate available slots")', // luxurypresence round-robin fallback
+          'button:has-text("Press enter to navigate available slots")', // luxury-presence round-robin fallback
           'button:has-text("Monday")',
         ];
 
@@ -1291,7 +1291,7 @@ export class ChiliPiperScraper {
           const c = await ctx.$$('button[data-test-id^="days:"]');
           const d = await ctx.$$('button[data-test-id*="days:"]');
           const e = await ctx.$$('.calendar-day-button, [data-id="calendar-day-button"], [data-test-id*="day"]');
-          const f = await ctx.$$('button:has-text("Press enter to navigate available slots")'); // luxurypresence text fallback
+          const f = await ctx.$$('button:has-text("Press enter to navigate available slots")'); // luxury-presence text fallback
           buttons = a.concat(b).concat(c).concat(d).concat(e).concat(f);
         }
       } catch {}

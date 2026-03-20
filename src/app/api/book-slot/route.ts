@@ -13,8 +13,8 @@ import {
   CHILI_PIPER_VIDEO_ENABLED,
   saveChiliPiperFailureVideo,
 } from '@/lib/chili-piper-video';
-import { getChiliPiperVendorConfig } from '@/lib/chili-piper-vendors';
-import { bookLuxuryPresenceSlot } from '@/lib/luxurypresence-chili-booker';
+import { getChiliPiperVendorConfig, normalizeChiliPiperVendorId } from '@/lib/chili-piper-vendors';
+import { bookLuxuryPresenceSlot } from '@/lib/luxury-presence-chili-booker';
 
 const security = new SecurityMiddleware();
 
@@ -795,10 +795,8 @@ export async function POST(request: NextRequest) {
     const { date, time } = parsed;
     const formattedTime = formatTimeForSlot(time);
 
-    const vendorKey = String(vendor || '')
-      .toLowerCase()
-      .trim();
-    if (vendorKey === 'luxurypresence' && isYmdBeforeTodayInCentral(date)) {
+    const vendorKey = normalizeChiliPiperVendorId(vendor as string | undefined);
+    if (vendorKey === 'luxury-presence' && isYmdBeforeTodayInCentral(date)) {
       const responseTime = Date.now() - requestStartTime;
       const errorResponse = ErrorHandler.createError(
         ErrorCode.VALIDATION_ERROR,
@@ -995,10 +993,8 @@ export async function POST(request: NextRequest) {
           throw new Error('Calendar not found on page');
         }
 
-        const vendorKey = String(vendor || '')
-          .toLowerCase()
-          .trim();
-        if (vendorKey === 'luxurypresence') {
+        const vendorKey = normalizeChiliPiperVendorId(vendor as string | undefined);
+        if (vendorKey === 'luxury-presence') {
           if (!firstName || !lastName) {
             throw new Error('firstName and lastName are required for Luxury Presence booking');
           }
@@ -1210,7 +1206,7 @@ export async function POST(request: NextRequest) {
       // Wait a moment for slot selection to be processed
       await page.waitForTimeout(1000);
 
-      // Vendors like luxurypresence show guest form after slot selection; fill and click Confirm Meeting
+      // Vendors like luxury-presence show guest form after slot selection; fill and click Confirm Meeting
       if (vendorConfig.fillGuestFormAfterSlot && firstName && lastName && email) {
         const formContext = calendarContext as any;
         try {

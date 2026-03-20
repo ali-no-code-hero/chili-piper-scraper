@@ -91,7 +91,7 @@ curl -X POST http://your-domain.com/api/get-slots \
 ```
 
 Optional body fields:
-- **`vendor`**: `cinq` (default) or `luxurypresence`. For `luxurypresence`, the flow goes directly to the calendar (no form before calendar).
+- **`vendor`**: `cinq` (default) or `luxury-presence`. For `luxury-presence`, the flow goes directly to the calendar (no form before calendar). The legacy id `luxurypresence` is still accepted.
 - **`days`**: Max days to collect (1–30).
 
 **Note**: After a successful slot request, the browser instance is kept open for 15 minutes (configurable) to enable fast booking. The instance is automatically cleaned up after the timeout period.
@@ -186,7 +186,7 @@ curl -X POST http://your-domain.com/api/book-slot \
 | `MAX_BROWSER_POOL_SIZE` | Maximum browser instances in pool | No | 2 |
 | `MAX_BROWSER_INSTANCES` | Maximum persistent browser instances (per email) | No | 50 |
 | `BROWSER_INSTANCE_TIMEOUT_MS` | Timeout for persistent instances (ms) | No | 900000 (15 min) |
-| `LUXURYPRESENCE_CHILI_PIPER_URL` | Chili Piper direct-to-calendar URL for luxurypresence vendor (default: luxurypresence round-robin link) | No | - |
+| `LUXURY_PRESENCE_CHILI_PIPER_URL` | Chili Piper direct-to-calendar URL for `luxury-presence` vendor (default: Luxury Presence round-robin link). `LUXURYPRESENCE_CHILI_PIPER_URL` is still read as a fallback. | No | - |
 | `HOUSEJET_PPC_PROXY_SERVER` | Rotating proxy for housejet-ppc only (e.g. Smartproxy `http://gate.smartproxy.com:7000`) | No | - |
 | `HOUSEJET_PPC_PROXY_USERNAME` | Proxy username (Smartproxy dashboard) | No | - |
 | `HOUSEJET_PPC_PROXY_PASSWORD` | Proxy password (Smartproxy dashboard) | No | - |

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { normalizeChiliPiperVendorId } from '@/lib/chili-piper-vendors';
 import { SecurityMiddleware } from '@/lib/security-middleware';
 import { concurrencyManager } from '@/lib/concurrency-manager';
 import { ErrorHandler, ErrorCode, SuccessCode } from '@/lib/error-handler';
@@ -15,7 +16,7 @@ const security = new SecurityMiddleware();
 const STATUS_SUCCESS = 200;
 const STATUS_FAILURE = 201;
 
-const VENDORS = ['cinq', 'luxurypresence', 'agentfire', 'housejet-ppc', 'lofty', 'lofty-5-9', 'lofty-10-24', 'lofty-25'] as const;
+const VENDORS = ['cinq', 'luxury-presence', 'agentfire', 'housejet-ppc', 'lofty', 'lofty-5-9', 'lofty-10-24', 'lofty-25'] as const;
 type Vendor = (typeof VENDORS)[number];
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = securityResult.sanitizedData! as Record<string, unknown>;
-    const vendor = (body.vendor as string)?.toLowerCase();
+    const vendor = normalizeChiliPiperVendorId(body.vendor as string | undefined);
 
     if (!VENDORS.includes(vendor as Vendor)) {
       const responseTime = Date.now() - requestStartTime;
@@ -122,14 +123,14 @@ export async function POST(request: NextRequest) {
       return security.addSecurityHeaders(NextResponse.json(json, { status }));
     }
 
-    if (vendor === 'luxurypresence') {
+    if (vendor === 'luxury-presence') {
       const dateTime = body.dateTime as string;
       if (!dateTime || typeof dateTime !== 'string' || !dateTime.trim()) {
         const responseTime = Date.now() - requestStartTime;
         const errorResponse = ErrorHandler.createError(
           ErrorCode.VALIDATION_ERROR,
           'Missing dateTime',
-          'dateTime is required when vendor is luxurypresence. Format like "November 13, 2025 at 1:25 PM CST"',
+          'dateTime is required when vendor is luxury-presence. Format like "November 13, 2025 at 1:25 PM CST"',
           undefined,
           requestId,
           responseTime
@@ -151,7 +152,7 @@ export async function POST(request: NextRequest) {
           lastName,
           phone: phone || '',
           dateTime: dateTime.trim(),
-          vendor: 'luxurypresence',
+          vendor: 'luxury-presence',
         }),
       });
       const bookSlotResponse = await bookSlotPost(bookSlotRequest);

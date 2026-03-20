@@ -7,7 +7,8 @@ const DEFAULT_CINQ_URL =
   process.env.CHILI_PIPER_FORM_URL ||
   'https://cincpro.chilipiper.com/concierge-router/link/lp-request-a-demo-agent-advice';
 
-const LUXURYPRESENCE_URL =
+const LUXURY_PRESENCE_URL =
+  process.env.LUXURY_PRESENCE_CHILI_PIPER_URL ||
   process.env.LUXURYPRESENCE_CHILI_PIPER_URL ||
   'https://luxurypresence.chilipiper.com/round-robin/agentadvice-intro--15';
 
@@ -24,8 +25,8 @@ export const CHILI_PIPER_VENDOR_CONFIG: Record<string, ChiliPiperVendorConfig> =
     directCalendar: false,
     fillGuestFormAfterSlot: false,
   },
-  luxurypresence: {
-    formUrl: LUXURYPRESENCE_URL,
+  'luxury-presence': {
+    formUrl: LUXURY_PRESENCE_URL,
     directCalendar: true,
     fillGuestFormAfterSlot: true,
   },
@@ -33,10 +34,17 @@ export const CHILI_PIPER_VENDOR_CONFIG: Record<string, ChiliPiperVendorConfig> =
 
 const DEFAULT_VENDOR = 'cinq';
 
+/** Canonical vendor id for Chili Piper routing (`luxurypresence` is accepted as legacy alias). */
+export function normalizeChiliPiperVendorId(vendor?: string | null): string {
+  const k = (vendor || '').toLowerCase().trim() || DEFAULT_VENDOR;
+  if (k === 'luxurypresence') return 'luxury-presence';
+  return k;
+}
+
 /**
  * Resolve vendor config by id. Falls back to cinq/default when vendor is missing or unknown.
  */
 export function getChiliPiperVendorConfig(vendor?: string | null): ChiliPiperVendorConfig {
-  const key = (vendor || '').toLowerCase().trim() || DEFAULT_VENDOR;
+  const key = normalizeChiliPiperVendorId(vendor);
   return CHILI_PIPER_VENDOR_CONFIG[key] ?? CHILI_PIPER_VENDOR_CONFIG[DEFAULT_VENDOR];
 }

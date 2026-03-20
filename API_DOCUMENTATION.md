@@ -45,7 +45,7 @@ Contact your administrator to obtain an API key. API keys are managed through th
 | Field | Required | Description |
 |-------|----------|-------------|
 | `first_name`, `last_name`, `email`, `phone` | Yes | Guest details (used for form prefill when vendor uses a form before calendar). |
-| `vendor` | No | Chili Piper flow: `cinq` (default) or `luxurypresence`. When omitted, defaults to cinq. For `luxurypresence`, the URL goes directly to the calendar (no form step). |
+| `vendor` | No | Chili Piper flow: `cinq` (default) or `luxury-presence`. When omitted, defaults to cinq. For `luxury-presence`, the URL goes directly to the calendar (no form step). The legacy id `luxurypresence` is still accepted. |
 | `days` | No | Max days to collect (1–30). Omit for default. |
 
 **Response:**
@@ -104,7 +104,7 @@ data: {"success":true,"streaming":false,"message":"Slot collection completed","d
 | vendor       | Backend              | Required fields (besides vendor, email, firstName, lastName) | Optional |
 |-------------|----------------------|----------------------------------------------------------------|----------|
 | `cinq`      | Chili Piper          | `dateTime` (e.g. "November 13, 2025 at 1:25 PM CST")         | `phone`  |
-| `luxurypresence` | Chili Piper (direct calendar) | `dateTime` (same format as cinq) | `phone` (form has no phone field) |
+| `luxury-presence` | Chili Piper (direct calendar) | `dateTime` (same format as cinq) | `phone` (form has no phone field) |
 | `agentfire` | Calendly (AgentFire) | `date` (YYYY-MM-DD), `time` (e.g. 9:30am)                    | `phone`, `answers` |
 | `housejet-ppc` | Calendly (Pay-per-closing) | `date`, `time`                              | `phone`  |
 
@@ -120,12 +120,12 @@ data: {"success":true,"streaming":false,"message":"Slot collection completed","d
 }
 ```
 
-**Request (Chili Piper – vendor luxurypresence):**  
+**Request (Chili Piper – vendor luxury-presence):**  
 Uses a direct-to-calendar URL; after slot selection the guest form (first name, last name, email) is filled and "Confirm Meeting" is clicked. Phone is optional.
 
 ```json
 {
-  "vendor": "luxurypresence",
+  "vendor": "luxury-presence",
   "email": "jane@example.com",
   "firstName": "Jane",
   "lastName": "Doe",

@@ -281,9 +281,22 @@ async function createInstanceForEmail(
           browser = await browserPool.getBrowser();
           releaseLock = await browserPool.acquireContextLock(browser);
         }
-        const contextOptions: { timezoneId: string; recordVideo?: { dir: string; size: { width: number; height: number } } } = {
+        const contextOptions: {
+          timezoneId: string;
+          recordVideo?: { dir: string; size: { width: number; height: number } };
+          userAgent?: string;
+          locale?: string;
+          viewport?: { width: number; height: number };
+        } = {
           timezoneId: 'America/Chicago',
         };
+        if (directCalendar) {
+          contextOptions.userAgent =
+            process.env.CHILI_PIPER_DESKTOP_UA ||
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+          contextOptions.locale = 'en-US';
+          contextOptions.viewport = { width: 1280, height: 720 };
+        }
         if (videoDir) contextOptions.recordVideo = { dir: videoDir, size: { width: 1280, height: 720 } };
         context = await browser.newContext(contextOptions);
         page = await context.newPage();
@@ -346,36 +359,69 @@ async function createInstanceForEmail(
     const defaultTimeout = directCalendar ? DIRECT_CALENDAR_UI_POLL_TOTAL_MS : 15000;
     page.setDefaultNavigationTimeout(navTimeout);
     page.setDefaultTimeout(defaultTimeout);
-    // Cinq: block heavy assets + trackers. Direct-calendar SPA: allow fonts/images so React can paint reliably.
-    await page.route("**/*", (route: any) => {
-      const url = route.request().url();
-      const rt = route.request().resourceType();
-      const tracking =
-        url.includes('google-analytics') ||
-        url.includes('googletagmanager') ||
-        url.includes('analytics') ||
-        url.includes('facebook.net') ||
-        url.includes('doubleclick') ||
-        url.includes('ads') ||
-        url.includes('tracking') ||
-        url.includes('pixel') ||
-        url.includes('beacon');
-      if (tracking) {
-        route.abort();
-        return;
-      }
-      if (!directCalendar && (rt === 'image' || rt === 'font' || rt === 'media')) {
-        route.abort();
-        return;
-      }
-      route.continue();
-    });
+
+    if (directCalendar) {
+      await page.addInitScript(() => {
+        try {
+          Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        } catch {
+          /* ignore */
+        }
+      });
+    }
+
+    // Direct-calendar: do not intercept requests — false positives (e.g. "analytics" in path) can block app bundles.
+    if (!directCalendar) {
+      await page.route("**/*", (route: any) => {
+        const url = route.request().url();
+        const rt = route.request().resourceType();
+        const tracking =
+          url.includes('google-analytics') ||
+          url.includes('googletagmanager') ||
+          url.includes('analytics') ||
+          url.includes('facebook.net') ||
+          url.includes('doubleclick') ||
+          url.includes('ads') ||
+          url.includes('tracking') ||
+          url.includes('pixel') ||
+          url.includes('beacon');
+        if (tracking) {
+          route.abort();
+          return;
+        }
+        if (rt === 'image' || rt === 'font' || rt === 'media') {
+          route.abort();
+          return;
+        }
+        route.continue();
+      });
+    }
 
     await page.goto(targetUrl, {
       waitUntil: directCalendar ? 'domcontentloaded' : 'load',
       timeout: navTimeout,
     });
     logTiming('goto done');
+
+    if (directCalendar) {
+      const html = await page.content().catch(() => '');
+      const tiny = html.length < 3000;
+      const noScript = !/<script/i.test(html);
+      if (tiny && noScript) {
+        console.warn(
+          '[createInstance] Direct-calendar: document has no scripts (likely bot shell); reloading with networkidle…'
+        );
+        try {
+          await page.reload({
+            waitUntil: 'networkidle',
+            timeout: Math.min(45000, navTimeout + 15000),
+          });
+          logTiming('reload networkidle (empty shell recovery)');
+        } catch (reloadErr) {
+          console.warn('[createInstance] Empty-shell reload failed:', (reloadErr as Error)?.message);
+        }
+      }
+    }
 
     const SUBMIT_MAX_MS = 10000;
     const SCHEDULE_MAX_MS = 10000;

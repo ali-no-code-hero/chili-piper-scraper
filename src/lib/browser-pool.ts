@@ -115,9 +115,8 @@ class BrowserPool {
             '--disable-software-rasterizer',
             '--disable-extensions',
             '--disable-plugins',
-            '--disable-images',
-            '--disable-javascript-harmony-shipping',
-            '--disable-background-networking',
+            // Do not use --disable-images / --disable-background-networking: Chili Piper and similar
+            // SPAs may gate the real app on full browser-like loading behavior.
             '--disable-sync',
             '--metrics-recording-only',
             '--disable-default-apps',
@@ -197,9 +196,6 @@ class BrowserPool {
                 '--disable-software-rasterizer',
                 '--disable-extensions',
                 '--disable-plugins',
-                '--disable-images',
-                '--disable-javascript-harmony-shipping',
-                '--disable-background-networking',
                 '--disable-sync',
                 '--metrics-recording-only',
                 '--disable-default-apps',

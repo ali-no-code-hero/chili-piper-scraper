@@ -8,35 +8,28 @@ export const CHILI_PIPER_VIDEO_ENABLED =
   process.env.CHILI_PIPER_VIDEO_ENABLED !== '0' && process.env.CHILI_PIPER_VIDEO_ENABLED !== 'false';
 
 /**
- * Save Chili Piper failure video before context is closed (avoids "Controller is already closed").
- * Call with the context and page that were recording. Does not close context.
+ * Save Chili Piper failure recording to CHILI_PIPER_VIDEO_DIR/failed.
+ * Uses Video.saveAs() so the file is fully flushed (copying path() after page.close() can yield 0 bytes).
  */
 export async function saveChiliPiperFailureVideo(
   context: { video?: () => Promise<{ path: () => Promise<string | null> } | null> } | null,
-  page: { video?: () => Promise<{ path: () => Promise<string | null> } | null>; isClosed?: () => boolean; close?: () => Promise<void> } | null,
-  videoDir: string,
+  page: { video?: () => { saveAs: (p: string) => Promise<void> } | null; isClosed?: () => boolean; close?: () => Promise<void> } | null,
+  _videoDir: string,
   sessionId: string
 ): Promise<string | null> {
   let savedPath: string | null = null;
   try {
-    const videoPromise = page?.video?.() ?? context?.video?.() ?? null;
+    const vid = page?.video?.() ?? null;
     if (page && typeof page.isClosed === 'function' && !page.isClosed()) {
       await (page as { close: () => Promise<void> }).close?.().catch(() => {});
     }
-    if (videoPromise) {
-      const video = await videoPromise;
-      if (video) {
-        const srcPath = await video.path();
-        if (srcPath && fs.existsSync(srcPath)) {
-          const failedDir = path.join(CHILI_PIPER_VIDEO_DIR, 'failed');
-          fs.mkdirSync(failedDir, { recursive: true });
-          const destName = `chili-piper-${sessionId}.webm`;
-          const destPath = path.join(failedDir, destName);
-          fs.copyFileSync(srcPath, destPath);
-          savedPath = destPath;
-          console.log('[Chili Piper] Saved failure video:', destPath);
-        }
-      }
+    if (vid && typeof vid.saveAs === 'function') {
+      const failedDir = path.join(CHILI_PIPER_VIDEO_DIR, 'failed');
+      fs.mkdirSync(failedDir, { recursive: true });
+      const destPath = path.join(failedDir, `chili-piper-${sessionId}.webm`);
+      await vid.saveAs(destPath);
+      savedPath = destPath;
+      console.log('[Chili Piper] Saved failure video:', destPath);
     }
   } catch (e) {
     console.warn('[Chili Piper] Could not save failure video:', (e as Error)?.message);

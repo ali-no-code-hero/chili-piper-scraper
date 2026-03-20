@@ -84,6 +84,28 @@ function formatTimeForSlot(time: string): string {
   return time.replace(/\s+/g, '').toUpperCase();
 }
 
+/** True if YYYY-MM-DD is strictly before "today" in America/Chicago (booking calendars are forward-looking). */
+function isYmdBeforeTodayInCentral(ymd: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd.trim());
+  if (!m) return false;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const inputKey = y * 10000 + mo * 100 + d;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Chicago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const ty = Number(parts.find((p) => p.type === 'year')?.value ?? 0);
+  const tm = Number(parts.find((p) => p.type === 'month')?.value ?? 0);
+  const td = Number(parts.find((p) => p.type === 'day')?.value ?? 0);
+  if (!ty || !tm || !td) return false;
+  const todayKey = ty * 10000 + tm * 100 + td;
+  return inputKey < todayKey;
+}
+
 /**
  * Build parameterized URL (helper function)
  */
@@ -576,23 +598,19 @@ async function createInstanceForEmail(
       }).catch(() => {});
     }
 
-    // Save failure video so it shows on the video page (recorded to temp dir, copy to CHILI_PIPER_VIDEO_DIR/failed)
-    if (videoDir && sessionId && CHILI_PIPER_VIDEO_ENABLED) {
+    // Flush failure video via saveAs (context must stay open until saveAs completes)
+    if (videoDir && sessionId && CHILI_PIPER_VIDEO_ENABLED && page) {
       try {
-        if (page && !page.isClosed()) await page.close().catch(() => {});
-        if (context) await context.close().catch(() => {});
-        const webmFiles = fs.existsSync(videoDir) ? fs.readdirSync(videoDir).filter((f) => f.endsWith('.webm')) : [];
-        if (webmFiles.length > 0) {
+        const vid = typeof page.video === 'function' ? page.video() : null;
+        if (!page.isClosed()) await page.close().catch(() => {});
+        if (vid && typeof vid.saveAs === 'function') {
           const failedDir = path.join(CHILI_PIPER_VIDEO_DIR, 'failed');
           fs.mkdirSync(failedDir, { recursive: true });
-          const srcPath = path.join(videoDir, webmFiles[0]);
-          const destName = `chili-piper-${sessionId}.webm`;
-          const destPath = path.join(failedDir, destName);
-          fs.copyFileSync(srcPath, destPath);
+          const destPath = path.join(failedDir, `chili-piper-${sessionId}.webm`);
+          await vid.saveAs(destPath);
           console.log('[Chili Piper] Saved failure video (instance creation failed):', destPath);
         }
         page = null;
-        context = null;
       } catch (saveErr) {
         console.warn('[Chili Piper] Could not save failure video on create error:', (saveErr as Error)?.message);
       }
@@ -776,6 +794,22 @@ export async function POST(request: NextRequest) {
 
     const { date, time } = parsed;
     const formattedTime = formatTimeForSlot(time);
+
+    const vendorKey = String(vendor || '')
+      .toLowerCase()
+      .trim();
+    if (vendorKey === 'luxurypresence' && isYmdBeforeTodayInCentral(date)) {
+      const responseTime = Date.now() - requestStartTime;
+      const errorResponse = ErrorHandler.createError(
+        ErrorCode.VALIDATION_ERROR,
+        'Date is in the past',
+        `Booking date ${date} is before today (US Central). Use a future date; Chili Piper does not offer past days on this calendar.`,
+        { date },
+        requestId,
+        responseTime
+      );
+      return security.addSecurityHeaders(NextResponse.json(errorResponse, { status: 400 }));
+    }
 
     // Test mode: If email contains "test", return success without actually booking
     if (email.toLowerCase().includes('test')) {

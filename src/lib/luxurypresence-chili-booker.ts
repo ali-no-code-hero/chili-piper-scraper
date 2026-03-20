@@ -169,7 +169,9 @@ export async function bookLuxuryPresenceSlot(
       const prevBtn = await findArrow(calendarContext, page, 'calendar-arrows-button-prev');
       if (!prevBtn) throw new Error(`Day not found for date ${date}: previous-week control missing`);
       if (await isControlDisabled(prevBtn)) {
-        throw new Error(`Day not found for date ${date}: target is before first visible week`);
+        throw new Error(
+          `Day not found for date ${date}: calendar cannot scroll to earlier weeks (date may be in the past or outside Chili Piper's bookable range).`
+        );
       }
       await prevBtn.click();
       await page.waitForTimeout(600);

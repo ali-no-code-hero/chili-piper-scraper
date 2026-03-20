@@ -14,6 +14,7 @@ import {
   saveChiliPiperFailureVideo,
 } from '@/lib/chili-piper-video';
 import { getChiliPiperVendorConfig } from '@/lib/chili-piper-vendors';
+import { bookLuxuryPresenceSlot } from '@/lib/luxurypresence-chili-booker';
 
 const security = new SecurityMiddleware();
 
@@ -737,6 +738,27 @@ export async function POST(request: NextRequest) {
           throw new Error('Calendar not found on page');
         }
 
+        const vendorKey = String(vendor || '')
+          .toLowerCase()
+          .trim();
+        if (vendorKey === 'luxurypresence') {
+          if (!firstName || !lastName) {
+            throw new Error('firstName and lastName are required for Luxury Presence booking');
+          }
+          await bookLuxuryPresenceSlot(calendarContext, page, {
+            date,
+            time,
+            firstName,
+            lastName,
+            email,
+            log,
+            logErr,
+          });
+          log('Booking step completed, cleaning up instance', { email });
+          await browserInstanceManager.cleanupInstance(email);
+          return { success: true, date, time };
+        }
+
         // Find and click the day button (use calendar context: page or iframe)
         const dayButtons = await calendarContext.$$('[data-id="calendar-day-button"], button[data-test-id^="days:"]');
         let dayClicked = false;
@@ -918,7 +940,7 @@ export async function POST(request: NextRequest) {
         // Get available slots one more time for error message
         let availableSlotInfo = '';
         try {
-          const slots = await page.$$eval('[data-id="calendar-slot"], button[data-test-id^="slot-"]', 
+          const slots = await calendarContext.$$eval('[data-id="calendar-slot"], button[data-test-id^="slot-"]', 
             (buttons: Element[]) => buttons.map((b: Element) => b.textContent?.trim()).filter(Boolean) as string[]
           );
           availableSlotInfo = ` Available slots: ${slots.join(', ')}`;

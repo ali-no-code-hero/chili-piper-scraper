@@ -156,6 +156,71 @@ async function waitForCalendarChrome(page: any, totalTimeoutMs: number): Promise
   );
 }
 
+interface CreateInstanceDiagOpts {
+  sessionId: string;
+  targetUrl: string;
+  directCalendar: boolean;
+  consoleWarnings: string[];
+  consoleAndPageErrors: string[];
+}
+
+/** Log URL, title, HTML preview, frames, console errors — before closing the page on create failure. */
+async function logCreateInstancePageDiagnostics(
+  page: any,
+  opts: CreateInstanceDiagOpts
+): Promise<void> {
+  const { sessionId, targetUrl, directCalendar, consoleWarnings, consoleAndPageErrors } = opts;
+  console.error('[createInstance] Failure diagnostics', {
+    sessionId,
+    directCalendar,
+    intendedUrl: targetUrl.length > 200 ? `${targetUrl.slice(0, 200)}…` : targetUrl,
+  });
+  if (!page || (typeof page.isClosed === 'function' && page.isClosed())) {
+    console.error('[createInstance] Page missing or already closed; skipping snapshot');
+    return;
+  }
+  try {
+    const url = typeof page.url === 'function' ? page.url() : '(no url())';
+    const title = await page.title().catch(() => '(title() failed)');
+    const content = await page.content().catch(() => '');
+    const len = typeof content === 'string' ? content.length : 0;
+    const preview = typeof content === 'string' ? content.slice(0, 2500) : '';
+    console.error('[createInstance] Live page URL:', url);
+    console.error('[createInstance] Page title:', title);
+    console.error('[createInstance] document.documentElement outerHTML length:', len);
+    if (preview) {
+      console.error('[createInstance] HTML preview (first 2500 chars):\n', preview);
+    }
+    const frames = typeof page.frames === 'function' ? page.frames() : [];
+    console.error('[createInstance] Frame count:', frames.length);
+    frames.slice(0, 15).forEach((f: any, i: number) => {
+      try {
+        const u = typeof f.url === 'function' ? f.url() : '(unknown)';
+        console.error(`[createInstance] Frame[${i}]:`, u.length > 300 ? `${u.slice(0, 300)}…` : u);
+      } catch {
+        console.error(`[createInstance] Frame[${i}]: (could not read url)`);
+      }
+    });
+  } catch (e) {
+    console.error('[createInstance] Diagnostic read failed:', (e as Error)?.message);
+  }
+  if (consoleWarnings.length > 0) {
+    console.error('[createInstance] Browser console warnings (recent):', consoleWarnings);
+  }
+  if (consoleAndPageErrors.length > 0) {
+    console.error('[createInstance] Browser console errors + pageerror (recent):', consoleAndPageErrors);
+  }
+  try {
+    const failedDir = path.join(CHILI_PIPER_VIDEO_DIR, 'failed');
+    fs.mkdirSync(failedDir, { recursive: true });
+    const shotPath = path.join(failedDir, `create-instance-debug-${sessionId}.png`);
+    await page.screenshot({ path: shotPath, fullPage: false });
+    console.error('[createInstance] Debug screenshot:', shotPath);
+  } catch (shotErr) {
+    console.warn('[createInstance] Debug screenshot failed:', (shotErr as Error)?.message);
+  }
+}
+
 /**
  * Create a new browser instance and navigate to calendar for an email
  */
@@ -182,6 +247,8 @@ async function createInstanceForEmail(
 
   const t0 = Date.now();
   const logTiming = (step: string) => console.log(`[createInstance] ${step}: ${Date.now() - t0}ms`);
+  const browserDiagWarnings: string[] = [];
+  const browserDiagErrors: string[] = [];
 
   try {
 
@@ -251,6 +318,27 @@ async function createInstanceForEmail(
       browserPool.releaseBrowser(browser);
       throw new Error('Failed to create browser context after retries');
     }
+
+    page.on('console', (msg: { type: () => string; text: () => string }) => {
+      try {
+        const t = msg.type();
+        if (t !== 'error' && t !== 'warning') return;
+        const line = `[console.${t}] ${msg.text()}`.slice(0, 800);
+        const arr = t === 'error' ? browserDiagErrors : browserDiagWarnings;
+        arr.push(line);
+        if (arr.length > 25) arr.shift();
+      } catch {
+        /* ignore */
+      }
+    });
+    page.on('pageerror', (err: Error) => {
+      try {
+        browserDiagErrors.push(`[pageerror] ${err.message}`.slice(0, 800));
+        if (browserDiagErrors.length > 30) browserDiagErrors.shift();
+      } catch {
+        /* ignore */
+      }
+    });
 
     logTiming('context+page ready');
 
@@ -431,6 +519,16 @@ async function createInstanceForEmail(
   } catch (error) {
     logTiming('failed');
     console.error('Error creating instance:', error);
+
+    if (page && typeof page.isClosed === 'function' && !page.isClosed()) {
+      await logCreateInstancePageDiagnostics(page, {
+        sessionId,
+        targetUrl,
+        directCalendar,
+        consoleWarnings: browserDiagWarnings,
+        consoleAndPageErrors: browserDiagErrors,
+      }).catch(() => {});
+    }
 
     // Save failure video so it shows on the video page (recorded to temp dir, copy to CHILI_PIPER_VIDEO_DIR/failed)
     if (videoDir && sessionId && CHILI_PIPER_VIDEO_ENABLED) {

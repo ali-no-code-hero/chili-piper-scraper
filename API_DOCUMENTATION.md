@@ -103,8 +103,8 @@ data: {"success":true,"streaming":false,"message":"Slot collection completed","d
 
 | vendor       | Backend              | Required fields (besides vendor, email, firstName, lastName) | Optional |
 |-------------|----------------------|----------------------------------------------------------------|----------|
-| `cinq`      | Chili Piper          | `dateTime` (e.g. "November 13, 2025 at 1:25 PM CST")         | `phone`  |
-| `luxury-presence` | Chili Piper (direct calendar) | `dateTime` (same format as cinq) | `phone` (form has no phone field) |
+| `cinq`      | Chili Piper          | `dateTime` **or** `date` + `time` (`date`: YYYY-MM-DD; `time`: e.g. 1:25 PM) | `phone`  |
+| `luxury-presence` | Chili Piper (direct calendar) | Same as cinq: `dateTime` **or** `date` + `time` | `phone` (form has no phone field) |
 | `agentfire` | Calendly (AgentFire) | `date` (YYYY-MM-DD), `time` (e.g. 9:30am)                    | `phone`, `answers` |
 | `housejet-ppc` | Calendly (Pay-per-closing) | `date`, `time`                              | `phone`  |
 
@@ -130,6 +130,19 @@ Uses a direct-to-calendar URL; after slot selection the guest form (first name, 
   "firstName": "Jane",
   "lastName": "Doe",
   "dateTime": "November 13, 2025 at 1:25 PM CST"
+}
+```
+
+Alternatively, pass **`date`** and **`time`** instead of `dateTime` (if both `dateTime` and `date`/`time` are sent, `dateTime` is used):
+
+```json
+{
+  "vendor": "luxury-presence",
+  "email": "jane@example.com",
+  "firstName": "Jane",
+  "lastName": "Doe",
+  "date": "2025-11-13",
+  "time": "1:25 PM"
 }
 ```
 

@@ -28,6 +28,46 @@ function isValidDate(dateStr: string): boolean {
   return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
 }
 
+/** Chili Piper via book-slot: send either `dateTime` or both `date` (YYYY-MM-DD) and `time` (e.g. 1:25 PM). If both are sent, `dateTime` wins. */
+function buildBookSlotChiliBody(
+  base: { email: string; firstName: string; lastName: string; phone: string },
+  body: Record<string, unknown>,
+  vendor?: string
+): { ok: true; payload: Record<string, string> } | { ok: false; message: string } {
+  const dateTime = body.dateTime as string | undefined;
+  const date = body.date as string | undefined;
+  const time = body.time as string | undefined;
+  const hasDt = dateTime && typeof dateTime === 'string' && dateTime.trim().length > 0;
+  const hasSplit =
+    date &&
+    typeof date === 'string' &&
+    date.trim().length > 0 &&
+    time &&
+    typeof time === 'string' &&
+    time.trim().length > 0;
+  if (!hasDt && !hasSplit) {
+    return {
+      ok: false,
+      message:
+        'Provide dateTime (e.g. "November 13, 2025 at 1:25 PM CST") or both date (YYYY-MM-DD) and time (e.g. 1:25 PM)',
+    };
+  }
+  const payload: Record<string, string> = {
+    email: base.email,
+    firstName: base.firstName,
+    lastName: base.lastName,
+    phone: base.phone,
+  };
+  if (vendor) payload.vendor = vendor;
+  if (hasDt) {
+    payload.dateTime = dateTime!.trim();
+  } else {
+    payload.date = date!.trim();
+    payload.time = time!.trim();
+  }
+  return { ok: true, payload };
+}
+
 export async function POST(request: NextRequest) {
   const requestStartTime = Date.now();
   const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -87,13 +127,16 @@ export async function POST(request: NextRequest) {
     const phone = (body.phone as string) || undefined;
 
     if (vendor === 'cinq') {
-      const dateTime = body.dateTime as string;
-      if (!dateTime || typeof dateTime !== 'string' || !dateTime.trim()) {
+      const chili = buildBookSlotChiliBody(
+        { email, firstName, lastName, phone: phone || '' },
+        body
+      );
+      if (!chili.ok) {
         const responseTime = Date.now() - requestStartTime;
         const errorResponse = ErrorHandler.createError(
           ErrorCode.VALIDATION_ERROR,
-          'Missing dateTime',
-          'dateTime is required when vendor is cinq (Chili Piper). Format like "November 13, 2025 at 1:25 PM CST"',
+          'Missing date/time',
+          `${chili.message} (vendor cinq)`,
           undefined,
           requestId,
           responseTime
@@ -109,13 +152,7 @@ export async function POST(request: NextRequest) {
           'x-forwarded-for': request.headers.get('x-forwarded-for') || '',
           'x-real-ip': request.headers.get('x-real-ip') || '',
         },
-        body: JSON.stringify({
-          email,
-          firstName,
-          lastName,
-          phone: phone || '',
-          dateTime: dateTime.trim(),
-        }),
+        body: JSON.stringify(chili.payload),
       });
       const bookSlotResponse = await bookSlotPost(bookSlotRequest);
       const status = bookSlotResponse.status >= 200 && bookSlotResponse.status < 300 ? STATUS_SUCCESS : STATUS_FAILURE;
@@ -124,13 +161,17 @@ export async function POST(request: NextRequest) {
     }
 
     if (vendor === 'luxury-presence') {
-      const dateTime = body.dateTime as string;
-      if (!dateTime || typeof dateTime !== 'string' || !dateTime.trim()) {
+      const chili = buildBookSlotChiliBody(
+        { email, firstName, lastName, phone: phone || '' },
+        body,
+        'luxury-presence'
+      );
+      if (!chili.ok) {
         const responseTime = Date.now() - requestStartTime;
         const errorResponse = ErrorHandler.createError(
           ErrorCode.VALIDATION_ERROR,
-          'Missing dateTime',
-          'dateTime is required when vendor is luxury-presence. Format like "November 13, 2025 at 1:25 PM CST"',
+          'Missing date/time',
+          `${chili.message} (vendor luxury-presence)`,
           undefined,
           requestId,
           responseTime
@@ -146,14 +187,7 @@ export async function POST(request: NextRequest) {
           'x-forwarded-for': request.headers.get('x-forwarded-for') || '',
           'x-real-ip': request.headers.get('x-real-ip') || '',
         },
-        body: JSON.stringify({
-          email,
-          firstName,
-          lastName,
-          phone: phone || '',
-          dateTime: dateTime.trim(),
-          vendor: 'luxury-presence',
-        }),
+        body: JSON.stringify(chili.payload),
       });
       const bookSlotResponse = await bookSlotPost(bookSlotRequest);
       const status = bookSlotResponse.status >= 200 && bookSlotResponse.status < 300 ? STATUS_SUCCESS : STATUS_FAILURE;

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { SecurityMiddleware, ValidationSchemas } from '@/lib/security-middleware';
+import { SecurityMiddleware } from '@/lib/security-middleware';
 import { concurrencyManager } from '@/lib/concurrency-manager';
 import { ErrorHandler, ErrorCode, SuccessCode } from '@/lib/error-handler';
 import { browserInstanceManager } from '@/lib/browser-instance-manager';
@@ -17,6 +17,18 @@ import { getChiliPiperVendorConfig, normalizeChiliPiperVendorId } from '@/lib/ch
 import { bookLuxuryPresenceSlot } from '@/lib/luxury-presence-chili-booker';
 
 const security = new SecurityMiddleware();
+
+/** POST /api/book-slot JSON body after sanitization */
+type BookSlotRequestBody = {
+  email: string;
+  dateTime?: string;
+  date?: string;
+  time?: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  vendor?: string;
+};
 
 /**
  * Parse date/time string like "November 13, 2025 at 1:25 PM CST"
@@ -74,6 +86,59 @@ function parseDateTime(dateTimeString: string): { date: string; time: string } |
     console.error('Error parsing date/time:', error);
     return null;
   }
+}
+
+/**
+ * Parse separate date (YYYY-MM-DD) and time (12h with AM/PM) into the same shape as {@link parseDateTime}.
+ */
+function parseSplitDateAndTime(
+  dateStr: string,
+  timeStr: string
+): { date: string; time: string } | null {
+  const date = dateStr.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const [y, mo, d] = date.split('-').map(Number);
+  const dt = new Date(y, mo - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+
+  const t = timeStr.trim();
+  const m = t.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!m) return null;
+  const hour = Number(m[1]);
+  const minute = m[2];
+  const ampm = m[3].toUpperCase();
+  if (hour < 1 || hour > 12) return null;
+  const mi = Number(minute);
+  if (Number.isNaN(mi) || mi < 0 || mi > 59) return null;
+  const time = `${hour}:${minute} ${ampm}`;
+  return { date, time };
+}
+
+/**
+ * Prefer `dateTime` when present; otherwise require `date` + `time` (YYYY-MM-DD and e.g. 1:25 PM).
+ */
+function resolveBookSlotDateTime(body: {
+  dateTime?: string;
+  date?: string;
+  time?: string;
+}): { date: string; time: string } | null {
+  const rawDt = body.dateTime;
+  const hasDt = typeof rawDt === 'string' && rawDt.trim().length > 0;
+  const rawDate = body.date;
+  const rawTime = body.time;
+  const hasSplit =
+    typeof rawDate === 'string' &&
+    rawDate.trim().length > 0 &&
+    typeof rawTime === 'string' &&
+    rawTime.trim().length > 0;
+
+  if (hasDt) {
+    return parseDateTime(rawDt.trim());
+  }
+  if (hasSplit) {
+    return parseSplitDateAndTime(rawDate.trim(), rawTime.trim());
+  }
+  return null;
 }
 
 /**
@@ -736,16 +801,14 @@ export async function POST(request: NextRequest) {
       requireAuth: true,
       rateLimit: { maxRequests: 100, windowMs: 15 * 60 * 1000 }, // 100 requests per 15 minutes
       inputSchema: {
-        type: 'object',
-        required: ['email', 'dateTime'],
-        properties: {
-          email: { type: 'string', format: 'email' },
-          dateTime: { type: 'string' },
-          firstName: { type: 'string' },
-          lastName: { type: 'string' },
-          phone: { type: 'string' },
-          vendor: { type: 'string' },
-        },
+        email: { type: 'email', required: true, maxLength: 255 },
+        dateTime: { type: 'string', required: false, maxLength: 500 },
+        date: { type: 'string', required: false, maxLength: 12 },
+        time: { type: 'string', required: false, maxLength: 32 },
+        firstName: { type: 'string', required: false, maxLength: 155 },
+        lastName: { type: 'string', required: false, maxLength: 155 },
+        phone: { type: 'string', required: false, maxLength: 30 },
+        vendor: { type: 'string', required: false, maxLength: 50 },
       },
       allowedMethods: ['POST'],
     });
@@ -767,21 +830,56 @@ export async function POST(request: NextRequest) {
       return security.addSecurityHeaders(response);
     }
 
-    const body = securityResult.sanitizedData!;
+    const body = securityResult.sanitizedData! as BookSlotRequestBody;
     const { email, dateTime, firstName, lastName, phone, vendor } = body;
-    const vendorConfig = getChiliPiperVendorConfig(vendor as string | undefined);
-    console.log('[book-slot] API called', { email, dateTime, requestId, vendor: vendor || 'cinq' });
+    const hasDt = typeof dateTime === 'string' && dateTime.trim().length > 0;
+    const hasSplit =
+      typeof body.date === 'string' &&
+      body.date.trim().length > 0 &&
+      typeof body.time === 'string' &&
+      body.time.trim().length > 0;
+    if (!hasDt && !hasSplit) {
+      const responseTime = Date.now() - requestStartTime;
+      const errorResponse = ErrorHandler.createError(
+        ErrorCode.VALIDATION_ERROR,
+        'Missing date/time',
+        'Provide dateTime (e.g. "November 13, 2025 at 1:25 PM CST") or both date (YYYY-MM-DD) and time (e.g. 1:25 PM)',
+        undefined,
+        requestId,
+        responseTime
+      );
+      const response = NextResponse.json(
+        errorResponse,
+        { status: 400 }
+      );
+      return security.addSecurityHeaders(response);
+    }
 
-    // Parse date/time
-    const parsed = parseDateTime(dateTime);
+    const vendorConfig = getChiliPiperVendorConfig(vendor as string | undefined);
+    console.log('[book-slot] API called', {
+      email,
+      dateTime,
+      date: body.date,
+      time: body.time,
+      requestId,
+      vendor: vendor || 'cinq',
+    });
+
+    const parsed = resolveBookSlotDateTime({
+      dateTime,
+      date: body.date,
+      time: body.time,
+    });
     if (!parsed) {
-      console.warn('[book-slot] Parse failed', { requestId, dateTime });
+      console.warn('[book-slot] Parse failed', { requestId, dateTime, date: body.date, time: body.time });
       const responseTime = Date.now() - requestStartTime;
       const errorResponse = ErrorHandler.createError(
         ErrorCode.VALIDATION_ERROR,
         'Invalid date/time format',
-        'Date/time must be in format like "November 13, 2025 at 1:25 PM CST"',
-        { providedValue: dateTime },
+        hasDt
+          ? 'dateTime must be like "November 13, 2025 at 1:25 PM CST"'
+          : 'date must be YYYY-MM-DD and time must be like 1:25 PM',
+        { providedValue: { dateTime, date: body.date, time: body.time } },
         requestId,
         responseTime
       );

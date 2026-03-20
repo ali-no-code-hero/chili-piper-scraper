@@ -133,7 +133,7 @@ curl -X POST http://your-domain.com/api/book-slot \
 
 **Request Body**:
 - `email` (required): Email address of the user (must match the email used in get-slots)
-- `dateTime` (required): Date and time in format "November 13, 2025 at 1:25 PM CST"
+- **When to book:** provide either **`dateTime`** (e.g. `"November 13, 2025 at 1:25 PM CST"`) **or** both **`date`** (`YYYY-MM-DD`) and **`time`** (12-hour with AM/PM, e.g. `"1:25 PM"`). If `dateTime` is present, it takes precedence over `date`/`time`.
 - `firstName` (required if no existing instance): First name (required when creating new instance)
 - `lastName` (required if no existing instance): Last name (required when creating new instance)
 - `phone` (required if no existing instance): Phone number (required when creating new instance)
